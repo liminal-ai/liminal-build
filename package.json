@@ -1,0 +1,36 @@
+{
+  "name": "liminal-build",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=24.14.0 <25"
+  },
+  "scripts": {
+    "build": "corepack pnpm --filter @liminal-build/platform build",
+    "lint": "corepack pnpm exec biome lint apps convex tests docs/setup README.md package.json pnpm-workspace.yaml tsconfig.base.json tsconfig.json biome.json playwright.config.ts vitest.workspace.ts .env.example .gitignore",
+    "format:check": "corepack pnpm exec biome check --formatter-enabled=true --linter-enabled=false --assist-enabled=false apps convex tests docs/setup README.md package.json pnpm-workspace.yaml tsconfig.base.json tsconfig.json biome.json playwright.config.ts vitest.workspace.ts .env.example .gitignore",
+    "typecheck": "corepack pnpm exec tsc --noEmit -p tsconfig.json && corepack pnpm --filter @liminal-build/platform typecheck",
+    "red-verify": "corepack pnpm run format:check && corepack pnpm run lint && corepack pnpm run typecheck && corepack pnpm run build",
+    "test:service": "node -e \"console.log('SKIP: test:service scaffolded in Story 0; no executable suite yet')\"",
+    "test:client": "node -e \"console.log('SKIP: test:client scaffolded in Story 0; no executable suite yet')\"",
+    "test:integration": "node -e \"console.log('SKIP: test:integration scaffolded in Story 0; no executable suite yet')\"",
+    "test:e2e": "node -e \"console.log('SKIP: test:e2e scaffolded in Story 0; no executable suite yet')\"",
+    "verify": "corepack pnpm run red-verify && corepack pnpm run test:service && corepack pnpm run test:client",
+    "guard:no-test-changes": "node -e \"console.log('SKIP: guard:no-test-changes unavailable in non-git Story 0 workspace')\"",
+    "green-verify": "corepack pnpm run verify && corepack pnpm run guard:no-test-changes",
+    "verify-all": "corepack pnpm run verify && corepack pnpm run test:integration && corepack pnpm run test:e2e"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.11",
+    "@playwright/test": "1.59.1",
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/user-event": "14.6.1",
+    "@types/jsdom": "28.0.1",
+    "@types/node": "25.6.0",
+    "convex": "1.35.1",
+    "jsdom": "29.0.2",
+    "typescript": "6.0.2",
+    "vitest": "4.1.4"
+  }
+}

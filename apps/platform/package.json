@@ -1,0 +1,30 @@
+{
+  "name": "@liminal-build/platform",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
+    "dev": "tsx watch server/index.ts",
+    "start": "node dist/server/index.js",
+    "build": "corepack pnpm run clean && corepack pnpm run build:server && corepack pnpm run build:client",
+    "build:server": "tsc -p tsconfig.server.json",
+    "build:client": "vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.client.json"
+  },
+  "dependencies": {
+    "@fastify/cookie": "11.0.2",
+    "@fastify/csrf-protection": "7.1.0",
+    "@fastify/vite": "9.0.0",
+    "@workos-inc/node": "8.12.1",
+    "fastify": "5.8.4",
+    "fastify-plugin": "5.1.0",
+    "fastify-type-provider-zod": "6.1.0",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "25.6.0",
+    "tsx": "4.21.0",
+    "typescript": "6.0.2",
+    "vite": "8.0.8"
+  }
+}

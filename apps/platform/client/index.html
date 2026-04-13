@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Liminal Build Platform Shell</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script>
+      window.__SHELL_BOOTSTRAP__ = window.__SHELL_BOOTSTRAP__ ?? {
+              actor: null,
+              pathname: window.location.pathname,
+              search: window.location.search,
+              csrfToken: null,
+              auth: {
+                loginPath: '/auth/login',
+                logoutPath: '/auth/logout'
+              }
+            };
+    </script>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
+

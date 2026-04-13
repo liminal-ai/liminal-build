@@ -1,0 +1,46 @@
+import { sourceAttachmentSummarySchema } from '../../apps/platform/shared/contracts/index.js';
+
+const baseSourceFixture = {
+  sourceAttachmentId: 'source-base-001',
+  displayName: 'liminal-build',
+  purpose: 'research' as const,
+  targetRef: 'main',
+  attachmentScope: 'project' as const,
+  processId: null,
+  processDisplayLabel: null,
+  updatedAt: '2026-04-13T12:00:00.000Z',
+};
+
+export const hydratedSourceFixture = sourceAttachmentSummarySchema.parse({
+  ...baseSourceFixture,
+  sourceAttachmentId: 'source-hydrated-001',
+  hydrationState: 'hydrated',
+});
+
+export const notHydratedSourceFixture = sourceAttachmentSummarySchema.parse({
+  ...baseSourceFixture,
+  sourceAttachmentId: 'source-not-hydrated-001',
+  hydrationState: 'not_hydrated',
+});
+
+export const staleSourceFixture = sourceAttachmentSummarySchema.parse({
+  ...baseSourceFixture,
+  sourceAttachmentId: 'source-stale-001',
+  hydrationState: 'stale',
+});
+
+export const unavailableSourceFixture = sourceAttachmentSummarySchema.parse({
+  ...baseSourceFixture,
+  sourceAttachmentId: 'source-unavailable-001',
+  hydrationState: 'unavailable',
+});
+
+export const processScopedSourceFixture = sourceAttachmentSummarySchema.parse({
+  ...baseSourceFixture,
+  sourceAttachmentId: 'source-process-001',
+  purpose: 'implementation',
+  hydrationState: 'hydrated',
+  attachmentScope: 'process',
+  processId: 'process-feature-impl-1',
+  processDisplayLabel: 'Feature Implementation #1',
+});

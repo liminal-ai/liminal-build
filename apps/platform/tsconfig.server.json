@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2024"],
+    "types": ["node"],
+    "rootDir": ".",
+    "outDir": "dist/server",
+    "noEmit": false
+  },
+  "include": ["server/**/*.ts", "shared/**/*.ts", "vite.config.ts"]
+}
