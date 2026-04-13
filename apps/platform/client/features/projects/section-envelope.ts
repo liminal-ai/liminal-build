@@ -10,37 +10,62 @@ type AnyEnvelope =
   | SourceAttachmentSectionEnvelope
   | null;
 
+export function createSectionElement(args: {
+  title: string;
+  targetDocument: Document;
+}): HTMLElement {
+  const section = args.targetDocument.createElement('section');
+  const title = args.targetDocument.createElement('h2');
+  title.textContent = args.title;
+  section.append(title);
+  return section;
+}
+
+export function appendSectionMessage(args: {
+  section: HTMLElement;
+  message: string;
+  targetDocument: Document;
+}): HTMLElement {
+  const body = args.targetDocument.createElement('p');
+  body.textContent = args.message;
+  args.section.append(body);
+  return args.section;
+}
+
 export function renderSectionEnvelopeState(args: {
   title: string;
   envelope: AnyEnvelope;
   targetDocument: Document;
 }): HTMLElement {
-  const section = args.targetDocument.createElement('section');
-  const title = args.targetDocument.createElement('h2');
-  const body = args.targetDocument.createElement('p');
-
-  title.textContent = args.title;
-  section.append(title);
+  const section = createSectionElement(args);
 
   if (args.envelope === null) {
-    body.textContent = `${args.title} scaffolded; data loading starts in later stories.`;
-    section.append(body);
-    return section;
+    return appendSectionMessage({
+      section,
+      message: `${args.title} scaffolded; data loading starts in later stories.`,
+      targetDocument: args.targetDocument,
+    });
   }
 
   if (args.envelope.status === 'empty') {
-    body.textContent = `${args.title} is currently empty.`;
-    section.append(body);
-    return section;
+    return appendSectionMessage({
+      section,
+      message: `${args.title} is currently empty.`,
+      targetDocument: args.targetDocument,
+    });
   }
 
   if (args.envelope.status === 'error') {
-    body.textContent = args.envelope.error?.message ?? `${args.title} failed to load.`;
-    section.append(body);
-    return section;
+    return appendSectionMessage({
+      section,
+      message: args.envelope.error?.message ?? `${args.title} failed to load.`,
+      targetDocument: args.targetDocument,
+    });
   }
 
-  body.textContent = `${args.title} ready with ${args.envelope.items.length} item(s).`;
-  section.append(body);
-  return section;
+  return appendSectionMessage({
+    section,
+    message: `${args.title} ready with ${args.envelope.items.length} item(s).`,
+    targetDocument: args.targetDocument,
+  });
 }

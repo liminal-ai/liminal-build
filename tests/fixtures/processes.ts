@@ -15,6 +15,7 @@ export const draftProcessFixture = processSummarySchema.parse({
   ...baseProcessSummary,
   processId: 'process-draft',
   status: 'draft',
+  updatedAt: '2026-04-13T12:00:00.000Z',
 });
 
 export const runningProcessFixture = processSummarySchema.parse({
@@ -22,6 +23,7 @@ export const runningProcessFixture = processSummarySchema.parse({
   processId: 'process-running',
   status: 'running',
   availableActions: ['open', 'review'],
+  updatedAt: '2026-04-13T13:00:00.000Z',
 });
 
 export const waitingProcessFixture = processSummarySchema.parse({
@@ -30,6 +32,7 @@ export const waitingProcessFixture = processSummarySchema.parse({
   status: 'waiting',
   nextActionLabel: 'Waiting for user response',
   availableActions: ['respond'],
+  updatedAt: '2026-04-13T14:00:00.000Z',
 });
 
 export const pausedProcessFixture = processSummarySchema.parse({

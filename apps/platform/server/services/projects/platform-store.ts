@@ -1,6 +1,12 @@
 import { ConvexHttpClient } from 'convex/browser';
 import { makeFunctionReference } from 'convex/server';
-import type { ProjectShellResponse, ProjectSummary } from '../../../shared/contracts/index.js';
+import type {
+  ArtifactSummary,
+  ProcessSummary,
+  ProjectShellResponse,
+  ProjectSummary,
+  SourceAttachmentSummary,
+} from '../../../shared/contracts/index.js';
 
 export interface StoredPlatformUser {
   userId: string;
@@ -39,6 +45,9 @@ export interface PlatformStore {
   listAccessibleProjects(args: { userId: string }): Promise<ProjectSummary[]>;
   getProjectAccess(args: { userId: string; projectId: string }): Promise<ProjectAccessResult>;
   createProject(args: { ownerUserId: string; name: string }): Promise<ProjectCreateResult>;
+  listProjectProcesses(args: { projectId: string }): Promise<ProcessSummary[]>;
+  listProjectArtifacts(args: { projectId: string }): Promise<ArtifactSummary[]>;
+  listProjectSourceAttachments(args: { projectId: string }): Promise<SourceAttachmentSummary[]>;
 }
 
 const upsertUserMutation = makeFunctionReference<
@@ -69,6 +78,24 @@ const createProjectMutation = makeFunctionReference<
   ProjectCreateResult
 >('projects:createProject');
 
+const listProjectProcessesQuery = makeFunctionReference<
+  'query',
+  { projectId: string },
+  ProcessSummary[]
+>('processes:listProjectProcessSummaries');
+
+const listProjectArtifactsQuery = makeFunctionReference<
+  'query',
+  { projectId: string },
+  ArtifactSummary[]
+>('artifacts:listProjectArtifactSummaries');
+
+const listProjectSourceAttachmentsQuery = makeFunctionReference<
+  'query',
+  { projectId: string },
+  SourceAttachmentSummary[]
+>('sourceAttachments:listProjectSourceAttachmentSummaries');
+
 export class NullPlatformStore implements PlatformStore {
   async upsertUserFromWorkOS(args: {
     workosUserId: string;
@@ -97,6 +124,18 @@ export class NullPlatformStore implements PlatformStore {
     return {
       kind: 'name_conflict',
     };
+  }
+
+  async listProjectProcesses(): Promise<ProcessSummary[]> {
+    return [];
+  }
+
+  async listProjectArtifacts(): Promise<ArtifactSummary[]> {
+    return [];
+  }
+
+  async listProjectSourceAttachments(): Promise<SourceAttachmentSummary[]> {
+    return [];
   }
 }
 
@@ -133,18 +172,38 @@ export class ConvexPlatformStore implements PlatformStore {
       skipQueue: true,
     });
   }
+
+  async listProjectProcesses(args: { projectId: string }): Promise<ProcessSummary[]> {
+    return this.client.query(listProjectProcessesQuery, args);
+  }
+
+  async listProjectArtifacts(args: { projectId: string }): Promise<ArtifactSummary[]> {
+    return this.client.query(listProjectArtifactsQuery, args);
+  }
+
+  async listProjectSourceAttachments(args: {
+    projectId: string;
+  }): Promise<SourceAttachmentSummary[]> {
+    return this.client.query(listProjectSourceAttachmentsQuery, args);
+  }
 }
 
 export class InMemoryPlatformStore implements PlatformStore {
   private readonly usersByWorkosId = new Map<string, StoredPlatformUser>();
   private readonly projectsByUserId = new Map<string, ProjectSummary[]>();
   private readonly accessByProjectId = new Map<string, ProjectAccessResult>();
+  private readonly processesByProjectId = new Map<string, ProcessSummary[]>();
+  private readonly artifactsByProjectId = new Map<string, ArtifactSummary[]>();
+  private readonly sourceAttachmentsByProjectId = new Map<string, SourceAttachmentSummary[]>();
 
   constructor(
     args: {
       users?: StoredPlatformUser[];
       accessibleProjectsByUserId?: Record<string, ProjectSummary[]>;
       projectAccessByProjectId?: Record<string, ProjectAccessResult>;
+      processesByProjectId?: Record<string, ProcessSummary[]>;
+      artifactsByProjectId?: Record<string, ArtifactSummary[]>;
+      sourceAttachmentsByProjectId?: Record<string, SourceAttachmentSummary[]>;
     } = {},
   ) {
     for (const user of args.users ?? []) {
@@ -157,6 +216,18 @@ export class InMemoryPlatformStore implements PlatformStore {
 
     for (const [projectId, result] of Object.entries(args.projectAccessByProjectId ?? {})) {
       this.accessByProjectId.set(projectId, result);
+    }
+
+    for (const [projectId, summaries] of Object.entries(args.processesByProjectId ?? {})) {
+      this.processesByProjectId.set(projectId, summaries);
+    }
+
+    for (const [projectId, summaries] of Object.entries(args.artifactsByProjectId ?? {})) {
+      this.artifactsByProjectId.set(projectId, summaries);
+    }
+
+    for (const [projectId, summaries] of Object.entries(args.sourceAttachmentsByProjectId ?? {})) {
+      this.sourceAttachmentsByProjectId.set(projectId, summaries);
     }
   }
 
@@ -254,6 +325,20 @@ export class InMemoryPlatformStore implements PlatformStore {
       kind: 'created',
       project,
     };
+  }
+
+  async listProjectProcesses(args: { projectId: string }): Promise<ProcessSummary[]> {
+    return this.processesByProjectId.get(args.projectId) ?? [];
+  }
+
+  async listProjectArtifacts(args: { projectId: string }): Promise<ArtifactSummary[]> {
+    return this.artifactsByProjectId.get(args.projectId) ?? [];
+  }
+
+  async listProjectSourceAttachments(args: {
+    projectId: string;
+  }): Promise<SourceAttachmentSummary[]> {
+    return this.sourceAttachmentsByProjectId.get(args.projectId) ?? [];
   }
 }
 

@@ -353,6 +353,15 @@ describe('auth routes', () => {
           kind: 'name_conflict',
         };
       },
+      async listProjectProcesses() {
+        return [];
+      },
+      async listProjectArtifacts() {
+        return [];
+      },
+      async listProjectSourceAttachments() {
+        return [];
+      },
     };
     const app = await buildApp({
       authSessionService: createTestAuthSessionService({

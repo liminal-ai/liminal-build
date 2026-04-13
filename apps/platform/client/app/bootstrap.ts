@@ -60,6 +60,49 @@ export async function bootstrapApp(
     });
   };
 
+  const reconcileSelectedProcess = (
+    parsedRoute: ParsedRoute,
+    shell: ProjectShellResponse,
+  ): { route: ParsedRoute; selectedProcessBanner: string | null } => {
+    if (parsedRoute.kind !== 'project-shell' || parsedRoute.selectedProcessId === null) {
+      return {
+        route: parsedRoute,
+        selectedProcessBanner: null,
+      };
+    }
+
+    if (shell.processes.status === 'error') {
+      return {
+        route: parsedRoute,
+        selectedProcessBanner: null,
+      };
+    }
+
+    const selectedProcess = shell.processes.items.find(
+      (process) => process.processId === parsedRoute.selectedProcessId,
+    );
+
+    if (selectedProcess !== undefined) {
+      return {
+        route: parsedRoute,
+        selectedProcessBanner: null,
+      };
+    }
+
+    const route = {
+      ...parsedRoute,
+      selectedProcessId: null,
+    };
+    navigateTo(route, { replace: true }, targetWindow);
+    applyRouteState(route);
+
+    return {
+      route,
+      selectedProcessBanner:
+        'The requested process is unavailable and the shell cleared the selection.',
+    };
+  };
+
   const loadParsedRoute = async (parsedRoute: ParsedRoute): Promise<void> => {
     const requestId = ++routeLoadId;
     applyRouteState(parsedRoute);
@@ -121,7 +164,12 @@ export async function bootstrapApp(
         return;
       }
 
+      const selectedProcessResolution = reconcileSelectedProcess(parsedRoute, shell);
       applyShell(shell);
+      store.patch('shell', {
+        ...store.get().shell,
+        selectedProcessBanner: selectedProcessResolution.selectedProcessBanner,
+      });
     } catch (error) {
       if (requestId !== routeLoadId) {
         return;

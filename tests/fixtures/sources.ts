@@ -15,18 +15,21 @@ export const hydratedSourceFixture = sourceAttachmentSummarySchema.parse({
   ...baseSourceFixture,
   sourceAttachmentId: 'source-hydrated-001',
   hydrationState: 'hydrated',
+  updatedAt: '2026-04-13T13:00:00.000Z',
 });
 
 export const notHydratedSourceFixture = sourceAttachmentSummarySchema.parse({
   ...baseSourceFixture,
   sourceAttachmentId: 'source-not-hydrated-001',
   hydrationState: 'not_hydrated',
+  updatedAt: '2026-04-13T12:00:00.000Z',
 });
 
 export const staleSourceFixture = sourceAttachmentSummarySchema.parse({
   ...baseSourceFixture,
   sourceAttachmentId: 'source-stale-001',
   hydrationState: 'stale',
+  updatedAt: '2026-04-13T14:00:00.000Z',
 });
 
 export const unavailableSourceFixture = sourceAttachmentSummarySchema.parse({

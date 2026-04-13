@@ -6,6 +6,7 @@ import {
   emptyProjectShellResponse,
   memberProjectSummary,
   ownerProjectSummary,
+  populatedProjectShellResponse,
 } from '../../fixtures/projects.js';
 
 function buildJsonResponse(body: unknown, status = 200): Response {
@@ -23,9 +24,11 @@ function flush(): Promise<void> {
 
 function installFetchMock() {
   const fetchMock = vi.fn(async (input: string | URL | Request) => {
-    const url =
-      typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
-    const pathname = url.startsWith('http') ? new URL(url).pathname : url;
+    const rawUrl =
+      typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const pathname = rawUrl.startsWith('http')
+      ? new URL(rawUrl).pathname
+      : new URL(rawUrl, 'http://localhost:5001').pathname;
 
     if (pathname === '/auth/me') {
       return buildJsonResponse({
@@ -47,7 +50,7 @@ function installFetchMock() {
 
     if (pathname === `/api/projects/${memberProjectSummary.projectId}`) {
       return buildJsonResponse({
-        ...emptyProjectShellResponse,
+        ...populatedProjectShellResponse,
         project: memberProjectSummary,
       });
     }
@@ -159,5 +162,18 @@ describe('project router', () => {
 
     expect(dom.window.location.pathname).toBe(`/projects/${ownerProjectSummary.projectId}`);
     expect(dom.window.document.body.textContent).toContain(ownerProjectSummary.name);
+  });
+
+  it('TC-6.2b clears a missing selected-process query and shows a banner', async () => {
+    installFetchMock();
+    const dom = await renderApp(
+      `http://localhost:5001/projects/${memberProjectSummary.projectId}?processId=missing-process`,
+    );
+
+    expect(dom.window.location.pathname).toBe(`/projects/${memberProjectSummary.projectId}`);
+    expect(dom.window.location.search).toBe('');
+    expect(dom.window.document.body.textContent).toContain(
+      'The requested process is unavailable and the shell cleared the selection.',
+    );
   });
 });

@@ -93,7 +93,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.get('/health', async () => {
     return {
       status: 'ok',
-      story: 'story-2-project-creation-and-open',
+      story: 'story-3-project-shell-summaries',
     };
   });
 
@@ -109,7 +109,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     app.log.error(error);
     return reply.code(500).send({
       code: story0InternalErrorCode,
-      message: 'Unhandled Story 2 error.',
+      message: 'Unhandled Story 3 error.',
     });
   });
 
