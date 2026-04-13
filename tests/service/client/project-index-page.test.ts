@@ -29,6 +29,10 @@ function renderIndex(args: { projectsList?: Array<typeof ownerProjectSummary> })
     store,
     targetDocument: document,
     targetWindow: window,
+    onCreateProject: async () => {},
+    onOpenCreateProject: () => {},
+    onCancelCreateProject: () => {},
+    onOpenProject: () => {},
   });
 }
 

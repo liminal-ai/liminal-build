@@ -1,5 +1,6 @@
 import type { AppStore } from '../../app/store.js';
 import { renderArtifactSection } from './artifact-section.js';
+import { renderCreateProcessModal } from './create-process-modal.js';
 import { renderProcessSection } from './process-section.js';
 import { renderShellHeader } from './shell-header.js';
 import { renderSourceAttachmentSection } from './source-attachment-section.js';
@@ -13,6 +14,8 @@ export function renderProjectShellPage(args: {
   store: AppStore;
   targetDocument: Document;
   targetWindow: Window & typeof globalThis;
+  onCancelCreateProcess: () => void;
+  onOpenCreateProcess: () => void;
 }): HTMLElement {
   const container = args.targetDocument.createElement('section');
   const state = args.store.get();
@@ -38,9 +41,15 @@ export function renderProjectShellPage(args: {
   } else {
     const projectHeading = args.targetDocument.createElement('h2');
     const role = args.targetDocument.createElement('p');
+    const createProcessButton = args.targetDocument.createElement('button');
     projectHeading.textContent = state.shell.project.name;
     role.textContent = `Role: ${state.shell.project.role}`;
-    container.append(projectHeading, role);
+    createProcessButton.type = 'button';
+    createProcessButton.textContent = 'Create process';
+    createProcessButton.addEventListener('click', () => {
+      args.onOpenCreateProcess();
+    });
+    container.append(projectHeading, role, createProcessButton);
   }
 
   container.append(
@@ -58,6 +67,15 @@ export function renderProjectShellPage(args: {
       targetDocument: args.targetDocument,
     }),
   );
+
+  if (state.modals.createProcessOpen) {
+    container.append(
+      renderCreateProcessModal({
+        targetDocument: args.targetDocument,
+        onCancel: args.onCancelCreateProcess,
+      }),
+    );
+  }
 
   return container;
 }

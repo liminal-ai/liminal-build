@@ -1,4 +1,4 @@
-import { queryGeneric as query } from 'convex/server';
+import { mutationGeneric as mutation, queryGeneric as query } from 'convex/server';
 import { v } from 'convex/values';
 
 export const projectsTableFields = {
@@ -134,6 +134,58 @@ export const getProjectAccess = query({
         project,
         role: membership.role,
       }),
+    };
+  },
+});
+
+export const createProject = mutation({
+  args: {
+    ownerUserId: v.string(),
+    name: v.string(),
+  },
+  handler: async (ctx: any, args: any) => {
+    const ownedProjects = await ctx.db
+      .query('projects')
+      .withIndex('by_ownerUserId', (query: any) => query.eq('ownerUserId', args.ownerUserId))
+      .collect();
+    const duplicate = ownedProjects.find((project: any) => project.name === args.name);
+
+    if (duplicate !== undefined) {
+      return {
+        kind: 'name_conflict' as const,
+      };
+    }
+
+    const ownerUser = await ctx.db.get(args.ownerUserId);
+    const now = new Date().toISOString();
+    const projectId = await ctx.db.insert('projects', {
+      ownerUserId: args.ownerUserId,
+      name: args.name,
+      lastUpdatedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await ctx.db.insert('projectMembers', {
+      projectId,
+      userId: args.ownerUserId,
+      role: 'owner',
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return {
+      kind: 'created' as const,
+      project: {
+        projectId,
+        name: args.name,
+        ownerDisplayName: ownerUser?.displayName ?? ownerUser?.email ?? null,
+        role: 'owner' as const,
+        processCount: 0,
+        artifactCount: 0,
+        sourceAttachmentCount: 0,
+        lastUpdatedAt: now,
+      },
     };
   },
 });

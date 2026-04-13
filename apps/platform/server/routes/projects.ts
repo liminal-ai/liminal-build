@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { buildShellBootstrapPayload } from '../config.js';
+import { AppError } from '../errors/app-error.js';
 import {
   createProcessRouteSchema,
   createProjectRouteSchema,
@@ -151,12 +152,40 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     return reply.code(200).send(projects);
   });
 
-  typedApp.post('/api/projects', { schema: createProjectRouteSchema }, async (_request, reply) => {
-    return reply.code(501).send({
-      code: 'INVALID_PROJECT_NAME',
-      message: 'Project creation is not implemented until Story 2.',
-      status: 501,
-    });
+  typedApp.post('/api/projects', { schema: createProjectRouteSchema }, async (request, reply) => {
+    if (request.actor === null) {
+      if (request.authFailureReason === 'invalid_session') {
+        reply.clearCookie(sessionCookieName, { path: '/' });
+      }
+
+      return reply.code(401).send({
+        code: 'UNAUTHENTICATED',
+        message: 'Authenticated access is required.',
+        status: 401,
+      });
+    }
+
+    try {
+      const shell = await app.projectCreateService.createProject({
+        actor: request.actor,
+        name: request.body.name,
+      });
+
+      return reply.code(201).send(shell);
+    } catch (error) {
+      if (error instanceof AppError) {
+        const statusCode = error.statusCode as 409 | 422;
+        const code = error.code as 'PROJECT_NAME_CONFLICT' | 'INVALID_PROJECT_NAME';
+
+        return reply.code(statusCode).send({
+          code,
+          message: error.message,
+          status: statusCode,
+        });
+      }
+
+      throw error;
+    }
   });
 
   typedApp.get(

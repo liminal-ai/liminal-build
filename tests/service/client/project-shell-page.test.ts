@@ -4,6 +4,44 @@ import { renderProjectShellPage } from '../../../apps/platform/client/features/p
 import { emptyProjectShellResponse } from '../../fixtures/projects.js';
 
 describe('project shell page', () => {
+  it('TC-2.3a shows the active project identity and role', () => {
+    const store = createAppStore({
+      auth: {
+        actor: {
+          id: 'user:workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        isResolved: true,
+        csrfToken: 'csrf-token',
+      },
+      route: {
+        pathname: `/projects/${emptyProjectShellResponse.project.projectId}`,
+        projectId: emptyProjectShellResponse.project.projectId,
+        selectedProcessId: null,
+      },
+      shell: {
+        project: emptyProjectShellResponse.project,
+        processes: emptyProjectShellResponse.processes,
+        artifacts: emptyProjectShellResponse.artifacts,
+        sourceAttachments: emptyProjectShellResponse.sourceAttachments,
+        selectedProcessBanner: null,
+        isLoading: false,
+        error: null,
+      },
+    });
+    const view = renderProjectShellPage({
+      store,
+      targetDocument: document,
+      targetWindow: window,
+      onCancelCreateProcess: () => {},
+      onOpenCreateProcess: () => {},
+    });
+
+    expect(view.textContent).toContain(emptyProjectShellResponse.project.name);
+    expect(view.textContent).toContain(`Role: ${emptyProjectShellResponse.project.role}`);
+  });
+
   it('TC-1.4c clears rendered project data after logout success', async () => {
     const store = createAppStore({
       auth: {
@@ -49,6 +87,8 @@ describe('project shell page', () => {
           assign,
         },
       } as unknown as Window & typeof globalThis,
+      onCancelCreateProcess: () => {},
+      onOpenCreateProcess: () => {},
     });
     const signOutButton = view.querySelector('button');
 

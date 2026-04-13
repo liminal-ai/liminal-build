@@ -348,6 +348,11 @@ describe('auth routes', () => {
           kind: 'not_found',
         };
       },
+      async createProject() {
+        return {
+          kind: 'name_conflict',
+        };
+      },
     };
     const app = await buildApp({
       authSessionService: createTestAuthSessionService({

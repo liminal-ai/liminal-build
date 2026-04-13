@@ -1,13 +1,38 @@
 import type { ProjectShellResponse } from '../../../shared/contracts/index.js';
 import { AppError } from '../../errors/app-error.js';
-import { story0NotImplementedErrorCode } from '../../errors/codes.js';
+import type { AuthenticatedActor } from '../auth/auth-session.service.js';
+import { buildEmptyProjectShellResponse, type PlatformStore } from './platform-store.js';
 
 export class ProjectCreateService {
-  async createProject(): Promise<ProjectShellResponse> {
-    throw new AppError({
-      code: story0NotImplementedErrorCode,
-      message: 'Project creation is intentionally deferred beyond Story 0 scaffolding.',
-      statusCode: 501,
+  constructor(private readonly platformStore: PlatformStore) {}
+
+  async createProject(args: {
+    actor: AuthenticatedActor;
+    name: string | undefined;
+  }): Promise<ProjectShellResponse> {
+    const name = args.name?.trim() ?? '';
+
+    if (name.length === 0) {
+      throw new AppError({
+        code: 'INVALID_PROJECT_NAME',
+        message: 'Project name is required.',
+        statusCode: 422,
+      });
+    }
+
+    const result = await this.platformStore.createProject({
+      ownerUserId: args.actor.userId,
+      name,
     });
+
+    if (result.kind === 'name_conflict') {
+      throw new AppError({
+        code: 'PROJECT_NAME_CONFLICT',
+        message: `You already own a project named "${name}".`,
+        statusCode: 409,
+      });
+    }
+
+    return buildEmptyProjectShellResponse(result.project);
   }
 }

@@ -21,6 +21,15 @@ export type ProjectAccessResult =
       kind: 'not_found';
     };
 
+export type ProjectCreateResult =
+  | {
+      kind: 'created';
+      project: ProjectSummary;
+    }
+  | {
+      kind: 'name_conflict';
+    };
+
 export interface PlatformStore {
   upsertUserFromWorkOS(args: {
     workosUserId: string;
@@ -29,6 +38,7 @@ export interface PlatformStore {
   }): Promise<StoredPlatformUser>;
   listAccessibleProjects(args: { userId: string }): Promise<ProjectSummary[]>;
   getProjectAccess(args: { userId: string; projectId: string }): Promise<ProjectAccessResult>;
+  createProject(args: { ownerUserId: string; name: string }): Promise<ProjectCreateResult>;
 }
 
 const upsertUserMutation = makeFunctionReference<
@@ -53,6 +63,12 @@ const getProjectAccessQuery = makeFunctionReference<
   ProjectAccessResult
 >('projects:getProjectAccess');
 
+const createProjectMutation = makeFunctionReference<
+  'mutation',
+  { ownerUserId: string; name: string },
+  ProjectCreateResult
+>('projects:createProject');
+
 export class NullPlatformStore implements PlatformStore {
   async upsertUserFromWorkOS(args: {
     workosUserId: string;
@@ -74,6 +90,12 @@ export class NullPlatformStore implements PlatformStore {
   async getProjectAccess(): Promise<ProjectAccessResult> {
     return {
       kind: 'not_found',
+    };
+  }
+
+  async createProject(): Promise<ProjectCreateResult> {
+    return {
+      kind: 'name_conflict',
     };
   }
 }
@@ -104,6 +126,12 @@ export class ConvexPlatformStore implements PlatformStore {
     projectId: string;
   }): Promise<ProjectAccessResult> {
     return this.client.query(getProjectAccessQuery, args);
+  }
+
+  async createProject(args: { ownerUserId: string; name: string }): Promise<ProjectCreateResult> {
+    return this.client.mutation(createProjectMutation, args, {
+      skipQueue: true,
+    });
   }
 }
 
@@ -185,6 +213,46 @@ export class InMemoryPlatformStore implements PlatformStore {
 
     return {
       kind: 'not_found',
+    };
+  }
+
+  async createProject(args: { ownerUserId: string; name: string }): Promise<ProjectCreateResult> {
+    const existingProjects = this.projectsByUserId.get(args.ownerUserId) ?? [];
+
+    if (
+      existingProjects.some(
+        (project) => project.role === 'owner' && project.name.trim() === args.name.trim(),
+      )
+    ) {
+      return {
+        kind: 'name_conflict',
+      };
+    }
+
+    const now = new Date().toISOString();
+    const project = {
+      projectId: `project-${this.accessByProjectId.size + 1}`,
+      name: args.name,
+      ownerDisplayName:
+        this.usersByWorkosId.get(args.ownerUserId.replace(/^user:/, ''))?.displayName ??
+        this.usersByWorkosId.get(args.ownerUserId.replace(/^user:/, ''))?.email ??
+        null,
+      role: 'owner' as const,
+      processCount: 0,
+      artifactCount: 0,
+      sourceAttachmentCount: 0,
+      lastUpdatedAt: now,
+    };
+
+    this.projectsByUserId.set(args.ownerUserId, [project, ...existingProjects]);
+    this.accessByProjectId.set(project.projectId, {
+      kind: 'accessible',
+      project,
+    });
+
+    return {
+      kind: 'created',
+      project,
     };
   }
 }

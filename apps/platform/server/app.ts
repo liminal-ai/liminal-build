@@ -18,6 +18,7 @@ import {
   type PlatformStore,
 } from './services/projects/platform-store.js';
 import { ProjectAccessService } from './services/projects/project-access.service.js';
+import { ProjectCreateService } from './services/projects/project-create.service.js';
 import { ProjectIndexService } from './services/projects/project-index.service.js';
 import { ProjectShellService } from './services/projects/project-shell.service.js';
 
@@ -28,6 +29,7 @@ export interface CreateAppOptions {
   authUserSyncService?: AuthUserSyncService;
   platformStore?: PlatformStore;
   projectAccessService?: ProjectAccessService;
+  projectCreateService?: ProjectCreateService;
   projectIndexService?: ProjectIndexService;
   projectShellService?: ProjectShellService;
 }
@@ -35,6 +37,7 @@ export interface CreateAppOptions {
 declare module 'fastify' {
   interface FastifyInstance {
     projectAccessService: ProjectAccessService;
+    projectCreateService: ProjectCreateService;
     projectIndexService: ProjectIndexService;
     projectShellService: ProjectShellService;
   }
@@ -60,6 +63,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   const authUserSyncService = options.authUserSyncService ?? new AuthUserSyncService(platformStore);
   const projectAccessService =
     options.projectAccessService ?? new ProjectAccessService(platformStore);
+  const projectCreateService =
+    options.projectCreateService ?? new ProjectCreateService(platformStore);
   const projectIndexService = options.projectIndexService ?? new ProjectIndexService(platformStore);
   const projectShellService = options.projectShellService ?? new ProjectShellService(platformStore);
   const app = Fastify({
@@ -69,6 +74,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
   app.decorate('projectAccessService', projectAccessService);
+  app.decorate('projectCreateService', projectCreateService);
   app.decorate('projectIndexService', projectIndexService);
   app.decorate('projectShellService', projectShellService);
 
@@ -87,7 +93,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.get('/health', async () => {
     return {
       status: 'ok',
-      story: 'story-1-authenticated-project-entry',
+      story: 'story-2-project-creation-and-open',
     };
   });
 
@@ -103,7 +109,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     app.log.error(error);
     return reply.code(500).send({
       code: story0InternalErrorCode,
-      message: 'Unhandled Story 1 error.',
+      message: 'Unhandled Story 2 error.',
     });
   });
 

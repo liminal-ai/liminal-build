@@ -3,6 +3,7 @@ import type { ProjectSummary } from '../../../shared/contracts/index.js';
 export function renderProjectCard(args: {
   project: ProjectSummary;
   targetDocument: Document;
+  onOpenProject: (projectId: string) => void;
 }): HTMLElement {
   const article = args.targetDocument.createElement('article');
   const title = args.targetDocument.createElement('a');
@@ -11,6 +12,10 @@ export function renderProjectCard(args: {
 
   title.textContent = args.project.name;
   title.href = `/projects/${args.project.projectId}`;
+  title.addEventListener('click', (event) => {
+    event.preventDefault();
+    args.onOpenProject(args.project.projectId);
+  });
   meta.textContent = `Role: ${args.project.role}`;
   owner.textContent =
     args.project.ownerDisplayName === null

@@ -37,7 +37,22 @@ export async function listProjects(): Promise<ProjectSummary[]> {
 }
 
 export async function createProject(_body: CreateProjectRequest): Promise<ProjectShellResponse> {
-  throw new Error('Story 1 does not implement project creation yet.');
+  const response = await fetch('/api/projects', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: _body.name,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new ApiRequestError(await parseRequestError(response));
+  }
+
+  return projectShellResponseSchema.parse(await response.json());
 }
 
 export async function getProjectShell(_args: {

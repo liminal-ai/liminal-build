@@ -22,8 +22,9 @@ export function createTextElement(
 
 export function getRequiredRootElement(targetDocument: Document): HTMLElement {
   const root = targetDocument.getElementById('app');
+  const windowContext = targetDocument.defaultView;
 
-  if (!(root instanceof HTMLElement)) {
+  if (windowContext === null || !(root instanceof windowContext.HTMLElement)) {
     throw new Error('Story 0 scaffold expected a #app root element.');
   }
 

@@ -7,6 +7,12 @@ export interface ShellAppOptions {
   root: HTMLElement;
   store: AppStore;
   targetWindow: Window & typeof globalThis;
+  onCreateProject: (name: string) => Promise<void>;
+  onOpenCreateProject: () => void;
+  onCancelCreateProject: () => void;
+  onOpenCreateProcess: () => void;
+  onCancelCreateProcess: () => void;
+  onOpenProject: (projectId: string) => void;
 }
 
 export function createShellApp(options: ShellAppOptions) {
@@ -20,11 +26,17 @@ export function createShellApp(options: ShellAppOptions) {
             store: options.store,
             targetDocument: options.targetWindow.document,
             targetWindow: options.targetWindow,
+            onCreateProject: options.onCreateProject,
+            onOpenCreateProject: options.onOpenCreateProject,
+            onCancelCreateProject: options.onCancelCreateProject,
+            onOpenProject: options.onOpenProject,
           })
         : renderProjectShellPage({
             store: options.store,
             targetDocument: options.targetWindow.document,
             targetWindow: options.targetWindow,
+            onCancelCreateProcess: options.onCancelCreateProcess,
+            onOpenCreateProcess: options.onOpenCreateProcess,
           });
 
     options.root.append(page);

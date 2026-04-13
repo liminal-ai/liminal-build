@@ -1,7 +1,6 @@
 import { z } from 'zod/v4';
 import {
   createProcessRequestSchema,
-  createProjectRequestSchema,
   projectShellResponseSchema,
   projectSummarySchema,
   requestErrorSchema,
@@ -23,9 +22,14 @@ export const listProjectsRouteSchema = {
 } as const;
 
 export const createProjectRouteSchema = {
-  body: createProjectRequestSchema,
+  body: z.object({
+    name: z.string().optional(),
+  }),
   response: {
-    501: requestErrorSchema,
+    201: projectShellResponseSchema,
+    401: requestErrorSchema,
+    409: requestErrorSchema,
+    422: requestErrorSchema,
   },
 } as const;
 
