@@ -7,7 +7,7 @@ import {
 
 export async function renderShell(overrides: Partial<ShellBootstrapPayload> = {}) {
   const dom = new JSDOM('<!doctype html><html lang="en"><body><div id="app"></div></body></html>', {
-    url: 'http://localhost:3000/projects',
+    url: 'http://localhost:5001/projects',
   });
 
   const bootstrapPayload = shellBootstrapPayloadSchema.parse({

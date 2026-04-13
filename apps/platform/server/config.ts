@@ -20,16 +20,27 @@ const runtimeEnvSchema = z.object({
 export type ServerEnv = z.infer<typeof runtimeEnvSchema>;
 
 export const story0PlaceholderEnv: ServerEnv = runtimeEnvSchema.parse({
-  PORT: 3000,
-  APP_ORIGIN: 'http://localhost:3000',
+  PORT: 5001,
+  APP_ORIGIN: 'http://localhost:5001',
   WORKOS_CLIENT_ID: 'story0-client-id',
   WORKOS_API_KEY: 'story0-api-key',
   WORKOS_COOKIE_PASSWORD: 'story0-cookie-password-story0-cookie-password',
-  WORKOS_REDIRECT_URI: 'http://localhost:3000/auth/callback',
-  WORKOS_LOGIN_RETURN_URI: 'http://localhost:3000/projects',
+  WORKOS_REDIRECT_URI: 'http://localhost:5001/auth/callback',
+  WORKOS_LOGIN_RETURN_URI: 'http://localhost:5001/projects',
   CONVEX_DEPLOYMENT: 'dev:story0',
   CONVEX_URL: 'https://story0.example.convex.cloud',
 });
+
+export function hasLiveConvexConfig(env: ServerEnv): boolean {
+  return env.CONVEX_URL !== story0PlaceholderEnv.CONVEX_URL;
+}
+
+export function hasLiveWorkosConfig(env: ServerEnv): boolean {
+  return (
+    env.WORKOS_API_KEY !== story0PlaceholderEnv.WORKOS_API_KEY &&
+    env.WORKOS_CLIENT_ID !== story0PlaceholderEnv.WORKOS_CLIENT_ID
+  );
+}
 
 export function loadServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEnv {
   return runtimeEnvSchema.parse(source);

@@ -4,6 +4,7 @@ import { renderProcessSection } from './process-section.js';
 import { renderShellHeader } from './shell-header.js';
 import { renderSourceAttachmentSection } from './source-attachment-section.js';
 import {
+  renderForbiddenProjectState,
   renderMissingProjectState,
   renderMissingSelectedProcessBanner,
 } from './unavailable-state.js';
@@ -11,6 +12,7 @@ import {
 export function renderProjectShellPage(args: {
   store: AppStore;
   targetDocument: Document;
+  targetWindow: Window & typeof globalThis;
 }): HTMLElement {
   const container = args.targetDocument.createElement('section');
   const state = args.store.get();
@@ -19,6 +21,7 @@ export function renderProjectShellPage(args: {
     renderShellHeader({
       store: args.store,
       targetDocument: args.targetDocument,
+      targetWindow: args.targetWindow,
     }),
   );
 
@@ -28,12 +31,16 @@ export function renderProjectShellPage(args: {
     );
   }
 
-  if (state.shell.project === null) {
+  if (state.shell.error?.code === 'PROJECT_FORBIDDEN') {
+    container.append(renderForbiddenProjectState(args.targetDocument));
+  } else if (state.shell.error?.code === 'PROJECT_NOT_FOUND' || state.shell.project === null) {
     container.append(renderMissingProjectState(args.targetDocument));
   } else {
     const projectHeading = args.targetDocument.createElement('h2');
-    projectHeading.textContent = `Project shell scaffold for ${state.shell.project.name}`;
-    container.append(projectHeading);
+    const role = args.targetDocument.createElement('p');
+    projectHeading.textContent = state.shell.project.name;
+    role.textContent = `Role: ${state.shell.project.role}`;
+    container.append(projectHeading, role);
   }
 
   container.append(

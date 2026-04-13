@@ -19,10 +19,12 @@ export function createShellApp(options: ShellAppOptions) {
         ? renderProjectIndexPage({
             store: options.store,
             targetDocument: options.targetWindow.document,
+            targetWindow: options.targetWindow,
           })
         : renderProjectShellPage({
             store: options.store,
             targetDocument: options.targetWindow.document,
+            targetWindow: options.targetWindow,
           });
 
     options.root.append(page);

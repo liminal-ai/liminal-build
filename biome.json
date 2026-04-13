@@ -19,6 +19,7 @@
       ".gitignore",
       "!**/node_modules",
       "!**/dist",
+      "!convex/_generated",
       "!!**/node_modules"
     ]
   },

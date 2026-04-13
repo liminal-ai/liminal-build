@@ -5,6 +5,7 @@ export const csrfPlugin = fp(
   async (app) => {
     await app.register(fastifyCsrfProtection, {
       cookieOpts: {
+        path: '/',
         sameSite: 'lax',
         signed: true,
       },

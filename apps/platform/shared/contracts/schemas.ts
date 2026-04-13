@@ -65,6 +65,11 @@ export const authenticatedUserResponseSchema = z.object({
 });
 export type AuthenticatedUserResponse = z.infer<typeof authenticatedUserResponseSchema>;
 
+export const logoutResponseSchema = z.object({
+  redirectUrl: z.string().url(),
+});
+export type LogoutResponse = z.infer<typeof logoutResponseSchema>;
+
 export const sectionErrorSchema = z.object({
   code: z.string().min(1),
   message: z.string().min(1),

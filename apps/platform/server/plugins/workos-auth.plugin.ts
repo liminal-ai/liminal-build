@@ -3,9 +3,11 @@ import fp from 'fastify-plugin';
 import { AppError } from '../errors/app-error.js';
 import {
   type AuthenticatedActor,
-  AuthSessionService,
+  type AuthSessionService,
+  type SessionFailureReason,
+  sessionCookieName,
 } from '../services/auth/auth-session.service.js';
-import { AuthUserSyncService } from '../services/auth/auth-user-sync.service.js';
+import type { AuthUserSyncService } from '../services/auth/auth-user-sync.service.js';
 
 export interface WorkosAuthPluginOptions {
   authSessionService?: AuthSessionService;
@@ -15,6 +17,7 @@ export interface WorkosAuthPluginOptions {
 declare module 'fastify' {
   interface FastifyRequest {
     actor: AuthenticatedActor | null;
+    authFailureReason: SessionFailureReason | null;
   }
 
   interface FastifyInstance {
@@ -26,17 +29,22 @@ declare module 'fastify' {
 
 export const workosAuthPlugin = fp<WorkosAuthPluginOptions>(
   async (app, options) => {
-    const authSessionService = options.authSessionService ?? new AuthSessionService();
-    const authUserSyncService = options.authUserSyncService ?? new AuthUserSyncService();
+    const authSessionService = options.authSessionService;
+    const authUserSyncService = options.authUserSyncService;
+
+    if (authSessionService === undefined || authUserSyncService === undefined) {
+      throw new Error('workosAuthPlugin requires fully constructed auth services.');
+    }
 
     app.decorate('authSessionService', authSessionService);
     app.decorate('authUserSyncService', authUserSyncService);
     app.decorateRequest('actor', null);
+    app.decorateRequest('authFailureReason', null);
     app.decorate('requireAuthenticatedActor', async (request: FastifyRequest) => {
       if (request.actor === null) {
         throw new AppError({
           code: 'UNAUTHENTICATED',
-          message: 'Authenticated shell access is not implemented in Story 0.',
+          message: 'Authenticated access is required.',
           statusCode: 401,
         });
       }
@@ -45,14 +53,18 @@ export const workosAuthPlugin = fp<WorkosAuthPluginOptions>(
     });
 
     app.addHook('preHandler', async (request) => {
-      request.actor = await authSessionService.getActor();
+      const resolution = await authSessionService.resolveSession(
+        request.cookies[sessionCookieName],
+      );
+      request.actor = resolution.actor;
+      request.authFailureReason = resolution.reason;
 
       if (request.actor !== null) {
-        await authUserSyncService.syncActor(request.actor);
+        request.actor = await authUserSyncService.syncActor(request.actor);
       }
     });
   },
   {
-    name: 'story0-workos-auth-plugin',
+    name: 'story1-workos-auth-plugin',
   },
 );
