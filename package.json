@@ -14,7 +14,7 @@
     "red-verify": "corepack pnpm run format:check && corepack pnpm run lint && corepack pnpm run typecheck && corepack pnpm run build",
     "test:service": "corepack pnpm exec vitest run tests/service/server --environment node",
     "test:client": "corepack pnpm exec vitest run tests/service/client --environment jsdom",
-    "test:integration": "node -e \"console.log('SKIP: test:integration scaffolded in Story 0; no executable suite yet')\"",
+    "test:integration": "corepack pnpm exec vitest run tests/integration --environment node",
     "test:e2e": "node -e \"console.log('SKIP: test:e2e scaffolded in Story 0; no executable suite yet')\"",
     "verify": "corepack pnpm run red-verify && corepack pnpm run test:service && corepack pnpm run test:client",
     "guard:no-test-changes": "node -e \"console.log('SKIP: guard:no-test-changes unavailable in non-git Story 0 workspace')\"",

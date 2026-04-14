@@ -20,7 +20,7 @@ import {
   runningProcessFixture,
   waitingProcessFixture,
 } from '../../fixtures/processes.js';
-import { populatedProjectSummary } from '../../fixtures/projects.js';
+import { inaccessibleProjectId, populatedProjectSummary } from '../../fixtures/projects.js';
 import {
   hydratedSourceFixture,
   notHydratedSourceFixture,
@@ -295,6 +295,77 @@ describe('project shell bootstrap api', () => {
         message: 'Process summaries failed to load in test.',
       },
     });
+
+    await app.close();
+  });
+
+  it('TC-5.2a, TC-5.2b, and TC-5.2c keep durable shell summaries visible without an environment', async () => {
+    const platformStore = buildPopulatedStore();
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${populatedProjectSummary.projectId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(
+      response
+        .json()
+        .processes.items.every(
+          (item: { hasEnvironment: boolean }) => item.hasEnvironment === false,
+        ),
+    ).toBe(true);
+    expect(response.json().artifacts.items).toHaveLength(3);
+    expect(response.json().sourceAttachments.items).toHaveLength(3);
+
+    await app.close();
+  });
+
+  it('TC-6.2a returns 404 without leaking removed project data', async () => {
+    const platformStore = buildPopulatedStore();
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${inaccessibleProjectId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      code: 'PROJECT_NOT_FOUND',
+      message: 'The requested project was not found.',
+      status: 404,
+    });
+    expect(JSON.stringify(response.json())).not.toContain(populatedProjectSummary.name);
 
     await app.close();
   });

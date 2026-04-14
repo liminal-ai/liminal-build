@@ -71,4 +71,48 @@ describe('process section', () => {
       draftProcessFixture.displayLabel,
     ]);
   });
+
+  it('TC-5.3a interrupted process shows actionable recovery paths', () => {
+    const view = renderProcessSection({
+      envelope: processSectionEnvelopeSchema.parse({
+        status: 'ready',
+        items: [interruptedProcessFixture],
+      }),
+      selectedProcessId: null,
+      targetDocument: document,
+    });
+
+    expect(view.textContent).toContain('Interrupted');
+    expect(view.textContent).toContain('Available actions: resume, review, rehydrate, restart');
+  });
+
+  it('TC-5.3b waiting process shows the blocking user action', () => {
+    const view = renderProcessSection({
+      envelope: processSectionEnvelopeSchema.parse({
+        status: 'ready',
+        items: [waitingProcessFixture],
+      }),
+      selectedProcessId: null,
+      targetDocument: document,
+    });
+
+    expect(view.textContent).toContain('Waiting');
+    expect(view.textContent).toContain('Next: Waiting for user response');
+    expect(view.textContent).toContain('Available actions: respond');
+  });
+
+  it('TC-5.3c failed process is not presented as completed', () => {
+    const view = renderProcessSection({
+      envelope: processSectionEnvelopeSchema.parse({
+        status: 'ready',
+        items: [failedProcessFixture],
+      }),
+      selectedProcessId: null,
+      targetDocument: document,
+    });
+
+    expect(view.textContent).toContain('Failed');
+    expect(view.textContent).not.toContain('Completed');
+    expect(view.textContent).toContain('Available actions: review, restart');
+  });
 });
