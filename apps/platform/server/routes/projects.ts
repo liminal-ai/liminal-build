@@ -16,6 +16,46 @@ function buildLoginRedirectPath(returnTo: string): string {
   return `/auth/login?returnTo=${encodeURIComponent(returnTo)}`;
 }
 
+function logAuthFailure(
+  app: FastifyInstance,
+  args: {
+    method: string;
+    url: string;
+    authFailureReason: string | null;
+  },
+) {
+  app.log.warn(
+    {
+      method: args.method,
+      url: args.url,
+      authFailureReason: args.authFailureReason,
+    },
+    'Blocked project route for unauthenticated request.',
+  );
+}
+
+function logProjectAccessFailure(
+  app: FastifyInstance,
+  args: {
+    actorId: string | null;
+    method: string;
+    projectId: string;
+    reason: 'forbidden' | 'not_found';
+    url: string;
+  },
+) {
+  app.log.warn(
+    {
+      actorId: args.actorId,
+      method: args.method,
+      url: args.url,
+      projectId: args.projectId,
+      reason: args.reason,
+    },
+    'Rejected project access request.',
+  );
+}
+
 function renderUnavailableShell(title: string, message: string): string {
   return `<!doctype html>
 <html lang="en">
@@ -51,6 +91,12 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
           reply.clearCookie(sessionCookieName, { path: '/' });
         }
 
+        logAuthFailure(app, {
+          method: request.method,
+          url: request.url,
+          authFailureReason: request.authFailureReason,
+        });
+
         return reply.redirect(buildLoginRedirectPath('/projects'));
       }
 
@@ -85,6 +131,12 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
           reply.clearCookie(sessionCookieName, { path: '/' });
         }
 
+        logAuthFailure(app, {
+          method: request.method,
+          url: request.url,
+          authFailureReason: request.authFailureReason,
+        });
+
         return reply.redirect(buildLoginRedirectPath(request.url));
       }
 
@@ -94,6 +146,13 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       });
 
       if (access.kind === 'forbidden') {
+        logProjectAccessFailure(app, {
+          actorId: request.actor.userId,
+          method: request.method,
+          url: request.url,
+          projectId: request.params.projectId,
+          reason: 'forbidden',
+        });
         return reply
           .code(403)
           .type('text/html')
@@ -106,6 +165,13 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       }
 
       if (access.kind === 'not_found') {
+        logProjectAccessFailure(app, {
+          actorId: request.actor.userId,
+          method: request.method,
+          url: request.url,
+          projectId: request.params.projectId,
+          reason: 'not_found',
+        });
         return reply
           .code(404)
           .type('text/html')
@@ -139,6 +205,12 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
         reply.clearCookie(sessionCookieName, { path: '/' });
       }
 
+      logAuthFailure(app, {
+        method: request.method,
+        url: request.url,
+        authFailureReason: request.authFailureReason,
+      });
+
       return reply.code(401).send({
         code: 'UNAUTHENTICATED',
         message: 'Authenticated access is required.',
@@ -149,6 +221,16 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     const actor = request.actor;
     const projects = await app.projectIndexService.listAccessibleProjects(actor);
 
+    app.log.info(
+      {
+        actorId: actor.userId,
+        method: request.method,
+        url: request.url,
+        projectCount: projects.length,
+      },
+      'Listed accessible projects.',
+    );
+
     return reply.code(200).send(projects);
   });
 
@@ -157,6 +239,12 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       if (request.authFailureReason === 'invalid_session') {
         reply.clearCookie(sessionCookieName, { path: '/' });
       }
+
+      logAuthFailure(app, {
+        method: request.method,
+        url: request.url,
+        authFailureReason: request.authFailureReason,
+      });
 
       return reply.code(401).send({
         code: 'UNAUTHENTICATED',
@@ -171,12 +259,32 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
         name: request.body.name,
       });
 
+      app.log.info(
+        {
+          actorId: request.actor.userId,
+          method: request.method,
+          url: request.url,
+          projectId: shell.project.projectId,
+        },
+        'Created project successfully.',
+      );
+
       return reply.code(201).send(shell);
     } catch (error) {
       if (error instanceof AppError) {
         const statusCode = error.statusCode as 409 | 422;
         const code = error.code as 'PROJECT_NAME_CONFLICT' | 'INVALID_PROJECT_NAME';
 
+        app.log.warn(
+          {
+            actorId: request.actor.userId,
+            method: request.method,
+            url: request.url,
+            code,
+            statusCode,
+          },
+          'Project creation failed.',
+        );
         return reply.code(statusCode).send({
           code,
           message: error.message,
@@ -197,6 +305,12 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
           reply.clearCookie(sessionCookieName, { path: '/' });
         }
 
+        logAuthFailure(app, {
+          method: request.method,
+          url: request.url,
+          authFailureReason: request.authFailureReason,
+        });
+
         return reply.code(401).send({
           code: 'UNAUTHENTICATED',
           message: 'Authenticated access is required.',
@@ -211,6 +325,13 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       });
 
       if (access.kind === 'forbidden') {
+        logProjectAccessFailure(app, {
+          actorId: actor.userId,
+          method: request.method,
+          url: request.url,
+          projectId: request.params.projectId,
+          reason: 'forbidden',
+        });
         return reply.code(403).send({
           code: 'PROJECT_FORBIDDEN',
           message: 'The current actor cannot access this project.',
@@ -219,6 +340,13 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       }
 
       if (access.kind === 'not_found') {
+        logProjectAccessFailure(app, {
+          actorId: actor.userId,
+          method: request.method,
+          url: request.url,
+          projectId: request.params.projectId,
+          reason: 'not_found',
+        });
         return reply.code(404).send({
           code: 'PROJECT_NOT_FOUND',
           message: 'The requested project was not found.',
@@ -230,6 +358,17 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
         actor,
         projectId: request.params.projectId,
       });
+
+      app.log.info(
+        {
+          actorId: actor.userId,
+          method: request.method,
+          url: request.url,
+          projectId: request.params.projectId,
+          selectedProcessId: request.query.processId ?? null,
+        },
+        'Opened project shell bootstrap.',
+      );
 
       return reply.code(200).send(shell);
     },
@@ -244,6 +383,12 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
           reply.clearCookie(sessionCookieName, { path: '/' });
         }
 
+        logAuthFailure(app, {
+          method: request.method,
+          url: request.url,
+          authFailureReason: request.authFailureReason,
+        });
+
         return reply.code(401).send({
           code: 'UNAUTHENTICATED',
           message: 'Authenticated access is required.',
@@ -258,6 +403,13 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       });
 
       if (access.kind === 'forbidden') {
+        logProjectAccessFailure(app, {
+          actorId: actor.userId,
+          method: request.method,
+          url: request.url,
+          projectId: request.params.projectId,
+          reason: 'forbidden',
+        });
         return reply.code(403).send({
           code: 'PROJECT_FORBIDDEN',
           message: 'The current actor cannot access this project.',
@@ -266,6 +418,13 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       }
 
       if (access.kind === 'not_found') {
+        logProjectAccessFailure(app, {
+          actorId: actor.userId,
+          method: request.method,
+          url: request.url,
+          projectId: request.params.projectId,
+          reason: 'not_found',
+        });
         return reply.code(404).send({
           code: 'PROJECT_NOT_FOUND',
           message: 'The requested project was not found.',
@@ -280,13 +439,41 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
           processType: request.body.processType,
         });
 
+        app.log.info(
+          {
+            actorId: actor.userId,
+            method: request.method,
+            url: request.url,
+            projectId: request.params.projectId,
+            processId: result.process.processId,
+            processType: result.process.processType,
+          },
+          'Created process successfully.',
+        );
+
         return reply.code(201).send(result);
       } catch (error) {
         if (error instanceof AppError) {
-          return reply.code(422).send({
-            code: 'INVALID_PROCESS_TYPE',
+          const statusCode = error.statusCode as 403 | 404 | 422;
+          const code = error.code as
+            | 'PROJECT_FORBIDDEN'
+            | 'PROJECT_NOT_FOUND'
+            | 'INVALID_PROCESS_TYPE';
+          app.log.warn(
+            {
+              actorId: actor.userId,
+              method: request.method,
+              url: request.url,
+              projectId: request.params.projectId,
+              code,
+              statusCode,
+            },
+            'Process creation failed.',
+          );
+          return reply.code(statusCode).send({
+            code,
             message: error.message,
-            status: 422,
+            status: statusCode,
           });
         }
 

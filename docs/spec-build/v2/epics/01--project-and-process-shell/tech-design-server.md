@@ -426,8 +426,8 @@ sequenceDiagram
 
     Note over Browser,Fastify: AC-1.4: Sign out ends current session
     Browser->>Fastify: POST /auth/logout
-    Fastify->>Auth: clear session cookie
-    Fastify-->>Browser: 204
+    Fastify->>Auth: clear session cookie and resolve hosted logout URL
+    Fastify-->>Browser: 200 { redirectUrl }
 ```
 
 **Skeleton Requirements**
@@ -448,7 +448,7 @@ sequenceDiagram
 | TC-1.1b | unauthenticated shell route redirects | `tests/service/server/auth-routes.test.ts` | No cookie | Redirect to sign-in |
 | TC-1.1c | invalid session redirects and clears | `tests/service/server/auth-routes.test.ts` | Invalid/stale cookie | Redirect + cookie cleared |
 | TC-1.3c | forbidden project route blocks access | `tests/service/server/projects-api.test.ts` | Valid actor without membership | 403 or unavailable shell contract |
-| TC-1.4a | sign out clears session | `tests/service/server/auth-routes.test.ts` | Valid cookie | 204 and cleared cookie |
+| TC-1.4a | sign out clears session | `tests/service/server/auth-routes.test.ts` | Valid cookie | 200, redirectUrl, and cleared cookie |
 | TC-1.4b | revisiting project URL requires auth again | `tests/service/server/auth-routes.test.ts` | Signed-out client | Redirect before project data |
 | TC-1.4c | sign out removes active shell access | `tests/service/server/auth-routes.test.ts` | Existing session then logout | Subsequent project route blocked |
 

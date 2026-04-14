@@ -42,7 +42,7 @@ export function renderSectionEnvelopeState(args: {
   if (args.envelope === null) {
     return appendSectionMessage({
       section,
-      message: `${args.title} scaffolded; data loading starts in later stories.`,
+      message: `Loading ${args.title.toLowerCase()}...`,
       targetDocument: args.targetDocument,
     });
   }

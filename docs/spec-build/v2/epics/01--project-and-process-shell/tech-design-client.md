@@ -169,7 +169,7 @@ composition, and section rendering run for real.
 
 ```ts
 export async function getAuthenticatedUser(): Promise<AuthenticatedUser>;
-export async function signOut(args: { csrfToken: string }): Promise<void>;
+export async function signOut(args: { csrfToken: string }): Promise<{ redirectUrl: string }>;
 ```
 
 ### `apps/platform/client/api/projects-api.ts`
@@ -274,8 +274,8 @@ sequenceDiagram
     Note over Browser,Header: AC-1.4: sign out
     Browser->>Header: click sign out
     Header->>AuthApi: signOut({ csrfToken })
-    AuthApi-->>Header: 204
-    Header->>Router: navigateTo(project index, replace=true)
+    AuthApi-->>Header: { redirectUrl }
+    Header-->>Browser: navigate through hosted logout redirect
 ```
 
 **Skeleton Requirements**
@@ -294,7 +294,7 @@ sequenceDiagram
 | TC-1.1a | authenticated bootstrap mounts app | `tests/service/server/auth-routes.test.ts` | Valid cookie | Shell HTML returned |
 | TC-1.1b | unauthenticated bootstrap redirects | `tests/service/server/auth-routes.test.ts` | No session | Redirect before client mount |
 | TC-1.1c | invalid session redirects | `tests/service/server/auth-routes.test.ts` | Invalid cookie | Redirect and cookie cleared |
-| TC-1.4a | sign out action ends session | `tests/service/server/auth-routes.test.ts` | Valid session and CSRF token | 204 and cleared session |
+| TC-1.4a | sign out action ends session | `tests/service/server/auth-routes.test.ts` | Valid session and CSRF token | 200, redirectUrl, and cleared session |
 | TC-1.4b | revisiting route after sign out requires auth | `tests/service/server/auth-routes.test.ts` | Signed-out state | Redirect to login |
 
 The authoritative TC mapping for AC-1.4c remains server-owned in

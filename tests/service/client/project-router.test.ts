@@ -166,14 +166,73 @@ describe('project router', () => {
 
   it('TC-6.2b clears a missing selected-process query and shows a banner', async () => {
     installFetchMock();
-    const dom = await renderApp(
-      `http://localhost:5001/projects/${memberProjectSummary.projectId}?processId=missing-process`,
-    );
+    const dom = new JSDOM('<!doctype html><html><body><div id="app"></div></body></html>', {
+      url: `http://localhost:5001/projects/${memberProjectSummary.projectId}?processId=missing-process`,
+    });
+    const replaceStateSpy = vi.spyOn(dom.window.history, 'replaceState');
+
+    (dom.window as unknown as Window & typeof globalThis).__SHELL_BOOTSTRAP__ =
+      shellBootstrapPayloadSchema.parse({
+        actor: {
+          id: 'user:workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        pathname: `/projects/${memberProjectSummary.projectId}`,
+        search: '?processId=missing-process',
+        csrfToken: 'csrf-token',
+        auth: {
+          loginPath: '/auth/login',
+          logoutPath: '/auth/logout',
+        },
+      });
+
+    await bootstrapApp(dom.window as unknown as Window & typeof globalThis);
+    await flush();
 
     expect(dom.window.location.pathname).toBe(`/projects/${memberProjectSummary.projectId}`);
     expect(dom.window.location.search).toBe('');
     expect(dom.window.document.body.textContent).toContain(
       'The requested process is unavailable and the shell cleared the selection.',
+    );
+    expect(replaceStateSpy).toHaveBeenCalledWith(
+      {},
+      '',
+      `/projects/${memberProjectSummary.projectId}`,
+    );
+  });
+
+  it('uses replaceState when clearing stale processId', async () => {
+    installFetchMock();
+    const dom = new JSDOM('<!doctype html><html><body><div id="app"></div></body></html>', {
+      url: `http://localhost:5001/projects/${memberProjectSummary.projectId}?processId=missing-process`,
+    });
+    const replaceStateSpy = vi.spyOn(dom.window.history, 'replaceState');
+
+    (dom.window as unknown as Window & typeof globalThis).__SHELL_BOOTSTRAP__ =
+      shellBootstrapPayloadSchema.parse({
+        actor: {
+          id: 'user:workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        pathname: `/projects/${memberProjectSummary.projectId}`,
+        search: '?processId=missing-process',
+        csrfToken: 'csrf-token',
+        auth: {
+          loginPath: '/auth/login',
+          logoutPath: '/auth/logout',
+        },
+      });
+
+    await bootstrapApp(dom.window as unknown as Window & typeof globalThis);
+    await flush();
+
+    expect(replaceStateSpy).toHaveBeenCalledTimes(1);
+    expect(replaceStateSpy).toHaveBeenCalledWith(
+      {},
+      '',
+      `/projects/${memberProjectSummary.projectId}`,
     );
   });
 

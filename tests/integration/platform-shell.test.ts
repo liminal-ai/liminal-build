@@ -1,3 +1,5 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   AuthSessionService,
@@ -72,7 +74,7 @@ async function startApp(store: InMemoryPlatformStore) {
 }
 
 afterEach(() => {
-  // no-op hook keeps test structure explicit if future integration cleanup is added
+  delete process.env.LIMINAL_VITE_RUNTIME_MODE;
 });
 
 describe('platform shell integration', () => {
@@ -200,5 +202,52 @@ describe('platform shell integration', () => {
     expect(shellAfterRestart.project.projectId).toBe(populatedProjectSummary.projectId);
 
     await secondServer.app.close();
+  });
+
+  it('serves the built shell through Fastify in production mode', async () => {
+    process.env.LIMINAL_VITE_RUNTIME_MODE = 'production';
+    const store = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [populatedProjectSummary],
+      },
+      projectAccessByProjectId: {
+        [populatedProjectSummary.projectId]: {
+          kind: 'accessible',
+          project: populatedProjectSummary,
+        },
+      },
+    });
+    const server = await startApp(store);
+    const response = await fetch(
+      `${server.baseUrl}/projects/${populatedProjectSummary.projectId}`,
+      {
+        headers: {
+          cookie: 'lb_session=integration-session',
+        },
+      },
+    );
+    const html = await response.text();
+    const assetMatch = html.match(/src="(\/assets\/[^"]+\.js)"/);
+
+    expect(response.status).toBe(200);
+    expect(html).toContain('window.__SHELL_BOOTSTRAP__');
+
+    if (assetMatch?.[1] === undefined) {
+      throw new Error('Expected production shell HTML to reference a built client asset.');
+    }
+
+    const assetResponse = await fetch(`${server.baseUrl}${assetMatch[1]}`);
+    const assetBody = await assetResponse.text();
+    const builtIndex = await fs.readFile(
+      path.join('/Users/leemoore/code/liminal-build/apps/platform/dist/client/index.html'),
+      'utf8',
+    );
+
+    expect(builtIndex).toContain(assetMatch[1]);
+    expect(assetResponse.status).toBe(200);
+    expect(assetResponse.headers.get('content-type')).toContain('application/javascript');
+    expect(assetBody.length).toBeGreaterThan(0);
+
+    await server.app.close();
   });
 });

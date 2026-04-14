@@ -6,11 +6,13 @@ import { AppError } from '../../errors/app-error.js';
 import type { AuthenticatedActor } from '../auth/auth-session.service.js';
 import type { PlatformStore } from './platform-store.js';
 import type { ProcessDisplayLabelService } from './process-display-label.service.js';
+import type { ProjectAccessService } from './project-access.service.js';
 
 export class ProcessRegistrationService {
   constructor(
     private readonly platformStore: PlatformStore,
     private readonly processDisplayLabelService: ProcessDisplayLabelService,
+    private readonly projectAccessService: ProjectAccessService,
   ) {}
 
   async createProcess(args: {
@@ -18,7 +20,10 @@ export class ProcessRegistrationService {
     projectId: string;
     processType: string | undefined;
   }): Promise<CreateProcessResponse> {
-    void args.actor;
+    await this.projectAccessService.assertProjectAccess({
+      actor: args.actor,
+      projectId: args.projectId,
+    });
 
     const parsedProcessType = supportedProcessTypeSchema.safeParse(args.processType);
     if (!parsedProcessType.success) {

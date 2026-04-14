@@ -17,12 +17,12 @@ import {
   NullPlatformStore,
   type PlatformStore,
 } from './services/projects/platform-store.js';
+import { ProcessDisplayLabelService } from './services/projects/process-display-label.service.js';
+import { ProcessRegistrationService } from './services/projects/process-registration.service.js';
 import { ProjectAccessService } from './services/projects/project-access.service.js';
 import { ProjectCreateService } from './services/projects/project-create.service.js';
-import { ProcessDisplayLabelService } from './services/projects/process-display-label.service.js';
 import { ProjectIndexService } from './services/projects/project-index.service.js';
 import { ProjectShellService } from './services/projects/project-shell.service.js';
-import { ProcessRegistrationService } from './services/projects/process-registration.service.js';
 
 export interface CreateAppOptions {
   env?: ServerEnv;
@@ -74,7 +74,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   const processDisplayLabelService = new ProcessDisplayLabelService(platformStore);
   const processRegistrationService =
     options.processRegistrationService ??
-    new ProcessRegistrationService(platformStore, processDisplayLabelService);
+    new ProcessRegistrationService(platformStore, processDisplayLabelService, projectAccessService);
   const app = Fastify({
     logger: options.logger ?? false,
   });
@@ -102,12 +102,22 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.get('/health', async () => {
     return {
       status: 'ok',
-      story: 'story-4-process-registration-in-a-project',
+      story: 'story-5-return-and-recovery-visibility',
     };
   });
 
-  app.setErrorHandler((error, _request, reply) => {
+  app.setErrorHandler((error, request, reply) => {
     if (error instanceof AppError) {
+      app.log.warn(
+        {
+          method: request.method,
+          url: request.url,
+          actorId: request.actor?.userId ?? null,
+          code: error.code,
+          statusCode: error.statusCode,
+        },
+        'Request failed with an application error.',
+      );
       return reply.code(error.statusCode).send({
         code: error.code,
         message: error.message,
@@ -115,10 +125,18 @@ export async function createApp(options: CreateAppOptions = {}) {
       });
     }
 
-    app.log.error(error);
+    app.log.error(
+      {
+        err: error,
+        method: request.method,
+        url: request.url,
+        actorId: request.actor?.userId ?? null,
+      },
+      'Unhandled Epic 1 platform error.',
+    );
     return reply.code(500).send({
       code: story0InternalErrorCode,
-      message: 'Unhandled Story 4 error.',
+      message: 'Unhandled Epic 1 platform error.',
     });
   });
 

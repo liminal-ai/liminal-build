@@ -576,8 +576,8 @@ server-persisted selected-process write path.
 
 ### Sign Out Response
 
-`POST /auth/logout` returns `204 No Content` after the authenticated session has
-been invalidated successfully.
+`POST /auth/logout` returns `200` with a logout redirect payload after the
+authenticated session has been invalidated successfully.
 
 ### Project Shell Request Parameters
 

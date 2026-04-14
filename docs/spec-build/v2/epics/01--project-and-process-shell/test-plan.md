@@ -130,7 +130,7 @@ have the script hook even if the suite initially contains only explicit
 | TC-1.1a | `TC-1.1a returns shell HTML for authenticated project route` | Valid WorkOS session, synced actor | `GET /projects` | `200` shell response |
 | TC-1.1b | `TC-1.1b redirects unauthenticated project route` | No session cookie | `GET /projects` | Redirect to sign-in |
 | TC-1.1c | `TC-1.1c clears invalid session and redirects` | Invalid cookie/session | `GET /projects` | Redirect and cleared cookie |
-| TC-1.4a | `TC-1.4a logout invalidates session` | Valid session + CSRF/origin | `POST /auth/logout` | `204` and session cleared |
+| TC-1.4a | `TC-1.4a logout invalidates session` | Valid session + CSRF/origin | `POST /auth/logout` | `200`, redirect payload, and session cleared |
 | TC-1.4b | `TC-1.4b signed-out user cannot reopen bookmarked project` | Signed-out client | `GET /projects/:projectId` | Redirect before project data |
 | TC-1.4c | `TC-1.4c shell routes are blocked after logout` | Logout performed | `GET /projects` | Redirect / unauthenticated result |
 

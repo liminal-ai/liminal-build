@@ -147,7 +147,7 @@ At Story 1 boundary, the authenticated shell path must prove auth/session handli
 
 #### Sign Out Response
 
-`POST /auth/logout` returns `204 No Content` after the authenticated session has been invalidated successfully.
+`POST /auth/logout` returns `200` with a logout redirect payload after the authenticated session has been invalidated successfully.
 
 #### Logout Request Contract
 

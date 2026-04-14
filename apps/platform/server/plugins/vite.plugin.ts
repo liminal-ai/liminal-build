@@ -28,6 +28,11 @@ function injectBootstrapPayload(source: string, payload: ShellBootstrapPayload):
 }
 
 function resolveRuntimeMode(): 'development' | 'production' | 'test' {
+  const forcedMode = process.env.LIMINAL_VITE_RUNTIME_MODE;
+  if (forcedMode === 'development' || forcedMode === 'production' || forcedMode === 'test') {
+    return forcedMode;
+  }
+
   if (process.env.VITEST !== undefined) {
     return 'test';
   }

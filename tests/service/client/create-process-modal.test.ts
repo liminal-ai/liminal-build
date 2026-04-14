@@ -83,9 +83,9 @@ describe('create process modal', () => {
     createProcessButton.click();
     await flush();
 
-    expect(dom.window.document.body.textContent).toContain('ProductDefinition');
-    expect(dom.window.document.body.textContent).toContain('FeatureSpecification');
-    expect(dom.window.document.body.textContent).toContain('FeatureImplementation');
+    expect(dom.window.document.body.textContent).toContain('Product Definition');
+    expect(dom.window.document.body.textContent).toContain('Feature Specification');
+    expect(dom.window.document.body.textContent).toContain('Feature Implementation');
     expect(dom.window.document.querySelector('input')).toBeNull();
     expect(dom.window.document.body.textContent).not.toContain('UnsupportedProcess');
   });
@@ -148,9 +148,9 @@ describe('create process modal', () => {
     createProcessButton.click();
     await flush();
 
-    expect(dom.window.document.body.textContent).toContain('ProductDefinition');
-    expect(dom.window.document.body.textContent).toContain('FeatureSpecification');
-    expect(dom.window.document.body.textContent).toContain('FeatureImplementation');
+    expect(dom.window.document.body.textContent).toContain('Product Definition');
+    expect(dom.window.document.body.textContent).toContain('Feature Specification');
+    expect(dom.window.document.body.textContent).toContain('Feature Implementation');
 
     const cancelButton = [...dom.window.document.querySelectorAll('button')].find(
       (button) => button.textContent === 'Cancel',
@@ -252,11 +252,11 @@ describe('create process modal', () => {
     await flush();
 
     const productDefinitionButton = [...dom.window.document.querySelectorAll('button')].find(
-      (button) => button.textContent === 'ProductDefinition',
+      (button) => button.textContent === 'Product Definition',
     );
 
     if (!(productDefinitionButton instanceof dom.window.HTMLButtonElement)) {
-      throw new Error('Expected ProductDefinition create button to be present.');
+      throw new Error('Expected Product Definition create button to be present.');
     }
 
     productDefinitionButton.click();

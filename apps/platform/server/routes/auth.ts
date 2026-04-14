@@ -43,6 +43,15 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     const returnTo = normalizeReturnTo(request.query.returnTo, fallbackReturnTo);
     const url = await app.authSessionService.getAuthorizationUrl(state);
 
+    app.log.info(
+      {
+        method: request.method,
+        url: request.url,
+        returnTo,
+      },
+      'Starting WorkOS login redirect.',
+    );
+
     reply.setCookie(authStateCookieName, state, {
       ...authCookieOptions(isSecure),
       signed: true,
@@ -74,6 +83,14 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     reply.clearCookie(authReturnToCookieName, { path: '/' });
 
     if (request.query.error !== undefined) {
+      app.log.warn(
+        {
+          method: request.method,
+          url: request.url,
+          error: request.query.error,
+        },
+        'WorkOS callback returned an error.',
+      );
       return reply
         .code(400)
         .type('text/plain')
@@ -86,6 +103,15 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       !stateCookie.valid ||
       stateCookie.value !== request.query.state
     ) {
+      app.log.warn(
+        {
+          method: request.method,
+          url: request.url,
+          hasCode: request.query.code !== undefined,
+          hasState: request.query.state !== undefined,
+        },
+        'Rejected invalid authentication callback state.',
+      );
       return reply
         .code(400)
         .type('text/plain')
@@ -104,6 +130,16 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       ...authCookieOptions(isSecure),
     });
 
+    app.log.info(
+      {
+        method: request.method,
+        url: request.url,
+        actorId: authentication.actor.userId,
+        returnTo,
+      },
+      'Completed authentication callback and established session.',
+    );
+
     return reply.redirect(returnTo);
   });
 
@@ -112,6 +148,15 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       if (request.authFailureReason === 'invalid_session') {
         reply.clearCookie(sessionCookieName, { path: '/' });
       }
+
+      app.log.warn(
+        {
+          method: request.method,
+          url: request.url,
+          authFailureReason: request.authFailureReason,
+        },
+        'Authenticated user lookup failed.',
+      );
 
       return reply.code(401).send({
         code: 'UNAUTHENTICATED',
@@ -136,6 +181,14 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       onRequest: [app.csrfProtection],
     },
     async (request, reply) => {
+      app.log.info(
+        {
+          method: request.method,
+          url: request.url,
+          actorId: request.actor?.userId ?? null,
+        },
+        'Sign-out requested.',
+      );
       const logoutUrl =
         request.cookies[sessionCookieName] === undefined
           ? app.authSessionService.getLoginReturnUri()
@@ -145,6 +198,16 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       reply.clearCookie(sessionCookieName, { path: '/' });
       reply.clearCookie(authStateCookieName, { path: '/' });
       reply.clearCookie(authReturnToCookieName, { path: '/' });
+
+      app.log.info(
+        {
+          method: request.method,
+          url: request.url,
+          actorId: request.actor?.userId ?? null,
+          redirectUrl: logoutUrl,
+        },
+        'Sign-out completed.',
+      );
 
       return reply.code(200).send({
         redirectUrl: logoutUrl,

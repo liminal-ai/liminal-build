@@ -60,6 +60,6 @@ async function main(): Promise<void> {
 }
 
 void main().catch((error) => {
-  console.error('Failed to start the Story 0 platform scaffold.', error);
+  console.error('Failed to start the Epic 1 platform server.', error);
   process.exitCode = 1;
 });

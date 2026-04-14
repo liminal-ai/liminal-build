@@ -6,6 +6,12 @@ const supportedProcessTypes: SupportedProcessType[] = [
   'FeatureImplementation',
 ];
 
+const processTypeLabels: Record<SupportedProcessType, string> = {
+  ProductDefinition: 'Product Definition',
+  FeatureSpecification: 'Feature Specification',
+  FeatureImplementation: 'Feature Implementation',
+};
+
 export function renderCreateProcessModal(args: {
   targetDocument: Document;
   onCreateProcess: (processType: SupportedProcessType) => Promise<void>;
@@ -24,7 +30,8 @@ export function renderCreateProcessModal(args: {
     const item = targetDocument.createElement('li');
     const select = targetDocument.createElement('button');
     select.type = 'button';
-    select.textContent = processType;
+    select.textContent = processTypeLabels[processType];
+    select.setAttribute('data-process-type', processType);
     select.addEventListener('click', () => {
       void args.onCreateProcess(processType);
     });

@@ -37,23 +37,45 @@ export function renderProjectShellPage(args: {
     );
   }
 
+  if (state.shell.isLoading) {
+    const loading = args.targetDocument.createElement('p');
+    loading.textContent = 'Loading project shell...';
+    container.append(loading);
+    return container;
+  }
+
   if (state.shell.error?.code === 'PROJECT_FORBIDDEN') {
     container.append(renderForbiddenProjectState(args.targetDocument));
-  } else if (state.shell.error?.code === 'PROJECT_NOT_FOUND' || state.shell.project === null) {
-    container.append(renderMissingProjectState(args.targetDocument));
-  } else {
-    const projectHeading = args.targetDocument.createElement('h2');
-    const role = args.targetDocument.createElement('p');
-    const createProcessButton = args.targetDocument.createElement('button');
-    projectHeading.textContent = state.shell.project.name;
-    role.textContent = `Role: ${state.shell.project.role}`;
-    createProcessButton.type = 'button';
-    createProcessButton.textContent = 'Create process';
-    createProcessButton.addEventListener('click', () => {
-      args.onOpenCreateProcess();
-    });
-    container.append(projectHeading, role, createProcessButton);
+    return container;
   }
+
+  if (state.shell.error?.code === 'PROJECT_NOT_FOUND' || state.shell.project === null) {
+    container.append(renderMissingProjectState(args.targetDocument));
+    return container;
+  }
+
+  if (state.shell.error !== null) {
+    const error = args.targetDocument.createElement('section');
+    const title = args.targetDocument.createElement('h2');
+    const body = args.targetDocument.createElement('p');
+    title.textContent = 'Project shell failed to load';
+    body.textContent = state.shell.error.message;
+    error.append(title, body);
+    container.append(error);
+    return container;
+  }
+
+  const projectHeading = args.targetDocument.createElement('h2');
+  const role = args.targetDocument.createElement('p');
+  const createProcessButton = args.targetDocument.createElement('button');
+  projectHeading.textContent = state.shell.project.name;
+  role.textContent = `Role: ${state.shell.project.role}`;
+  createProcessButton.type = 'button';
+  createProcessButton.textContent = 'Create process';
+  createProcessButton.addEventListener('click', () => {
+    args.onOpenCreateProcess();
+  });
+  container.append(projectHeading, role, createProcessButton);
 
   container.append(
     renderProcessSection({
