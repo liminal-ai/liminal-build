@@ -52,4 +52,23 @@ describe('process section', () => {
 
     expect(view.textContent).toContain(expectedLabel);
   });
+
+  it('TC-4.4a renders processes in descending updated order', () => {
+    const view = renderProcessSection({
+      envelope: processSectionEnvelopeSchema.parse({
+        status: 'ready',
+        items: [draftProcessFixture, runningProcessFixture, waitingProcessFixture],
+      }),
+      selectedProcessId: null,
+      targetDocument: document,
+    });
+
+    const labels = [...view.querySelectorAll('li strong')].map((element) => element.textContent);
+
+    expect(labels).toEqual([
+      waitingProcessFixture.displayLabel,
+      runningProcessFixture.displayLabel,
+      draftProcessFixture.displayLabel,
+    ]);
+  });
 });

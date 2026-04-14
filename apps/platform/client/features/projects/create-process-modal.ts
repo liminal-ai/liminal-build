@@ -1,5 +1,14 @@
+import type { SupportedProcessType } from '../../../shared/contracts/index.js';
+
+const supportedProcessTypes: SupportedProcessType[] = [
+  'ProductDefinition',
+  'FeatureSpecification',
+  'FeatureImplementation',
+];
+
 export function renderCreateProcessModal(args: {
   targetDocument: Document;
+  onCreateProcess: (processType: SupportedProcessType) => Promise<void>;
   onCancel: () => void;
 }): HTMLElement {
   const targetDocument = args.targetDocument;
@@ -10,14 +19,16 @@ export function renderCreateProcessModal(args: {
   const cancel = targetDocument.createElement('button');
 
   title.textContent = 'Create process';
-  body.textContent = 'Choose a supported process type. Process registration continues in Story 4.';
-  for (const processType of [
-    'ProductDefinition',
-    'FeatureSpecification',
-    'FeatureImplementation',
-  ]) {
+  body.textContent = 'Choose a supported process type.';
+  for (const processType of supportedProcessTypes) {
     const item = targetDocument.createElement('li');
-    item.textContent = processType;
+    const select = targetDocument.createElement('button');
+    select.type = 'button';
+    select.textContent = processType;
+    select.addEventListener('click', () => {
+      void args.onCreateProcess(processType);
+    });
+    item.append(select);
     supportedTypes.append(item);
   }
   cancel.type = 'button';

@@ -1,0 +1,425 @@
+import { describe, expect, it } from 'vitest';
+import {
+  AuthSessionService,
+  type SessionResolution,
+  sessionCookieName,
+} from '../../../apps/platform/server/services/auth/auth-session.service.js';
+import { AuthUserSyncService } from '../../../apps/platform/server/services/auth/auth-user-sync.service.js';
+import type {
+  PlatformStore,
+  ProcessCreateResult,
+  ProjectAccessResult,
+  ProjectCreateResult,
+  StoredPlatformUser,
+} from '../../../apps/platform/server/services/projects/platform-store.js';
+import type {
+  ArtifactSummary,
+  ProcessSummary,
+  ProjectSummary,
+  SourceAttachmentSummary,
+} from '../../../apps/platform/shared/contracts/index.js';
+import { memberProjectSummary, ownerProjectSummary } from '../../fixtures/projects.js';
+import { buildApp } from '../../utils/build-app.js';
+
+function createTestAuthSessionService(resolution: SessionResolution) {
+  class TestAuthSessionService extends AuthSessionService {
+    constructor() {
+      super({
+        workosClient: {} as never,
+        clientId: 'client_test_story4',
+        cookiePassword: 'story4-cookie-password-story4-cookie-password',
+        redirectUri: 'http://localhost:5001/auth/callback',
+        loginReturnUri: 'http://localhost:5001/projects',
+      });
+    }
+
+    override async resolveSession(): Promise<SessionResolution> {
+      return resolution;
+    }
+  }
+
+  return new TestAuthSessionService();
+}
+
+class RecordingPlatformStore implements PlatformStore {
+  readonly productDefinitionStateProcessIds: string[] = [];
+  readonly featureSpecificationStateProcessIds: string[] = [];
+  readonly featureImplementationStateProcessIds: string[] = [];
+  readonly artifactsByProjectId = new Map<string, ArtifactSummary[]>();
+  readonly sourcesByProjectId = new Map<string, SourceAttachmentSummary[]>();
+
+  constructor(
+    private readonly projectsByUserId: Map<string, ProjectSummary[]>,
+    private readonly accessByProjectId: Map<string, ProjectAccessResult>,
+    private readonly processesByProjectId = new Map<string, ProcessSummary[]>(),
+  ) {}
+
+  async upsertUserFromWorkOS(args: {
+    workosUserId: string;
+    email: string | null;
+    displayName: string | null;
+  }): Promise<StoredPlatformUser> {
+    return {
+      userId: `user:${args.workosUserId}`,
+      workosUserId: args.workosUserId,
+      email: args.email,
+      displayName: args.displayName,
+    };
+  }
+
+  async listAccessibleProjects(args: { userId: string }): Promise<ProjectSummary[]> {
+    return this.projectsByUserId.get(args.userId) ?? [];
+  }
+
+  async getProjectAccess(args: {
+    userId: string;
+    projectId: string;
+  }): Promise<ProjectAccessResult> {
+    const direct = this.accessByProjectId.get(args.projectId);
+    if (direct !== undefined) {
+      return direct;
+    }
+
+    const projects = this.projectsByUserId.get(args.userId) ?? [];
+    const project = projects.find((candidate) => candidate.projectId === args.projectId);
+
+    return project === undefined ? { kind: 'not_found' } : { kind: 'accessible', project };
+  }
+
+  async createProject(_args: { ownerUserId: string; name: string }): Promise<ProjectCreateResult> {
+    return {
+      kind: 'name_conflict',
+    };
+  }
+
+  async createProcess(args: {
+    projectId: string;
+    processType: ProcessSummary['processType'];
+    displayLabel: string;
+  }): Promise<ProcessCreateResult> {
+    const existing = this.processesByProjectId.get(args.projectId) ?? [];
+    const now = `2026-04-13T12:00:0${existing.length}.000Z`;
+    const availableActions: ProcessSummary['availableActions'] = ['open'];
+    const process = {
+      processId: `process-${args.projectId}-${existing.length + 1}`,
+      displayLabel: args.displayLabel,
+      processType: args.processType,
+      status: 'draft' as const,
+      phaseLabel: 'Draft',
+      nextActionLabel: 'Open the process',
+      availableActions,
+      hasEnvironment: false,
+      updatedAt: now,
+    };
+
+    this.processesByProjectId.set(args.projectId, [process, ...existing]);
+    this.updateProjectSummary(args.projectId, (project) => ({
+      ...project,
+      processCount: project.processCount + 1,
+      lastUpdatedAt: now,
+    }));
+
+    if (args.processType === 'ProductDefinition') {
+      this.productDefinitionStateProcessIds.push(process.processId);
+    }
+
+    if (args.processType === 'FeatureSpecification') {
+      this.featureSpecificationStateProcessIds.push(process.processId);
+    }
+
+    if (args.processType === 'FeatureImplementation') {
+      this.featureImplementationStateProcessIds.push(process.processId);
+    }
+
+    return {
+      kind: 'created',
+      process,
+    };
+  }
+
+  async listProjectProcesses(args: { projectId: string }): Promise<ProcessSummary[]> {
+    return this.processesByProjectId.get(args.projectId) ?? [];
+  }
+
+  async listProjectArtifacts(args: { projectId: string }): Promise<ArtifactSummary[]> {
+    return this.artifactsByProjectId.get(args.projectId) ?? [];
+  }
+
+  async listProjectSourceAttachments(args: {
+    projectId: string;
+  }): Promise<SourceAttachmentSummary[]> {
+    return this.sourcesByProjectId.get(args.projectId) ?? [];
+  }
+
+  private updateProjectSummary(
+    projectId: string,
+    update: (project: ProjectSummary) => ProjectSummary,
+  ): void {
+    for (const [userId, projects] of this.projectsByUserId.entries()) {
+      this.projectsByUserId.set(
+        userId,
+        projects.map((project) => (project.projectId === projectId ? update(project) : project)),
+      );
+    }
+
+    const direct = this.accessByProjectId.get(projectId);
+    if (direct?.kind === 'accessible') {
+      this.accessByProjectId.set(projectId, {
+        kind: 'accessible',
+        project: update(direct.project),
+      });
+    }
+  }
+}
+
+function buildRecordingStore() {
+  const projectA = {
+    ...ownerProjectSummary,
+    projectId: 'project-a',
+    processCount: 0,
+  };
+  const projectB = {
+    ...memberProjectSummary,
+    projectId: 'project-b',
+    processCount: 0,
+    role: 'owner' as const,
+  };
+  const projectsByUserId = new Map<string, ProjectSummary[]>([
+    ['user:workos-user-1', [projectA, projectB]],
+  ]);
+  const accessByProjectId = new Map<string, ProjectAccessResult>([
+    [projectA.projectId, { kind: 'accessible', project: projectA }],
+    [projectB.projectId, { kind: 'accessible', project: projectB }],
+  ]);
+
+  return {
+    projectA,
+    projectB,
+    store: new RecordingPlatformStore(projectsByUserId, accessByProjectId),
+  };
+}
+
+describe('processes api', () => {
+  it('TC-4.1b, TC-4.2a, and TC-4.2b create a ProductDefinition process with initial state and no environment', async () => {
+    const { projectA, store } = buildRecordingStore();
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(store),
+      platformStore: store,
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectA.projectId}/processes`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+      payload: {
+        processType: 'ProductDefinition',
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().process.processType).toBe('ProductDefinition');
+    expect(response.json().process.status).toBe('draft');
+    expect(response.json().process.phaseLabel).toBe('Draft');
+    expect(response.json().process.hasEnvironment).toBe(false);
+    expect(store.productDefinitionStateProcessIds).toHaveLength(1);
+    expect(store.featureSpecificationStateProcessIds).toHaveLength(0);
+    expect(store.featureImplementationStateProcessIds).toHaveLength(0);
+
+    await app.close();
+  });
+
+  it('TC-4.1c rejects an unsupported process type', async () => {
+    const { projectA, store } = buildRecordingStore();
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(store),
+      platformStore: store,
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectA.projectId}/processes`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+      payload: {
+        processType: 'UnsupportedProcess',
+      },
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toEqual({
+      code: 'INVALID_PROCESS_TYPE',
+      message: 'The requested process type is not supported.',
+      status: 422,
+    });
+
+    await app.close();
+  });
+
+  it('TC-4.2c creates the process in the requested project only', async () => {
+    const { projectA, projectB, store } = buildRecordingStore();
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(store),
+      platformStore: store,
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectB.projectId}/processes`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+      payload: {
+        processType: 'FeatureImplementation',
+      },
+    });
+
+    expect(await store.listProjectProcesses({ projectId: projectA.projectId })).toHaveLength(0);
+    expect(await store.listProjectProcesses({ projectId: projectB.projectId })).toHaveLength(1);
+
+    await app.close();
+  });
+
+  it('TC-4.3a and TC-4.3b keep different-type and same-type processes distinct with deterministic labels', async () => {
+    const { projectA, store } = buildRecordingStore();
+    await store.createProcess({
+      projectId: projectA.projectId,
+      processType: 'FeatureSpecification',
+      displayLabel: 'Feature Specification #1',
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(store),
+      platformStore: store,
+    });
+
+    const sameTypeResponse = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectA.projectId}/processes`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+      payload: {
+        processType: 'FeatureSpecification',
+      },
+    });
+    const otherTypeResponse = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectA.projectId}/processes`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+      payload: {
+        processType: 'FeatureImplementation',
+      },
+    });
+
+    expect(sameTypeResponse.statusCode).toBe(201);
+    expect(sameTypeResponse.json().process.displayLabel).toBe('Feature Specification #2');
+    expect(otherTypeResponse.statusCode).toBe(201);
+    expect(otherTypeResponse.json().process.displayLabel).toBe('Feature Implementation #1');
+    expect(await store.listProjectProcesses({ projectId: projectA.projectId })).toHaveLength(3);
+
+    await app.close();
+  });
+
+  it('TC-4.3c leaves existing artifact and source associations unchanged after process creation', async () => {
+    const { projectA, store } = buildRecordingStore();
+    store.artifactsByProjectId.set(projectA.projectId, [
+      {
+        artifactId: 'artifact-1',
+        displayName: 'Artifact',
+        currentVersionLabel: 'v1',
+        attachmentScope: 'project',
+        processId: null,
+        processDisplayLabel: null,
+        updatedAt: '2026-04-13T12:00:00.000Z',
+      },
+    ]);
+    store.sourcesByProjectId.set(projectA.projectId, [
+      {
+        sourceAttachmentId: 'source-1',
+        displayName: 'repo',
+        purpose: 'research',
+        targetRef: 'main',
+        hydrationState: 'hydrated',
+        attachmentScope: 'project',
+        processId: null,
+        processDisplayLabel: null,
+        updatedAt: '2026-04-13T12:00:00.000Z',
+      },
+    ]);
+    const originalArtifacts = await store.listProjectArtifacts({ projectId: projectA.projectId });
+    const originalSources = await store.listProjectSourceAttachments({
+      projectId: projectA.projectId,
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(store),
+      platformStore: store,
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectA.projectId}/processes`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+      payload: {
+        processType: 'ProductDefinition',
+      },
+    });
+
+    expect(await store.listProjectArtifacts({ projectId: projectA.projectId })).toEqual(
+      originalArtifacts,
+    );
+    expect(await store.listProjectSourceAttachments({ projectId: projectA.projectId })).toEqual(
+      originalSources,
+    );
+
+    await app.close();
+  });
+});

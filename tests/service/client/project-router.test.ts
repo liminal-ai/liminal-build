@@ -176,4 +176,23 @@ describe('project router', () => {
       'The requested process is unavailable and the shell cleared the selection.',
     );
   });
+
+  it('TC-4.4c keeps a valid selected process focused from route state', async () => {
+    installFetchMock();
+    const selectedProcessId = populatedProjectShellResponse.processes.items[1]?.processId;
+
+    if (selectedProcessId === undefined) {
+      throw new Error('Expected the populated project shell fixture to include a second process.');
+    }
+
+    const dom = await renderApp(
+      `http://localhost:5001/projects/${memberProjectSummary.projectId}?processId=${selectedProcessId}`,
+    );
+
+    expect(dom.window.location.search).toBe(`?processId=${selectedProcessId}`);
+    const selectedProcess = dom.window.document.querySelector('[data-process-selected="true"]');
+    expect(selectedProcess?.textContent).toContain(
+      populatedProjectShellResponse.processes.items[1]?.displayLabel ?? '',
+    );
+  });
 });

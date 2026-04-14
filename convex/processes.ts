@@ -1,4 +1,4 @@
-import { queryGeneric as query } from 'convex/server';
+import { mutationGeneric as mutation, queryGeneric as query } from 'convex/server';
 import { v } from 'convex/values';
 
 export const supportedProcessTypeValidator = v.union(
@@ -51,6 +51,72 @@ export const listProjectProcessSummaries = query({
       hasEnvironment: process.hasEnvironment,
       updatedAt: process.updatedAt,
     }));
+  },
+});
+
+export const createProcess = mutation({
+  args: {
+    projectId: v.string(),
+    processType: supportedProcessTypeValidator,
+    displayLabel: v.string(),
+  },
+  handler: async (ctx: any, args: any) => {
+    const now = new Date().toISOString();
+    const processId = await ctx.db.insert('processes', {
+      projectId: args.projectId,
+      processType: args.processType,
+      displayLabel: args.displayLabel,
+      status: 'draft',
+      phaseLabel: 'Draft',
+      nextActionLabel: 'Open the process',
+      hasEnvironment: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    if (args.processType === 'ProductDefinition') {
+      await ctx.db.insert('processProductDefinitionStates', {
+        processId,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    if (args.processType === 'FeatureSpecification') {
+      await ctx.db.insert('processFeatureSpecificationStates', {
+        processId,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    if (args.processType === 'FeatureImplementation') {
+      await ctx.db.insert('processFeatureImplementationStates', {
+        processId,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    await ctx.db.patch(args.projectId, {
+      lastUpdatedAt: now,
+      updatedAt: now,
+    });
+
+    return {
+      kind: 'created' as const,
+      process: {
+        processId,
+        displayLabel: args.displayLabel,
+        processType: args.processType,
+        status: 'draft' as const,
+        phaseLabel: 'Draft',
+        nextActionLabel: 'Open the process',
+        availableActions: ['open'] as const,
+        hasEnvironment: false,
+        updatedAt: now,
+      },
+    };
   },
 });
 

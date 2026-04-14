@@ -238,12 +238,60 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
   typedApp.post(
     '/api/projects/:projectId/processes',
     { schema: createProcessRouteSchema },
-    async (_request, reply) => {
-      return reply.code(501).send({
-        code: 'INVALID_PROCESS_TYPE',
-        message: 'Process registration is not implemented until Story 4.',
-        status: 501,
+    async (request, reply) => {
+      if (request.actor === null) {
+        if (request.authFailureReason === 'invalid_session') {
+          reply.clearCookie(sessionCookieName, { path: '/' });
+        }
+
+        return reply.code(401).send({
+          code: 'UNAUTHENTICATED',
+          message: 'Authenticated access is required.',
+          status: 401,
+        });
+      }
+
+      const actor = request.actor;
+      const access = await app.projectAccessService.getProjectAccess({
+        actor,
+        projectId: request.params.projectId,
       });
+
+      if (access.kind === 'forbidden') {
+        return reply.code(403).send({
+          code: 'PROJECT_FORBIDDEN',
+          message: 'The current actor cannot access this project.',
+          status: 403,
+        });
+      }
+
+      if (access.kind === 'not_found') {
+        return reply.code(404).send({
+          code: 'PROJECT_NOT_FOUND',
+          message: 'The requested project was not found.',
+          status: 404,
+        });
+      }
+
+      try {
+        const result = await app.processRegistrationService.createProcess({
+          actor,
+          projectId: request.params.projectId,
+          processType: request.body.processType,
+        });
+
+        return reply.code(201).send(result);
+      } catch (error) {
+        if (error instanceof AppError) {
+          return reply.code(422).send({
+            code: 'INVALID_PROCESS_TYPE',
+            message: error.message,
+            status: 422,
+          });
+        }
+
+        throw error;
+      }
     },
   );
 }

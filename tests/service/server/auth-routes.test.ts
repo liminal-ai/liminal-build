@@ -353,6 +353,22 @@ describe('auth routes', () => {
           kind: 'name_conflict',
         };
       },
+      async createProcess(args) {
+        return {
+          kind: 'created',
+          process: {
+            processId: `process:${args.projectId}`,
+            displayLabel: args.displayLabel,
+            processType: args.processType,
+            status: 'draft',
+            phaseLabel: 'Draft',
+            nextActionLabel: 'Open the process',
+            availableActions: ['open'],
+            hasEnvironment: false,
+            updatedAt: '2026-04-13T12:00:00.000Z',
+          },
+        };
+      },
       async listProjectProcesses() {
         return [];
       },

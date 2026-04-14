@@ -14,6 +14,9 @@ export function renderProjectShellPage(args: {
   store: AppStore;
   targetDocument: Document;
   targetWindow: Window & typeof globalThis;
+  onCreateProcess: (
+    processType: 'ProductDefinition' | 'FeatureSpecification' | 'FeatureImplementation',
+  ) => Promise<void>;
   onCancelCreateProcess: () => void;
   onOpenCreateProcess: () => void;
 }): HTMLElement {
@@ -72,6 +75,7 @@ export function renderProjectShellPage(args: {
     container.append(
       renderCreateProcessModal({
         targetDocument: args.targetDocument,
+        onCreateProcess: args.onCreateProcess,
         onCancel: args.onCancelCreateProcess,
       }),
     );

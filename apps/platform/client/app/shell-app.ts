@@ -10,6 +10,9 @@ export interface ShellAppOptions {
   onCreateProject: (name: string) => Promise<void>;
   onOpenCreateProject: () => void;
   onCancelCreateProject: () => void;
+  onCreateProcess: (
+    processType: 'ProductDefinition' | 'FeatureSpecification' | 'FeatureImplementation',
+  ) => Promise<void>;
   onOpenCreateProcess: () => void;
   onCancelCreateProcess: () => void;
   onOpenProject: (projectId: string) => void;
@@ -35,6 +38,7 @@ export function createShellApp(options: ShellAppOptions) {
             store: options.store,
             targetDocument: options.targetWindow.document,
             targetWindow: options.targetWindow,
+            onCreateProcess: options.onCreateProcess,
             onCancelCreateProcess: options.onCancelCreateProcess,
             onOpenCreateProcess: options.onOpenCreateProcess,
           });

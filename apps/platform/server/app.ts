@@ -19,8 +19,10 @@ import {
 } from './services/projects/platform-store.js';
 import { ProjectAccessService } from './services/projects/project-access.service.js';
 import { ProjectCreateService } from './services/projects/project-create.service.js';
+import { ProcessDisplayLabelService } from './services/projects/process-display-label.service.js';
 import { ProjectIndexService } from './services/projects/project-index.service.js';
 import { ProjectShellService } from './services/projects/project-shell.service.js';
+import { ProcessRegistrationService } from './services/projects/process-registration.service.js';
 
 export interface CreateAppOptions {
   env?: ServerEnv;
@@ -32,6 +34,7 @@ export interface CreateAppOptions {
   projectCreateService?: ProjectCreateService;
   projectIndexService?: ProjectIndexService;
   projectShellService?: ProjectShellService;
+  processRegistrationService?: ProcessRegistrationService;
 }
 
 declare module 'fastify' {
@@ -40,6 +43,7 @@ declare module 'fastify' {
     projectCreateService: ProjectCreateService;
     projectIndexService: ProjectIndexService;
     projectShellService: ProjectShellService;
+    processRegistrationService: ProcessRegistrationService;
   }
 }
 
@@ -67,6 +71,10 @@ export async function createApp(options: CreateAppOptions = {}) {
     options.projectCreateService ?? new ProjectCreateService(platformStore);
   const projectIndexService = options.projectIndexService ?? new ProjectIndexService(platformStore);
   const projectShellService = options.projectShellService ?? new ProjectShellService(platformStore);
+  const processDisplayLabelService = new ProcessDisplayLabelService(platformStore);
+  const processRegistrationService =
+    options.processRegistrationService ??
+    new ProcessRegistrationService(platformStore, processDisplayLabelService);
   const app = Fastify({
     logger: options.logger ?? false,
   });
@@ -77,6 +85,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.decorate('projectCreateService', projectCreateService);
   app.decorate('projectIndexService', projectIndexService);
   app.decorate('projectShellService', projectShellService);
+  app.decorate('processRegistrationService', processRegistrationService);
 
   await app.register(cookiesPlugin, {
     secret: env.WORKOS_COOKIE_PASSWORD,
@@ -93,7 +102,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.get('/health', async () => {
     return {
       status: 'ok',
-      story: 'story-3-project-shell-summaries',
+      story: 'story-4-process-registration-in-a-project',
     };
   });
 
@@ -109,7 +118,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     app.log.error(error);
     return reply.code(500).send({
       code: story0InternalErrorCode,
-      message: 'Unhandled Story 3 error.',
+      message: 'Unhandled Story 4 error.',
     });
   });
 

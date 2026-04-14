@@ -36,6 +36,11 @@ export type ProjectCreateResult =
       kind: 'name_conflict';
     };
 
+export type ProcessCreateResult = {
+  kind: 'created';
+  process: ProcessSummary;
+};
+
 export interface PlatformStore {
   upsertUserFromWorkOS(args: {
     workosUserId: string;
@@ -45,6 +50,11 @@ export interface PlatformStore {
   listAccessibleProjects(args: { userId: string }): Promise<ProjectSummary[]>;
   getProjectAccess(args: { userId: string; projectId: string }): Promise<ProjectAccessResult>;
   createProject(args: { ownerUserId: string; name: string }): Promise<ProjectCreateResult>;
+  createProcess(args: {
+    projectId: string;
+    processType: ProcessSummary['processType'];
+    displayLabel: string;
+  }): Promise<ProcessCreateResult>;
   listProjectProcesses(args: { projectId: string }): Promise<ProcessSummary[]>;
   listProjectArtifacts(args: { projectId: string }): Promise<ArtifactSummary[]>;
   listProjectSourceAttachments(args: { projectId: string }): Promise<SourceAttachmentSummary[]>;
@@ -77,6 +87,16 @@ const createProjectMutation = makeFunctionReference<
   { ownerUserId: string; name: string },
   ProjectCreateResult
 >('projects:createProject');
+
+const createProcessMutation = makeFunctionReference<
+  'mutation',
+  {
+    projectId: string;
+    processType: ProcessSummary['processType'];
+    displayLabel: string;
+  },
+  ProcessCreateResult
+>('processes:createProcess');
 
 const listProjectProcessesQuery = makeFunctionReference<
   'query',
@@ -126,6 +146,30 @@ export class NullPlatformStore implements PlatformStore {
     };
   }
 
+  async createProcess(args: {
+    projectId: string;
+    processType: ProcessSummary['processType'];
+    displayLabel: string;
+  }): Promise<ProcessCreateResult> {
+    const now = new Date().toISOString();
+    const availableActions: ProcessSummary['availableActions'] = ['open'];
+
+    return {
+      kind: 'created',
+      process: {
+        processId: `process:${args.projectId}:1`,
+        displayLabel: args.displayLabel,
+        processType: args.processType,
+        status: 'draft',
+        phaseLabel: 'Draft',
+        nextActionLabel: 'Open the process',
+        availableActions,
+        hasEnvironment: false,
+        updatedAt: now,
+      },
+    };
+  }
+
   async listProjectProcesses(): Promise<ProcessSummary[]> {
     return [];
   }
@@ -169,6 +213,16 @@ export class ConvexPlatformStore implements PlatformStore {
 
   async createProject(args: { ownerUserId: string; name: string }): Promise<ProjectCreateResult> {
     return this.client.mutation(createProjectMutation, args, {
+      skipQueue: true,
+    });
+  }
+
+  async createProcess(args: {
+    projectId: string;
+    processType: ProcessSummary['processType'];
+    displayLabel: string;
+  }): Promise<ProcessCreateResult> {
+    return this.client.mutation(createProcessMutation, args, {
       skipQueue: true,
     });
   }
@@ -327,6 +381,39 @@ export class InMemoryPlatformStore implements PlatformStore {
     };
   }
 
+  async createProcess(args: {
+    projectId: string;
+    processType: ProcessSummary['processType'];
+    displayLabel: string;
+  }): Promise<ProcessCreateResult> {
+    const existingProcesses = this.processesByProjectId.get(args.projectId) ?? [];
+    const now = new Date().toISOString();
+    const availableActions: ProcessSummary['availableActions'] = ['open'];
+    const process = {
+      processId: `process-${existingProcesses.length + 1}`,
+      displayLabel: args.displayLabel,
+      processType: args.processType,
+      status: 'draft' as const,
+      phaseLabel: 'Draft',
+      nextActionLabel: 'Open the process',
+      availableActions,
+      hasEnvironment: false,
+      updatedAt: now,
+    };
+
+    this.processesByProjectId.set(args.projectId, [process, ...existingProcesses]);
+    this.updateProjectSummary(args.projectId, (project) => ({
+      ...project,
+      processCount: project.processCount + 1,
+      lastUpdatedAt: now,
+    }));
+
+    return {
+      kind: 'created',
+      process,
+    };
+  }
+
   async listProjectProcesses(args: { projectId: string }): Promise<ProcessSummary[]> {
     return this.processesByProjectId.get(args.projectId) ?? [];
   }
@@ -339,6 +426,26 @@ export class InMemoryPlatformStore implements PlatformStore {
     projectId: string;
   }): Promise<SourceAttachmentSummary[]> {
     return this.sourceAttachmentsByProjectId.get(args.projectId) ?? [];
+  }
+
+  private updateProjectSummary(
+    projectId: string,
+    update: (project: ProjectSummary) => ProjectSummary,
+  ): void {
+    for (const [userId, projects] of this.projectsByUserId.entries()) {
+      const nextProjects = projects.map((project) =>
+        project.projectId === projectId ? update(project) : project,
+      );
+      this.projectsByUserId.set(userId, nextProjects);
+    }
+
+    const directAccess = this.accessByProjectId.get(projectId);
+    if (directAccess?.kind === 'accessible') {
+      this.accessByProjectId.set(projectId, {
+        kind: 'accessible',
+        project: update(directAccess.project),
+      });
+    }
   }
 }
 

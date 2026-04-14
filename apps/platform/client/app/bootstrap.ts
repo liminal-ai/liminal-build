@@ -1,11 +1,17 @@
 import type {
   AppState,
   ParsedRoute,
+  ProcessSummary,
   ProjectShellResponse,
   ProjectSummary,
 } from '../../shared/contracts/index.js';
 import { ApiRequestError, getAuthenticatedUser } from '../browser-api/auth-api.js';
-import { createProject, getProjectShell, listProjects } from '../browser-api/projects-api.js';
+import {
+  createProcess,
+  createProject,
+  getProjectShell,
+  listProjects,
+} from '../browser-api/projects-api.js';
 import { getRequiredRootElement, getShellBootstrapPayload } from './dom.js';
 import { navigateTo, parseRoute } from './router.js';
 import { createShellApp } from './shell-app.js';
@@ -47,6 +53,9 @@ export async function bootstrapApp(
 
   const sortProjects = (projects: ProjectSummary[]): ProjectSummary[] =>
     [...projects].sort((left, right) => right.lastUpdatedAt.localeCompare(left.lastUpdatedAt));
+
+  const sortProcesses = (processes: ProcessSummary[]): ProcessSummary[] =>
+    [...processes].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 
   const applyShell = (shell: ProjectShellResponse): void => {
     store.patch('shell', {
@@ -249,6 +258,68 @@ export async function bootstrapApp(
         ...store.get().modals,
         createProcessOpen: true,
       });
+    },
+    onCreateProcess: async (processType) => {
+      const currentProject = store.get().shell.project;
+
+      if (currentProject === null) {
+        return;
+      }
+
+      const result = await createProcess({
+        projectId: currentProject.projectId,
+        processType,
+      });
+      const currentProcesses = store.get().shell.processes;
+      const nextProject = {
+        ...currentProject,
+        processCount: currentProject.processCount + 1,
+        lastUpdatedAt: result.process.updatedAt,
+      };
+      const nextProcesses = {
+        status: 'ready' as const,
+        items: sortProcesses([
+          result.process,
+          ...(currentProcesses?.items ?? []).filter(
+            (process) => process.processId !== result.process.processId,
+          ),
+        ]),
+      };
+      const nextProjects = (store.get().projects.list ?? []).map((project) =>
+        project.projectId === currentProject.projectId
+          ? {
+              ...project,
+              processCount: project.processCount + 1,
+              lastUpdatedAt: result.process.updatedAt,
+            }
+          : project,
+      );
+      const nextRoute: ParsedRoute = {
+        kind: 'project-shell',
+        projectId: currentProject.projectId,
+        selectedProcessId: result.process.processId,
+      };
+
+      store.patch('modals', {
+        ...store.get().modals,
+        createProcessOpen: false,
+      });
+      if (store.get().projects.list !== null) {
+        store.patch('projects', {
+          ...store.get().projects,
+          list: sortProjects(nextProjects),
+        });
+      }
+      applyRouteState(nextRoute);
+      store.patch('shell', {
+        ...store.get().shell,
+        project: nextProject,
+        processes: nextProcesses,
+        selectedProcessBanner: null,
+        isLoading: false,
+        error: null,
+      });
+      navigateTo(nextRoute, { replace: true }, targetWindow);
     },
     onCancelCreateProcess: () => {
       store.patch('modals', {

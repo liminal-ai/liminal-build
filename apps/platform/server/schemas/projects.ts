@@ -1,6 +1,6 @@
 import { z } from 'zod/v4';
 import {
-  createProcessRequestSchema,
+  createProcessResponseSchema,
   projectShellResponseSchema,
   projectSummarySchema,
   requestErrorSchema,
@@ -46,9 +46,15 @@ export const getProjectShellRouteSchema = {
 
 export const createProcessRouteSchema = {
   params: projectParamsSchema,
-  body: createProcessRequestSchema,
+  body: z.object({
+    processType: z.string().optional(),
+  }),
   response: {
-    501: requestErrorSchema,
+    201: createProcessResponseSchema,
+    401: requestErrorSchema,
+    403: requestErrorSchema,
+    404: requestErrorSchema,
+    422: requestErrorSchema,
   },
 } as const;
 

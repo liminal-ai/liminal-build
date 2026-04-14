@@ -39,6 +39,7 @@ describe('project shell page', () => {
       store,
       targetDocument: document,
       targetWindow: window,
+      onCreateProcess: async () => {},
       onCancelCreateProcess: () => {},
       onOpenCreateProcess: () => {},
     });
@@ -68,6 +69,7 @@ describe('project shell page', () => {
       store,
       targetDocument: document,
       targetWindow: window,
+      onCreateProcess: async () => {},
       onCancelCreateProcess: () => {},
       onOpenCreateProcess: () => {},
     });
@@ -104,6 +106,7 @@ describe('project shell page', () => {
       store,
       targetDocument: document,
       targetWindow: window,
+      onCreateProcess: async () => {},
       onCancelCreateProcess: () => {},
       onOpenCreateProcess: () => {},
     });
@@ -134,6 +137,7 @@ describe('project shell page', () => {
       store,
       targetDocument: document,
       targetWindow: window,
+      onCreateProcess: async () => {},
       onCancelCreateProcess: () => {},
       onOpenCreateProcess: () => {},
     });
@@ -190,6 +194,7 @@ describe('project shell page', () => {
           assign,
         },
       } as unknown as Window & typeof globalThis,
+      onCreateProcess: async () => {},
       onCancelCreateProcess: () => {},
       onOpenCreateProcess: () => {},
     });

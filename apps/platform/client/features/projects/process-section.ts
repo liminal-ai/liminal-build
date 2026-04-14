@@ -48,8 +48,11 @@ export function renderProcessSection(args: {
     targetDocument: args.targetDocument,
   });
   const list = args.targetDocument.createElement('ul');
+  const processes = [...args.envelope.items].sort((left, right) =>
+    right.updatedAt.localeCompare(left.updatedAt),
+  );
 
-  if (args.envelope.items.length === 0) {
+  if (processes.length === 0) {
     return appendSectionMessage({
       section,
       message: 'No processes yet.',
@@ -57,7 +60,7 @@ export function renderProcessSection(args: {
     });
   }
 
-  for (const process of args.envelope.items) {
+  for (const process of processes) {
     const item = args.targetDocument.createElement('li');
     const heading = args.targetDocument.createElement('strong');
     const meta = args.targetDocument.createElement('p');
