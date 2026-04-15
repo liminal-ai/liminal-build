@@ -1,6 +1,7 @@
 import { z } from 'zod/v4';
 import {
   currentProcessRequestSchema,
+  environmentSummarySchema,
   processHistoryItemSchema,
   processMaterialsSectionEnvelopeSchema,
   processSurfaceSectionErrorSchema,
@@ -17,6 +18,7 @@ export const liveProcessEntityTypeSchema = z.enum([
   'current_request',
   'materials',
   'side_work',
+  'environment',
 ]);
 export type LiveProcessEntityType = z.infer<typeof liveProcessEntityTypeSchema>;
 
@@ -82,6 +84,13 @@ const sideWorkLiveDataMessageSchema = liveProcessMessageBaseSchema.extend({
   payload: sideWorkSectionEnvelopeSchema,
 });
 
+const environmentLiveDataMessageSchema = liveProcessMessageBaseSchema.extend({
+  messageType: liveProcessDataMessageTypeSchema,
+  entityType: z.literal('environment'),
+  entityId: z.literal('environment'),
+  payload: environmentSummarySchema,
+});
+
 const liveProcessErrorMessageSchema = liveProcessMessageBaseSchema.extend({
   messageType: z.literal('error'),
   entityType: z.enum(['history', 'materials', 'side_work']),
@@ -94,6 +103,7 @@ export const liveProcessUpdateMessageSchema = z.union([
   currentRequestLiveDataMessageSchema,
   materialsLiveDataMessageSchema,
   sideWorkLiveDataMessageSchema,
+  environmentLiveDataMessageSchema,
   liveProcessErrorMessageSchema,
 ]);
 export type LiveProcessUpdateMessage = z.infer<typeof liveProcessUpdateMessageSchema>;

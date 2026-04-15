@@ -44,6 +44,7 @@ describe('process response composer', () => {
           status: 'empty',
           items: [],
         },
+        environment: null,
         isLoading: false,
         error: null,
         actionError: null,

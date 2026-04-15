@@ -42,9 +42,20 @@ export const processSourceReferenceFixture = processSourceReferenceSchema.parse(
   sourceAttachmentId: 'source-process-001',
   displayName: 'liminal-build',
   purpose: 'implementation',
+  accessMode: 'read_only',
   targetRef: 'main',
   hydrationState: 'hydrated',
   updatedAt: '2026-04-13T12:10:00.000Z',
+});
+
+export const writableProcessSourceReferenceFixture = processSourceReferenceSchema.parse({
+  sourceAttachmentId: 'source-process-writable-001',
+  displayName: 'liminal-build-writable',
+  purpose: 'implementation',
+  accessMode: 'read_write',
+  targetRef: 'feature/epic-03',
+  hydrationState: 'hydrated',
+  updatedAt: '2026-04-13T12:16:00.000Z',
 });
 
 export const phaseChangeArtifactReferenceFixture = processArtifactReferenceSchema.parse({
@@ -67,6 +78,7 @@ export const phaseChangeSourceReferenceFixture = processSourceReferenceSchema.pa
   sourceAttachmentId: 'source-process-002',
   displayName: 'docs/spec-build',
   purpose: 'review',
+  accessMode: 'read_only',
   targetRef: 'story-4',
   hydrationState: 'hydrated',
   updatedAt: '2026-04-13T12:23:00.000Z',
@@ -89,6 +101,20 @@ export const revisedOutputProcessMaterialsFixture = processMaterialsSectionEnvel
   currentArtifacts: [currentArtifactReferenceFixture],
   currentOutputs: [revisedStandaloneOutputReferenceFixture],
   currentSources: [processSourceReferenceFixture],
+});
+
+export const writableProcessMaterialsFixture = processMaterialsSectionEnvelopeSchema.parse({
+  status: 'ready',
+  currentArtifacts: [currentArtifactReferenceFixture],
+  currentOutputs: [standaloneOutputReferenceFixture],
+  currentSources: [writableProcessSourceReferenceFixture],
+});
+
+export const mixedAccessProcessMaterialsFixture = processMaterialsSectionEnvelopeSchema.parse({
+  status: 'ready',
+  currentArtifacts: [currentArtifactReferenceFixture],
+  currentOutputs: [standaloneOutputReferenceFixture],
+  currentSources: [processSourceReferenceFixture, writableProcessSourceReferenceFixture],
 });
 
 export const phaseChangedProcessMaterialsFixture = processMaterialsSectionEnvelopeSchema.parse({

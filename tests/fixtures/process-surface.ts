@@ -18,6 +18,16 @@ import {
   errorProcessMaterialsFixture,
   readyProcessMaterialsFixture,
 } from './materials.js';
+import {
+  completedProcessControlsFixture,
+  draftProcessControlsFixture,
+  failedProcessControlsFixture,
+  interruptedProcessControlsFixture,
+  pausedProcessControlsFixture,
+  runningProcessControlsFixture,
+  waitingProcessControlsFixture,
+} from './process-controls.js';
+import { absentEnvironmentFixture } from './process-environment.js';
 import { emptySideWorkFixture, errorSideWorkFixture, readySideWorkFixture } from './side-work.js';
 
 export const processSurfaceProjectFixture = processSurfaceProjectSchema.parse({
@@ -39,6 +49,8 @@ export const draftProcessSurfaceFixture = processSurfaceSummarySchema.parse({
   ...baseProcessSurfaceSummary,
   status: 'draft',
   availableActions: ['start'],
+  controls: draftProcessControlsFixture,
+  hasEnvironment: false,
 });
 
 export const runningProcessSurfaceFixture = processSurfaceSummarySchema.parse({
@@ -47,6 +59,8 @@ export const runningProcessSurfaceFixture = processSurfaceSummarySchema.parse({
   status: 'running',
   nextActionLabel: 'Monitor progress in the work surface',
   availableActions: ['review'],
+  controls: runningProcessControlsFixture,
+  hasEnvironment: false,
 });
 
 export const waitingProcessSurfaceFixture = processSurfaceSummarySchema.parse({
@@ -55,6 +69,8 @@ export const waitingProcessSurfaceFixture = processSurfaceSummarySchema.parse({
   status: 'waiting',
   nextActionLabel: 'Respond to the current request',
   availableActions: ['respond'],
+  controls: waitingProcessControlsFixture,
+  hasEnvironment: false,
 });
 
 export const pausedProcessSurfaceFixture = processSurfaceSummarySchema.parse({
@@ -63,6 +79,8 @@ export const pausedProcessSurfaceFixture = processSurfaceSummarySchema.parse({
   status: 'paused',
   nextActionLabel: 'Resume the process to continue working',
   availableActions: ['resume'],
+  controls: pausedProcessControlsFixture,
+  hasEnvironment: false,
 });
 
 export const interruptedProcessSurfaceFixture = processSurfaceSummarySchema.parse({
@@ -71,6 +89,8 @@ export const interruptedProcessSurfaceFixture = processSurfaceSummarySchema.pars
   status: 'interrupted',
   nextActionLabel: 'Resume the process to continue working',
   availableActions: ['resume', 'review', 'restart'],
+  controls: interruptedProcessControlsFixture,
+  hasEnvironment: false,
 });
 
 export const completedProcessSurfaceFixture = processSurfaceSummarySchema.parse({
@@ -79,6 +99,8 @@ export const completedProcessSurfaceFixture = processSurfaceSummarySchema.parse(
   status: 'completed',
   nextActionLabel: null,
   availableActions: ['review'],
+  controls: completedProcessControlsFixture,
+  hasEnvironment: false,
 });
 
 export const failedProcessSurfaceFixture = processSurfaceSummarySchema.parse({
@@ -87,6 +109,8 @@ export const failedProcessSurfaceFixture = processSurfaceSummarySchema.parse({
   status: 'failed',
   nextActionLabel: 'Investigate the failure before retrying',
   availableActions: ['review', 'restart'],
+  controls: failedProcessControlsFixture,
+  hasEnvironment: false,
 });
 
 export const currentProcessRequestFixture = currentProcessRequestSchema.parse({
@@ -112,6 +136,7 @@ export const readyProcessWorkSurfaceFixture = processWorkSurfaceResponseSchema.p
   materials: readyProcessMaterialsFixture,
   currentRequest: currentProcessRequestFixture,
   sideWork: readySideWorkFixture,
+  environment: absentEnvironmentFixture,
 });
 
 export const earlyProcessWorkSurfaceFixture = processWorkSurfaceResponseSchema.parse({
@@ -121,6 +146,7 @@ export const earlyProcessWorkSurfaceFixture = processWorkSurfaceResponseSchema.p
   materials: emptyProcessMaterialsFixture,
   currentRequest: null,
   sideWork: emptySideWorkFixture,
+  environment: absentEnvironmentFixture,
 });
 
 export const pausedProcessWorkSurfaceFixture = processWorkSurfaceResponseSchema.parse({
@@ -130,6 +156,7 @@ export const pausedProcessWorkSurfaceFixture = processWorkSurfaceResponseSchema.
   materials: emptyProcessMaterialsFixture,
   currentRequest: null,
   sideWork: emptySideWorkFixture,
+  environment: absentEnvironmentFixture,
 });
 
 export const interruptedProcessWorkSurfaceFixture = processWorkSurfaceResponseSchema.parse({
@@ -139,6 +166,7 @@ export const interruptedProcessWorkSurfaceFixture = processWorkSurfaceResponseSc
   materials: emptyProcessMaterialsFixture,
   currentRequest: null,
   sideWork: emptySideWorkFixture,
+  environment: absentEnvironmentFixture,
 });
 
 export const degradedProcessWorkSurfaceFixture = processWorkSurfaceResponseSchema.parse({
@@ -148,6 +176,7 @@ export const degradedProcessWorkSurfaceFixture = processWorkSurfaceResponseSchem
   materials: errorProcessMaterialsFixture,
   currentRequest: null,
   sideWork: errorSideWorkFixture,
+  environment: absentEnvironmentFixture,
 });
 
 export const startedProcessResponseFixture = startProcessResponseSchema.parse({

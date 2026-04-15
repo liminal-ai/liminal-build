@@ -87,6 +87,7 @@ function buildCurrentSources(args: {
     sourceAttachmentId: sourceAttachment.sourceAttachmentId,
     displayName: sourceAttachment.displayName,
     purpose: sourceAttachment.purpose,
+    accessMode: sourceAttachment.accessMode,
     targetRef: sourceAttachment.targetRef,
     hydrationState: sourceAttachment.hydrationState,
     updatedAt: sourceAttachment.updatedAt,

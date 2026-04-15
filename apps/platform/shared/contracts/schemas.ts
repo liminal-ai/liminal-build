@@ -37,6 +37,9 @@ export type AttachmentScope = z.infer<typeof attachmentScopeSchema>;
 export const sourcePurposeSchema = z.enum(['research', 'review', 'implementation', 'other']);
 export type SourcePurpose = z.infer<typeof sourcePurposeSchema>;
 
+export const sourceAccessModeSchema = z.enum(['read_only', 'read_write']);
+export type SourceAccessMode = z.infer<typeof sourceAccessModeSchema>;
+
 export const hydrationStateSchema = z.enum(['not_hydrated', 'hydrated', 'stale', 'unavailable']);
 export type HydrationState = z.infer<typeof hydrationStateSchema>;
 
@@ -50,6 +53,9 @@ export const requestErrorCodeSchema = z.enum([
   'INVALID_PROCESS_TYPE',
   'PROCESS_ACTION_NOT_AVAILABLE',
   'PROCESS_ACTION_FAILED',
+  'PROCESS_ENVIRONMENT_NOT_RECOVERABLE',
+  'PROCESS_ENVIRONMENT_PREREQUISITE_MISSING',
+  'PROCESS_ENVIRONMENT_UNAVAILABLE',
   'INVALID_PROCESS_RESPONSE',
   'PROCESS_LIVE_UPDATES_UNAVAILABLE',
 ]);
@@ -148,6 +154,7 @@ export const sourceAttachmentSummarySchema = z.object({
   sourceAttachmentId: z.string().min(1),
   displayName: z.string().min(1),
   purpose: sourcePurposeSchema,
+  accessMode: sourceAccessModeSchema.default('read_only'),
   targetRef: z.string().min(1).nullable(),
   hydrationState: hydrationStateSchema,
   attachmentScope: attachmentScopeSchema,

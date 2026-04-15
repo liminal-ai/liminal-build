@@ -263,6 +263,7 @@ export async function bootstrapApp(
         materials: surface.materials,
         currentRequest: surface.currentRequest,
         sideWork: surface.sideWork,
+        environment: surface.environment,
         isLoading: false,
         error: null,
         actionError: null,
@@ -611,6 +612,7 @@ export async function bootstrapApp(
           materials: surface.materials,
           currentRequest: surface.currentRequest,
           sideWork: surface.sideWork,
+          environment: surface.environment,
           isLoading: false,
           error: null,
         });

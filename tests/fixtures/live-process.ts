@@ -1,5 +1,6 @@
 import {
   liveProcessUpdateMessageSchema,
+  type EnvironmentSummary,
   type LiveProcessUpdateMessage,
   type ProcessSurfaceSummary,
   processSurfaceStateSchema,
@@ -16,6 +17,14 @@ import {
   runningProcessSurfaceFixture,
   waitingProcessSurfaceFixture,
 } from './process-surface.js';
+import {
+  absentEnvironmentFixture,
+  checkpointFailedEnvironmentFixture,
+  checkpointingEnvironmentFixture,
+  preparingEnvironmentFixture,
+  readyEnvironmentFixture,
+  runningEnvironmentFixture,
+} from './process-environment.js';
 import { readySideWorkFixture } from './side-work.js';
 
 const liveProcessMessageBase = {
@@ -40,6 +49,14 @@ export function buildLiveProcessMessageFixture(
     if (processPayload !== undefined) {
       candidate.processId = overrides.processId ?? processPayload.processId;
       candidate.entityId = overrides.entityId ?? processPayload.processId;
+    }
+  }
+
+  if (candidate.entityType === 'environment') {
+    const environmentPayload = candidate.payload as EnvironmentSummary | undefined;
+
+    if (environmentPayload !== undefined) {
+      candidate.entityId = 'environment';
     }
   }
 
@@ -138,11 +155,59 @@ export const sideWorkUpsertLiveFixture = buildLiveProcessMessageFixture({
   payload: readySideWorkFixture,
 });
 
+export const environmentSnapshotLiveFixture = buildLiveProcessMessageFixture({
+  messageType: 'snapshot',
+  entityType: 'environment',
+  entityId: 'environment',
+  sequenceNumber: 12,
+  payload: absentEnvironmentFixture,
+});
+
+export const environmentPreparingUpsertLiveFixture = buildLiveProcessMessageFixture({
+  messageType: 'upsert',
+  entityType: 'environment',
+  entityId: 'environment',
+  sequenceNumber: 13,
+  payload: preparingEnvironmentFixture,
+});
+
+export const environmentReadyUpsertLiveFixture = buildLiveProcessMessageFixture({
+  messageType: 'upsert',
+  entityType: 'environment',
+  entityId: 'environment',
+  sequenceNumber: 14,
+  payload: readyEnvironmentFixture,
+});
+
+export const environmentRunningUpsertLiveFixture = buildLiveProcessMessageFixture({
+  messageType: 'upsert',
+  entityType: 'environment',
+  entityId: 'environment',
+  sequenceNumber: 15,
+  payload: runningEnvironmentFixture,
+});
+
+export const environmentCheckpointingUpsertLiveFixture = buildLiveProcessMessageFixture({
+  messageType: 'upsert',
+  entityType: 'environment',
+  entityId: 'environment',
+  sequenceNumber: 16,
+  payload: checkpointingEnvironmentFixture,
+});
+
+export const environmentCheckpointFailureUpsertLiveFixture = buildLiveProcessMessageFixture({
+  messageType: 'upsert',
+  entityType: 'environment',
+  entityId: 'environment',
+  sequenceNumber: 17,
+  payload: checkpointFailedEnvironmentFixture,
+});
+
 export const historyErrorLiveFixture = buildLiveProcessMessageFixture({
   messageType: 'error',
   entityType: 'history',
   entityId: 'history',
-  sequenceNumber: 12,
+  sequenceNumber: 18,
   payload: {
     code: 'PROCESS_SURFACE_HISTORY_LOAD_FAILED',
     message: 'History reconnect failed.',
@@ -158,13 +223,14 @@ export const connectedProcessSurfaceStateFixture = processSurfaceStateSchema.par
   materials: readyProcessMaterialsFixture,
   currentRequest: currentProcessRequestFixture,
   sideWork: readySideWorkFixture,
+  environment: absentEnvironmentFixture,
   isLoading: false,
   error: null,
   actionError: null,
   live: {
     connectionState: 'connected',
     subscriptionId: 'subscription-001',
-    lastSequenceNumber: 11,
+    lastSequenceNumber: 17,
     error: null,
   },
 });
@@ -174,7 +240,7 @@ export const reconnectingProcessSurfaceStateFixture = processSurfaceStateSchema.
   live: {
     connectionState: 'reconnecting',
     subscriptionId: 'subscription-001',
-    lastSequenceNumber: 11,
+    lastSequenceNumber: 17,
     error: null,
   },
 });

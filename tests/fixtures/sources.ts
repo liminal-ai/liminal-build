@@ -4,6 +4,7 @@ const baseSourceFixture = {
   sourceAttachmentId: 'source-base-001',
   displayName: 'liminal-build',
   purpose: 'research' as const,
+  accessMode: 'read_only' as const,
   targetRef: 'main',
   attachmentScope: 'project' as const,
   processId: null,
@@ -46,4 +47,16 @@ export const processScopedSourceFixture = sourceAttachmentSummarySchema.parse({
   attachmentScope: 'process',
   processId: 'process-feature-impl-1',
   processDisplayLabel: 'Feature Implementation #1',
+});
+
+export const writableProcessScopedSourceFixture = sourceAttachmentSummarySchema.parse({
+  ...baseSourceFixture,
+  sourceAttachmentId: 'source-process-writable-001',
+  purpose: 'implementation',
+  accessMode: 'read_write',
+  hydrationState: 'hydrated',
+  attachmentScope: 'process',
+  processId: 'process-feature-impl-2',
+  processDisplayLabel: 'Feature Implementation #2',
+  targetRef: 'feature/epic-03',
 });

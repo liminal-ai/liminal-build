@@ -1,5 +1,6 @@
 import type {
   CurrentProcessRequest,
+  EnvironmentSummary,
   LiveProcessUpdateMessage,
   ProcessHistoryItem,
   ProcessMaterialsSectionEnvelope,
@@ -17,6 +18,7 @@ export interface ProcessLivePublication {
   currentRequest?: CurrentProcessRequest | null;
   materials?: ProcessMaterialsSectionEnvelope;
   sideWork?: SideWorkSectionEnvelope;
+  environment?: EnvironmentSummary;
   sectionErrors?: Partial<
     Record<'history' | 'materials' | 'side_work', ProcessSurfaceSectionError>
   >;
@@ -104,6 +106,17 @@ export function normalizeProcessLiveMessages(args: {
         entityType: 'side_work',
         entityId: 'side_work',
         payload: args.publication.sideWork,
+      }),
+    );
+  }
+
+  if (args.publication.environment !== undefined && args.publication.messageType !== 'error') {
+    messages.push(
+      nextMessage({
+        messageType: args.publication.messageType,
+        entityType: 'environment',
+        entityId: 'environment',
+        payload: args.publication.environment,
       }),
     );
   }

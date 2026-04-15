@@ -41,6 +41,7 @@ export const defaultAppState: AppState = appStateSchema.parse({
     materials: null,
     currentRequest: null,
     sideWork: null,
+    environment: null,
     isLoading: false,
     error: null,
     actionError: null,

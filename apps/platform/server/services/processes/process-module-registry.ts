@@ -7,7 +7,7 @@ import type {
   SupportedProcessType,
 } from '../../../shared/contracts/index.js';
 import { AppError } from '../../errors/app-error.js';
-import { story0NotImplementedErrorCode } from '../../errors/codes.js';
+import { notImplementedErrorCode } from '../../errors/codes.js';
 import type {
   ProcessActionResult,
   ProcessSurfaceProjection,
@@ -54,7 +54,7 @@ export class ProcessModuleRegistry {
 
     if (module === undefined) {
       throw new AppError({
-        code: story0NotImplementedErrorCode,
+        code: notImplementedErrorCode,
         message: `No process work-surface module is registered for ${processType}.`,
         statusCode: 501,
       });

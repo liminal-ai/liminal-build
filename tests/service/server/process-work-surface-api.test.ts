@@ -120,6 +120,7 @@ function buildPopulatedStore() {
       readyProcessMaterialsFixture.currentSources[0]?.sourceAttachmentId ?? 'source-process-001',
     displayName: readyProcessMaterialsFixture.currentSources[0]?.displayName ?? 'liminal-build',
     purpose: readyProcessMaterialsFixture.currentSources[0]?.purpose ?? 'implementation',
+    accessMode: readyProcessMaterialsFixture.currentSources[0]?.accessMode ?? 'read_only',
     targetRef: readyProcessMaterialsFixture.currentSources[0]?.targetRef ?? null,
     hydrationState: readyProcessMaterialsFixture.currentSources[0]?.hydrationState ?? 'hydrated',
     attachmentScope: 'process' as const,
@@ -219,6 +220,7 @@ describe('process work surface api', () => {
       materials: readyProcessWorkSurfaceFixture.materials,
       currentRequest: readyProcessWorkSurfaceFixture.currentRequest,
       sideWork: readyProcessWorkSurfaceFixture.sideWork,
+      environment: readyProcessWorkSurfaceFixture.environment,
     });
 
     await app.close();
@@ -264,6 +266,7 @@ describe('process work surface api', () => {
         items: [],
       },
       currentRequest: null,
+      environment: earlyProcessWorkSurfaceFixture.environment,
     });
 
     await app.close();
@@ -292,6 +295,7 @@ describe('process work surface api', () => {
       sourceAttachmentId: 'source-stale-process-001',
       displayName: 'old-branch',
       purpose: 'implementation' as const,
+      accessMode: 'read_only' as const,
       targetRef: 'old-phase',
       hydrationState: 'stale' as const,
       attachmentScope: 'process' as const,
@@ -303,6 +307,7 @@ describe('process work surface api', () => {
       sourceAttachmentId: 'source-shared-current-001',
       displayName: 'shared-research-repo',
       purpose: 'research' as const,
+      accessMode: 'read_only' as const,
       targetRef: 'main',
       hydrationState: 'hydrated' as const,
       attachmentScope: 'project' as const,
@@ -384,6 +389,7 @@ describe('process work surface api', () => {
           sourceAttachmentId: sharedCurrentSource.sourceAttachmentId,
           displayName: sharedCurrentSource.displayName,
           purpose: sharedCurrentSource.purpose,
+          accessMode: 'read_only',
           targetRef: sharedCurrentSource.targetRef,
           hydrationState: sharedCurrentSource.hydrationState,
           updatedAt: sharedCurrentSource.updatedAt,

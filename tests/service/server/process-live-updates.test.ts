@@ -21,6 +21,7 @@ import {
   currentProcessRequestFixture,
   readyProcessWorkSurfaceFixture,
 } from '../../fixtures/process-surface.js';
+import { readyEnvironmentFixture } from '../../fixtures/process-environment.js';
 import { runningProcessFixture } from '../../fixtures/processes.js';
 import { readySideWorkFixture } from '../../fixtures/side-work.js';
 import { buildApp } from '../../utils/build-app.js';
@@ -88,6 +89,7 @@ function buildPopulatedStore() {
       readyProcessMaterialsFixture.currentSources[0]?.sourceAttachmentId ?? 'source-process-001',
     displayName: readyProcessMaterialsFixture.currentSources[0]?.displayName ?? 'liminal-build',
     purpose: readyProcessMaterialsFixture.currentSources[0]?.purpose ?? 'implementation',
+    accessMode: readyProcessMaterialsFixture.currentSources[0]?.accessMode ?? 'read_only',
     targetRef: readyProcessMaterialsFixture.currentSources[0]?.targetRef ?? null,
     hydrationState: readyProcessMaterialsFixture.currentSources[0]?.hydrationState ?? 'hydrated',
     attachmentScope: 'process' as const,
@@ -198,7 +200,7 @@ describe('process live updates websocket', () => {
       messages.push(liveProcessUpdateMessageSchema.parse(JSON.parse(String(event.data))));
     });
 
-    await waitFor(() => messages.length >= 10);
+    await waitFor(() => messages.length >= 11);
 
     expect(messages[0]).toMatchObject({
       messageType: 'snapshot',
@@ -209,6 +211,7 @@ describe('process live updates websocket', () => {
     expect(messages.some((message) => message.entityType === 'current_request')).toBe(true);
     expect(messages.some((message) => message.entityType === 'materials')).toBe(true);
     expect(messages.some((message) => message.entityType === 'side_work')).toBe(true);
+    expect(messages.some((message) => message.entityType === 'environment')).toBe(true);
 
     processLiveHub.publish({
       projectId: projectSummary.projectId,
@@ -230,12 +233,13 @@ describe('process live updates websocket', () => {
           },
         ],
         currentRequest: null,
+        environment: readyEnvironmentFixture,
       },
     });
 
-    await waitFor(() => messages.length >= 13);
+    await waitFor(() => messages.length >= 14);
 
-    expect(messages.slice(-3)).toEqual(
+    expect(messages.slice(-4)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           messageType: 'upsert',
@@ -251,6 +255,12 @@ describe('process live updates websocket', () => {
           entityType: 'current_request',
           entityId: 'current_request',
           payload: null,
+        }),
+        expect.objectContaining({
+          messageType: 'upsert',
+          entityType: 'environment',
+          entityId: 'environment',
+          payload: readyEnvironmentFixture,
         }),
       ]),
     );

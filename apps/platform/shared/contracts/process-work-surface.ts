@@ -4,6 +4,7 @@ import {
   processStatusSchema,
   projectRoleSchema,
   sectionStatusSchema,
+  sourceAccessModeSchema,
   sourcePurposeSchema,
   supportedProcessTypeSchema,
 } from './schemas.js';
@@ -18,6 +19,10 @@ export const processStartApiPathnamePattern =
   '/api/projects/:projectId/processes/:processId/start' as const;
 export const processResumeApiPathnamePattern =
   '/api/projects/:projectId/processes/:processId/resume' as const;
+export const processRehydrateApiPathnamePattern =
+  '/api/projects/:projectId/processes/:processId/rehydrate' as const;
+export const processRebuildApiPathnamePattern =
+  '/api/projects/:projectId/processes/:processId/rebuild' as const;
 export const processResponseApiPathnamePattern =
   '/api/projects/:projectId/processes/:processId/responses' as const;
 export const processLiveUpdatesPathnamePattern =
@@ -45,6 +50,14 @@ export function buildProcessResumeApiPath(args: ProcessWorkSurfaceRouteParams): 
   return `${buildProcessWorkSurfaceApiPath(args)}/resume`;
 }
 
+export function buildProcessRehydrateApiPath(args: ProcessWorkSurfaceRouteParams): string {
+  return `${buildProcessWorkSurfaceApiPath(args)}/rehydrate`;
+}
+
+export function buildProcessRebuildApiPath(args: ProcessWorkSurfaceRouteParams): string {
+  return `${buildProcessWorkSurfaceApiPath(args)}/rebuild`;
+}
+
 export function buildProcessResponseApiPath(args: ProcessWorkSurfaceRouteParams): string {
   return `${buildProcessWorkSurfaceApiPath(args)}/responses`;
 }
@@ -57,10 +70,35 @@ export const processSurfaceAvailableActionSchema = z.enum([
   'start',
   'respond',
   'resume',
+  'rehydrate',
+  'rebuild',
   'review',
   'restart',
 ]);
 export type ProcessSurfaceAvailableAction = z.infer<typeof processSurfaceAvailableActionSchema>;
+
+export const processSurfaceControlActionIdSchema = processSurfaceAvailableActionSchema;
+export type ProcessSurfaceControlActionId = z.infer<typeof processSurfaceControlActionIdSchema>;
+
+export const environmentStateSchema = z.enum([
+  'absent',
+  'preparing',
+  'ready',
+  'running',
+  'checkpointing',
+  'stale',
+  'failed',
+  'lost',
+  'rebuilding',
+  'unavailable',
+]);
+export type EnvironmentState = z.infer<typeof environmentStateSchema>;
+
+export const checkpointKindSchema = z.enum(['artifact', 'code', 'mixed']);
+export type CheckpointKind = z.infer<typeof checkpointKindSchema>;
+
+export const checkpointOutcomeSchema = z.enum(['succeeded', 'failed']);
+export type CheckpointOutcome = z.infer<typeof checkpointOutcomeSchema>;
 
 export const processHistoryItemKindSchema = z.enum([
   'user_message',
@@ -101,6 +139,95 @@ export const processSurfaceProjectSchema = z.object({
 });
 export type ProcessSurfaceProject = z.infer<typeof processSurfaceProjectSchema>;
 
+export const processSurfaceControlStateSchema = z.object({
+  actionId: processSurfaceControlActionIdSchema,
+  enabled: z.boolean(),
+  disabledReason: z.string().min(1).nullable().default(null),
+  label: z.string().min(1),
+});
+export type ProcessSurfaceControlState = z.infer<typeof processSurfaceControlStateSchema>;
+
+export const processSurfaceControlOrder = [
+  'start',
+  'respond',
+  'resume',
+  'rehydrate',
+  'rebuild',
+  'review',
+  'restart',
+] as const satisfies readonly ProcessSurfaceControlActionId[];
+
+export const defaultProcessSurfaceControlLabels = {
+  start: 'Start process',
+  respond: 'Respond',
+  resume: 'Resume process',
+  rehydrate: 'Rehydrate environment',
+  rebuild: 'Rebuild environment',
+  review: 'Review',
+  restart: 'Restart process',
+} as const satisfies Record<ProcessSurfaceControlActionId, string>;
+
+export function buildProcessSurfaceControls(args: {
+  availableActions: readonly ProcessSurfaceAvailableAction[];
+  disabledReasons?: Partial<Record<ProcessSurfaceControlActionId, string>>;
+  labels?: Partial<Record<ProcessSurfaceControlActionId, string>>;
+}): ProcessSurfaceControlState[] {
+  const availableActions = new Set(args.availableActions);
+
+  return processSurfaceControlOrder.map((actionId) => {
+    const disabledReason = args.disabledReasons?.[actionId] ?? null;
+
+    return processSurfaceControlStateSchema.parse({
+      actionId,
+      enabled: availableActions.has(actionId) && disabledReason === null,
+      disabledReason,
+      label: args.labels?.[actionId] ?? defaultProcessSurfaceControlLabels[actionId],
+    });
+  });
+}
+
+export const defaultProcessSurfaceControls = buildProcessSurfaceControls({
+  availableActions: [],
+});
+
+export const lastCheckpointResultSchema = z.object({
+  checkpointId: z.string().min(1),
+  checkpointKind: checkpointKindSchema,
+  outcome: checkpointOutcomeSchema,
+  targetLabel: z.string().min(1),
+  targetRef: z.string().min(1).nullable().default(null),
+  completedAt: z.string().min(1),
+  failureReason: z.string().min(1).nullable().default(null),
+});
+export type LastCheckpointResult = z.infer<typeof lastCheckpointResultSchema>;
+
+export const defaultEnvironmentSummary = {
+  environmentId: null,
+  state: 'absent',
+  statusLabel: 'Not prepared',
+  blockedReason: null,
+  lastHydratedAt: null,
+  lastCheckpointAt: null,
+  lastCheckpointResult: null,
+} as const;
+
+export const environmentSummarySchema = z.object({
+  environmentId: z.string().min(1).nullable().default(defaultEnvironmentSummary.environmentId),
+  state: environmentStateSchema.default(defaultEnvironmentSummary.state),
+  statusLabel: z.string().min(1).default(defaultEnvironmentSummary.statusLabel),
+  blockedReason: z.string().min(1).nullable().default(defaultEnvironmentSummary.blockedReason),
+  lastHydratedAt: z.string().min(1).nullable().default(defaultEnvironmentSummary.lastHydratedAt),
+  lastCheckpointAt: z
+    .string()
+    .min(1)
+    .nullable()
+    .default(defaultEnvironmentSummary.lastCheckpointAt),
+  lastCheckpointResult: lastCheckpointResultSchema
+    .nullable()
+    .default(defaultEnvironmentSummary.lastCheckpointResult),
+});
+export type EnvironmentSummary = z.infer<typeof environmentSummarySchema>;
+
 export const processSurfaceSummarySchema = z.object({
   processId: z.string().min(1),
   displayLabel: z.string().min(1),
@@ -109,6 +236,8 @@ export const processSurfaceSummarySchema = z.object({
   phaseLabel: z.string().min(1),
   nextActionLabel: z.string().min(1).nullable(),
   availableActions: z.array(processSurfaceAvailableActionSchema),
+  controls: z.array(processSurfaceControlStateSchema).default(defaultProcessSurfaceControls),
+  hasEnvironment: z.boolean().default(false),
   updatedAt: z.string().min(1),
 });
 export type ProcessSurfaceSummary = z.infer<typeof processSurfaceSummarySchema>;
@@ -177,6 +306,7 @@ export const processSourceReferenceSchema = z.object({
   sourceAttachmentId: z.string().min(1),
   displayName: z.string().min(1),
   purpose: sourcePurposeSchema,
+  accessMode: sourceAccessModeSchema.default('read_only'),
   targetRef: z.string().min(1).nullable(),
   hydrationState: hydrationStateSchema,
   updatedAt: z.string().min(1),
@@ -237,6 +367,7 @@ export const processWorkSurfaceResponseSchema = z.object({
   materials: processMaterialsSectionEnvelopeSchema,
   currentRequest: currentProcessRequestSchema.nullable(),
   sideWork: sideWorkSectionEnvelopeSchema,
+  environment: environmentSummarySchema.default(defaultEnvironmentSummary),
 });
 export type ProcessWorkSurfaceResponse = z.infer<typeof processWorkSurfaceResponseSchema>;
 

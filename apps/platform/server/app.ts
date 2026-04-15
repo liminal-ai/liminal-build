@@ -3,7 +3,7 @@ import Fastify from 'fastify';
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
 import { hasLiveConvexConfig, type ServerEnv, story0PlaceholderEnv } from './config.js';
 import { AppError } from './errors/app-error.js';
-import { story0InternalErrorCode } from './errors/codes.js';
+import { internalServerErrorCode } from './errors/codes.js';
 import { cookiesPlugin } from './plugins/cookies.plugin.js';
 import { csrfPlugin } from './plugins/csrf.plugin.js';
 import { vitePlugin } from './plugins/vite.plugin.js';
@@ -189,7 +189,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       'Unhandled Epic 1 platform error.',
     );
     return reply.code(500).send({
-      code: story0InternalErrorCode,
+      code: internalServerErrorCode,
       message: 'Unhandled Epic 1 platform error.',
     });
   });

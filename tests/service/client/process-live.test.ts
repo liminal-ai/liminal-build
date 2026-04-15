@@ -8,6 +8,8 @@ import {
 import {
   buildLiveProcessMessageFixture,
   connectedProcessSurfaceStateFixture,
+  environmentCheckpointFailureUpsertLiveFixture,
+  environmentPreparingUpsertLiveFixture,
   historyUpsertLiveFixture,
   materialsClearedSnapshotLiveFixture,
   materialsPhaseChangeUpsertLiveFixture,
@@ -80,6 +82,50 @@ function buildConnectedSideWorkState(lastSequenceNumber: number) {
 }
 
 describe('process live foundation', () => {
+  it('applies environment upserts as first-class current-object state', () => {
+    const nextState = applyLiveProcessMessage({
+      state: {
+        ...connectedProcessSurfaceStateFixture,
+        live: {
+          connectionState: 'connected',
+          subscriptionId: 'subscription-001',
+          lastSequenceNumber: environmentPreparingUpsertLiveFixture.sequenceNumber - 1,
+          error: null,
+        },
+      },
+      message: environmentPreparingUpsertLiveFixture,
+    });
+
+    expect(nextState.environment).toMatchObject({
+      state: 'preparing',
+      statusLabel: 'Preparing environment',
+    });
+    expect(nextState.process).toEqual(connectedProcessSurfaceStateFixture.process);
+  });
+
+  it('preserves checkpoint-result visibility on environment failure updates', () => {
+    const nextState = applyLiveProcessMessage({
+      state: {
+        ...connectedProcessSurfaceStateFixture,
+        live: {
+          connectionState: 'connected',
+          subscriptionId: 'subscription-001',
+          lastSequenceNumber: environmentCheckpointFailureUpsertLiveFixture.sequenceNumber - 1,
+          error: null,
+        },
+      },
+      message: environmentCheckpointFailureUpsertLiveFixture,
+    });
+
+    expect(nextState.environment).toMatchObject({
+      state: 'failed',
+      lastCheckpointResult: expect.objectContaining({
+        outcome: 'failed',
+        checkpointKind: 'artifact',
+      }),
+    });
+  });
+
   it('TC-2.2a running state becomes visible during active work', () => {
     const nextState = applyLiveProcessMessage({
       state: {

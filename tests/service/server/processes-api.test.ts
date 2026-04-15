@@ -546,6 +546,7 @@ describe('processes api', () => {
         sourceAttachmentId: 'source-1',
         displayName: 'repo',
         purpose: 'research',
+        accessMode: 'read_only',
         targetRef: 'main',
         hydrationState: 'hydrated',
         attachmentScope: 'project',

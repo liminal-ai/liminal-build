@@ -12,6 +12,8 @@ import type {
   SideWorkSectionEnvelope,
 } from '../../../shared/contracts/index.js';
 import {
+  buildProcessSurfaceControls,
+  defaultEnvironmentSummary,
   processHistorySectionEnvelopeSchema,
   processMaterialsSectionEnvelopeSchema,
   processSurfaceProjectSchema,
@@ -20,7 +22,7 @@ import {
   sideWorkSectionEnvelopeSchema,
 } from '../../../shared/contracts/index.js';
 import { AppError } from '../../errors/app-error.js';
-import { story0NotImplementedErrorCode } from '../../errors/codes.js';
+import { notImplementedErrorCode } from '../../errors/codes.js';
 import type { AuthenticatedActor } from '../auth/auth-session.service.js';
 import type { PlatformStore } from '../projects/platform-store.js';
 import { HistorySectionReader } from './readers/history-section.reader.js';
@@ -57,7 +59,7 @@ export interface ProcessWorkSurfaceService {
 export class NotImplementedProcessWorkSurfaceService implements ProcessWorkSurfaceService {
   async getSurface(): Promise<ProcessWorkSurfaceResponse> {
     throw new AppError({
-      code: story0NotImplementedErrorCode,
+      code: notImplementedErrorCode,
       message: 'Process work-surface bootstrap is not implemented in Story 0.',
       statusCode: 501,
     });
@@ -88,6 +90,8 @@ export function deriveProcessSurfaceAvailableActions(
 }
 
 export function buildProcessSurfaceSummary(process: ProcessSummary): ProcessSurfaceSummary {
+  const availableActions = deriveProcessSurfaceAvailableActions(process.status);
+
   return processSurfaceSummarySchema.parse({
     processId: process.processId,
     displayLabel: process.displayLabel,
@@ -95,7 +99,11 @@ export function buildProcessSurfaceSummary(process: ProcessSummary): ProcessSurf
     status: process.status,
     phaseLabel: process.phaseLabel,
     nextActionLabel: process.nextActionLabel,
-    availableActions: deriveProcessSurfaceAvailableActions(process.status),
+    availableActions,
+    controls: buildProcessSurfaceControls({
+      availableActions,
+    }),
+    hasEnvironment: process.hasEnvironment,
     updatedAt: process.updatedAt,
   });
 }
@@ -148,6 +156,7 @@ export class DefaultProcessWorkSurfaceService implements ProcessWorkSurfaceServi
       materials,
       currentRequest,
       sideWork,
+      environment: defaultEnvironmentSummary,
     });
   }
 

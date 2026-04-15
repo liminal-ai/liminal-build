@@ -9,6 +9,7 @@ import {
 } from './schemas.js';
 import {
   currentProcessRequestSchema,
+  environmentSummarySchema,
   processHistorySectionEnvelopeSchema,
   processMaterialsSectionEnvelopeSchema,
   processSurfaceProjectSchema,
@@ -102,6 +103,7 @@ export const processSurfaceStateSchema = z.object({
   materials: processMaterialsSectionEnvelopeSchema.nullable(),
   currentRequest: currentProcessRequestSchema.nullable(),
   sideWork: sideWorkSectionEnvelopeSchema.nullable(),
+  environment: environmentSummarySchema.nullable().default(null),
   isLoading: z.boolean(),
   error: requestErrorSchema.nullable(),
   actionError: requestErrorSchema.nullable(),

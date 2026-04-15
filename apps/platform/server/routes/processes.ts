@@ -36,6 +36,7 @@ function buildInitialLivePublication(surface: ProcessWorkSurfaceResponse) {
     currentRequest: surface.currentRequest,
     materials: surface.materials,
     sideWork: surface.sideWork,
+    environment: surface.environment,
     sectionErrors: {
       history: surface.history.status === 'error' ? surface.history.error : undefined,
       materials: surface.materials.status === 'error' ? surface.materials.error : undefined,

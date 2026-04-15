@@ -1,5 +1,6 @@
 import type {
   CurrentProcessRequest,
+  EnvironmentSummary,
   LiveProcessUpdateMessage,
   ProcessHistoryItem,
   ProcessHistorySectionEnvelope,
@@ -74,6 +75,10 @@ function applyCurrentRequest(next: CurrentProcessRequest | null): CurrentProcess
   return next;
 }
 
+function applyEnvironment(next: EnvironmentSummary): EnvironmentSummary {
+  return next;
+}
+
 export interface ApplyLiveProcessMessageArgs {
   state: ProcessSurfaceState;
   message: LiveProcessUpdateMessage;
@@ -134,6 +139,11 @@ export function applyLiveProcessMessage(args: ApplyLiveProcessMessageArgs): Proc
 
   if (args.message.entityType === 'materials') {
     nextState.materials = args.message.payload;
+    return nextState;
+  }
+
+  if (args.message.entityType === 'environment') {
+    nextState.environment = applyEnvironment(args.message.payload);
     return nextState;
   }
 

@@ -7,6 +7,7 @@ import {
 import { AuthUserSyncService } from '../../../apps/platform/server/services/auth/auth-user-sync.service.js';
 import { InMemoryPlatformStore } from '../../../apps/platform/server/services/projects/platform-store.js';
 import {
+  buildProcessSurfaceControls,
   currentProcessRequestSchema,
   processHistoryItemSchema,
   processSummarySchema,
@@ -617,6 +618,10 @@ describe('process actions api', () => {
         phaseLabel: followUpWaitingProcessSummary.phaseLabel,
         nextActionLabel: followUpWaitingProcessSummary.nextActionLabel,
         availableActions: ['respond'],
+        controls: buildProcessSurfaceControls({
+          availableActions: ['respond'],
+        }),
+        hasEnvironment: followUpWaitingProcessSummary.hasEnvironment,
         updatedAt: followUpWaitingProcessSummary.updatedAt,
       },
       currentRequest: followUpCurrentRequest,
