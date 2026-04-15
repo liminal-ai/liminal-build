@@ -216,9 +216,9 @@ it is in, what artifacts it is working with, and what still blocks progress.
 working state and source of truth. Artifacts must clearly persist back to
 Convex. Code work must clearly persist back to GitHub.
 
-**Local-first viability:** The platform must support a strong local provider for
-development and early use, plus a provider abstraction that also supports the
-initial managed-provider set.
+**Local development viability:** The platform must support a strong local
+development provider, plus a provider abstraction that also supports the initial
+managed-provider set.
 
 **Live-stream usability:** Live process updates must remain coherent and
 readable in the browser while work is active. The user should not need to
@@ -276,8 +276,8 @@ the companion technical architecture document.
 
 The architectural standup assumes an initial provider set of:
 
-- a `LocalProvider` for development and first implementation
-- a `DaytonaProvider` as the first managed provider
+- a `DaytonaProvider` as the first reference implementation and first managed provider
+- a `LocalProvider` as a contract-compatible development fast follow
 - a `CloudflareSandboxProvider` as a contrasting managed provider that keeps
   the provider abstraction honest across different sandbox models
 
@@ -288,9 +288,9 @@ The architectural standup assumes an initial provider set of:
 | Milestone | After | What Exists | Feedback Point |
 |-----------|-------|-------------|----------------|
 | M1 | Features 1+2 | Project shell and process control surface are usable for real process work | Yes - can a user manage a project and run a process coherently? |
-| M2 | Feature 3 | Sandboxed environment and tool harness work locally end to end | Yes - can a process hydrate working state and execute controlled tools? |
+| M2 | Feature 3 | Sandboxed environment, tool harness, and minimal canonical checkpoint loop work locally end to end | Yes - can a process hydrate, execute, and checkpoint already-attached working state coherently? |
 | M3 | Feature 4 | Artifact review and packaging surface is usable for spec-oriented outputs | Yes - can markdown artifacts be reviewed and exported in-app? |
-| M4 | Feature 5 | Canonical source integration works across Convex-backed artifacts and GitHub-backed repos | Yes - can the platform reconstruct environments and persist truth correctly? |
+| M4 | Feature 5 | Broader source-attachment and canonical-source workflows work across Convex-backed artifacts and GitHub-backed repos | Yes - can the platform manage source attachment lifecycle, provenance, freshness, and archive-facing source truth coherently? |
 
 ---
 
@@ -462,7 +462,13 @@ This feature gives a process a controlled working environment. After it ships, a
 process can use a sandboxed filesystem, a TypeScript scripted runtime, and a
 tool harness that operates inside that environment against hydrated project
 materials. This feature establishes the common execution substrate that later
-process-specific products inherit.
+process-specific products inherit. The first environment slice also includes the
+minimal canonical checkpoint loop needed to make that environment useful for
+real work: durable artifact outputs persist back to canonical artifact state,
+and code work against already-attached writable repositories persists back to
+canonical code truth for those repositories. Full source-attachment management,
+provenance workflows, and broader GitHub review or publishing workflows remain
+in Feature 5.
 
 ### Scope
 
@@ -473,13 +479,19 @@ process-specific products inherit.
 - Outer process controller that can start, resume, or rebuild environments
 - TypeScript scripted executor inside the sandbox
 - Tool harness wired into the sandbox executor
-- Hydration of artifacts and repositories into the environment
-- Checkpointing back to canonical stores
+- Hydration of artifacts and already-attached repositories into the environment
+- Checkpointing back to canonical stores, including durable code persistence for
+  already-attached writable repositories
 - Typed live process updates for browser rendering
 
 #### Out of Scope
 
 - Broad unrestricted execution surfaces (not planned for the core platform)
+- Attaching or detaching repositories or other external sources from a process
+- Editing repository purpose, access mode, target ref, or ownership from the
+  process work surface
+- Broader GitHub review, branch-management, or pull-request-management
+  workflows
 
 ### Scenarios
 
@@ -526,8 +538,8 @@ needs to continue work without losing durable progress.
 created environment filesystem for continued work.
 
 **AC-24:** The platform can checkpoint durable outputs back to canonical stores,
-including Convex-backed artifacts and GitHub-backed code, so that the process
-can continue after environment loss.
+including Convex-backed artifacts and GitHub-backed code for already-attached
+writable repositories, so that the process can continue after environment loss.
 
 ---
 
@@ -602,17 +614,23 @@ requires a bundled artifact package such as a spec-oriented pack.
 This feature establishes the canonical-source model and the source-attachment
 behaviors that processes rely on. After it ships, processes can persist
 artifacts durably, attach repositories with explicit purpose and access mode,
-and rehydrate working state from those canonical sources.
+and rehydrate working state from those canonical sources. Feature 3 already
+covers the minimal hydrate-and-checkpoint loop needed for a usable environment
+when the required sources are already attached. Feature 5 covers how sources are
+attached, classified, refreshed, explained, and managed across the broader
+process lifecycle, along with the archive-facing canonical-source model that
+depends on those durable records.
 
 ### Scope
 
 #### In Scope
 
-- Convex-backed process and artifact persistence
-- GitHub-backed code source integration
+- Broader Convex-backed process and artifact persistence model
+- Broader GitHub-backed code source integration
 - Repository attachment to processes
 - Repository purpose/access classification
-- Hydration and freshness tracking
+- Hydration and freshness tracking beyond the minimal environment loop in
+  Feature 3
 - Full-fidelity process archive and derived turn/chunk views
 - Integration boundary for MCP-backed and other external sources
 
@@ -752,12 +770,14 @@ Feature 1: Project and Process Shell
   be run coherently.
 - The process control surface needs to exist before environment execution or
   artifact review can be integrated into one working experience.
-- The environment and tool harness must exist before repository hydration and
-  canonical source handling become meaningful.
+- The environment and tool harness must exist before broader repository
+  lifecycle and canonical-source handling become meaningful. The first
+  environment epic includes the minimal hydrate-and-checkpoint loop needed to
+  make that slice real.
 - The artifact review surface can proceed alongside the environment layer once
   the project and process shell are in place.
-- Canonical source integration depends on the environment model because source
-  hydration and checkpointing are part of that working pattern.
+- Broader canonical source integration depends on the environment model because
+  source hydration and checkpointing are part of that working pattern.
 
 ---
 

@@ -5,3 +5,7 @@ When working on Convex code, **always read `convex/_generated/ai/guidelines.md` 
 
 Convex agent skills for common tasks can be installed by running `npx convex ai-files install`.
 <!-- convex-ai-end -->
+
+Current onboarding and current-state baseline docs live in `docs/onboarding/`.
+Read `current-state-index.md` first, then the relevant domain doc, then
+`current-state-tech-design.md`, then `current-state-code-map.md`.

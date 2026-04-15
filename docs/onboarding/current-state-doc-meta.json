@@ -1,0 +1,38 @@
+{
+  "generatedAt": "2026-04-15T12:10:58Z",
+  "branch": "main",
+  "commit": "d85d69b5478a1435db49495a541b6ac2c1523d07",
+  "mode": "catch-up",
+  "outputShape": "baseline-pack",
+  "outputFiles": [
+    "docs/onboarding/current-state-index.md",
+    "docs/onboarding/current-state-project-and-process-shell.md",
+    "docs/onboarding/current-state-process-work-surface.md",
+    "docs/onboarding/current-state-tech-design.md",
+    "docs/onboarding/current-state-code-map.md",
+    "docs/onboarding/current-state-drift-ledger.md",
+    "docs/onboarding/current-state-doc-meta.json",
+    "docs/onboarding/current-state-module-tree.json"
+  ],
+  "historicalArtifactsReviewed": [
+    "docs/spec-build/v2/core-platform-prd.md",
+    "docs/spec-build/v2/core-platform-arch.md",
+    "docs/spec-build/v2/epics/01--project-and-process-shell",
+    "docs/spec-build/v2/epics/02--process-work-surface",
+    "docs/spec-build/v1/prd.md",
+    "docs/epic-01-handoff.md"
+  ],
+  "codeAreasReviewed": [
+    "apps/platform/server",
+    "apps/platform/client",
+    "apps/platform/shared/contracts",
+    "convex",
+    "tests"
+  ],
+  "limitations": [
+    "No prior current-state docs existed",
+    "No .github workflow files are present",
+    "test:e2e is scaffolded but not executable",
+    "Baseline is repository-evidence-bound rather than runtime-probe-based"
+  ]
+}

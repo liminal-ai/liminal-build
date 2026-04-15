@@ -347,17 +347,20 @@ artificial split between artifact-heavy and code-informed work.
 **Consequence:** Source attachment and hydration are platform capabilities.
 Process-specific specs decide when and why a process uses them.
 
-### Local Provider First
+### Hosted Daytona First, Local Fast Follow
 
-**Choice:** The first required environment provider is a local provider that
-supports the full working model.
+**Choice:** The first reference implementation is a hosted `DaytonaProvider`.
+`LocalProvider` follows quickly as a contract-compatible development provider.
 
-**Rationale:** A strong local provider is the fastest way to validate the
-environment and tool harness model, debug hydration/checkpoint behavior, and
-avoid early lock-in to one managed provider.
+**Rationale:** Shaping the provider contract against a real managed provider is
+less likely to bake toy local assumptions into the environment model. Daytona is
+the closest current fit for the reconstructible-filesystem approach, while a
+local provider still matters for cheap development and fast iteration once the
+contract is established.
 
-**Consequence:** Managed providers are an extension seam, not a prerequisite for
-the first platform cut.
+**Consequence:** The provider interface should be proven against Daytona
+semantics first. `LocalProvider` must satisfy the same contract without
+simplifying it.
 
 ### Three-Provider Standup Set
 
@@ -367,15 +370,16 @@ the first platform cut.
 - `DaytonaProvider`
 - `CloudflareSandboxProvider`
 
-**Rationale:** The local provider keeps development cheap and fast. Daytona is
-the closest current managed fit for the reconstructible-filesystem approach.
-Cloudflare Sandbox forces the provider abstraction to stay honest across a
-different managed platform shape and prevents early overfitting to Daytona's
+**Rationale:** Daytona is the closest current managed fit for the
+reconstructible-filesystem approach and should shape the first serious provider
+contract. The local provider keeps development cheap and fast once that contract
+exists. Cloudflare Sandbox forces the provider abstraction to stay honest across
+a different managed platform shape and prevents early overfitting to Daytona's
 particular lifecycle model.
 
 **Consequence:** The provider interface should be designed and reviewed against
-all three providers, even though the local provider remains the first
-implementation and Daytona remains the first managed implementation.
+all three providers, even though Daytona remains the first reference
+implementation and local remains the fast-follow development implementation.
 
 ### One-Shot Script Execution First
 
@@ -760,7 +764,7 @@ Not the source of truth for:
 | A1 | Fastify remains the control plane even if Convex usage grows | Validated | Intentional design stance |
 | A2 | Convex remains suitable as canonical artifact/process persistence for artifact-heavy processes | Validated | Especially strong for local/cloud continuity |
 | A3 | GitHub remains the canonical source of truth for code | Validated | Code sandboxes are working copies only |
-| A4 | A local provider can prove the environment/tool model before the managed providers are fully implemented | Validated | This is the preferred sequence |
+| A4 | Daytona can establish the provider contract first and a local provider can follow quickly for development ergonomics | Validated | This is the preferred sequence |
 | A5 | Process modules will tolerate process-specific state tables instead of seeking a dynamic generic schema layer | Validated | Matches crafted-process stance |
 
 ---

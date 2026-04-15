@@ -1,0 +1,110 @@
+{
+  "generatedAt": "2026-04-15T12:10:58Z",
+  "entryPoints": [
+    "apps/platform/server/index.ts",
+    "apps/platform/server/app.ts",
+    "apps/platform/client/main.ts",
+    "apps/platform/client/app/bootstrap.ts",
+    "apps/platform/shared/contracts/index.ts",
+    "convex/schema.ts"
+  ],
+  "domains": {
+    "project_and_process_shell": {
+      "server": [
+        "apps/platform/server/routes/projects.ts",
+        "apps/platform/server/services/projects/project-shell.service.ts",
+        "apps/platform/server/services/projects/process-registration.service.ts",
+        "apps/platform/server/services/projects/project-create.service.ts",
+        "apps/platform/server/services/projects/readers/process-section.reader.ts",
+        "apps/platform/server/services/projects/readers/artifact-section.reader.ts",
+        "apps/platform/server/services/projects/readers/source-section.reader.ts"
+      ],
+      "client": [
+        "apps/platform/client/app/bootstrap.ts",
+        "apps/platform/client/app/router.ts",
+        "apps/platform/client/features/projects/project-index-page.ts",
+        "apps/platform/client/features/projects/project-shell-page.ts",
+        "apps/platform/client/features/projects/process-section.ts",
+        "apps/platform/client/features/projects/artifact-section.ts",
+        "apps/platform/client/features/projects/source-attachment-section.ts"
+      ],
+      "durableState": [
+        "convex/projects.ts",
+        "convex/processes.ts",
+        "convex/artifacts.ts",
+        "convex/sourceAttachments.ts"
+      ],
+      "tests": [
+        "tests/service/server/project-shell-bootstrap-api.test.ts",
+        "tests/service/server/project-create-api.test.ts",
+        "tests/service/server/processes-api.test.ts",
+        "tests/service/client/project-router.test.ts",
+        "tests/service/client/project-shell-page.test.ts",
+        "tests/integration/platform-shell.test.ts"
+      ]
+    },
+    "process_work_surface": {
+      "server": [
+        "apps/platform/server/routes/processes.ts",
+        "apps/platform/server/services/processes/process-work-surface.service.ts",
+        "apps/platform/server/services/processes/process-start.service.ts",
+        "apps/platform/server/services/processes/process-resume.service.ts",
+        "apps/platform/server/services/processes/process-response.service.ts",
+        "apps/platform/server/services/processes/readers/history-section.reader.ts",
+        "apps/platform/server/services/processes/readers/materials-section.reader.ts",
+        "apps/platform/server/services/processes/readers/side-work-section.reader.ts",
+        "apps/platform/server/services/processes/live/process-live-hub.ts",
+        "apps/platform/server/services/processes/live/process-live-normalizer.ts"
+      ],
+      "client": [
+        "apps/platform/client/app/bootstrap.ts",
+        "apps/platform/client/app/process-live.ts",
+        "apps/platform/client/features/processes/process-work-surface-page.ts",
+        "apps/platform/client/features/processes/process-history-section.ts",
+        "apps/platform/client/features/processes/process-materials-section.ts",
+        "apps/platform/client/features/processes/current-request-panel.ts",
+        "apps/platform/client/features/processes/process-response-composer.ts",
+        "apps/platform/client/features/processes/side-work-section.ts",
+        "apps/platform/client/features/processes/process-live-status.ts"
+      ],
+      "durableState": [
+        "convex/processes.ts",
+        "convex/processHistoryItems.ts",
+        "convex/processOutputs.ts",
+        "convex/processSideWorkItems.ts",
+        "convex/processProductDefinitionStates.ts",
+        "convex/processFeatureSpecificationStates.ts",
+        "convex/processFeatureImplementationStates.ts"
+      ],
+      "tests": [
+        "tests/service/server/process-work-surface-api.test.ts",
+        "tests/service/server/process-actions-api.test.ts",
+        "tests/service/server/process-live-updates.test.ts",
+        "tests/service/client/process-work-surface-page.test.ts",
+        "tests/service/client/process-live.test.ts",
+        "tests/integration/process-work-surface.test.ts"
+      ]
+    }
+  },
+  "supportingSurfaces": {
+    "client_orchestration": [
+      "apps/platform/client/app/bootstrap.ts",
+      "apps/platform/client/app/router.ts",
+      "apps/platform/client/app/shell-app.ts",
+      "apps/platform/client/app/store.ts"
+    ],
+    "auth_and_bootstrap": [
+      "apps/platform/server/plugins/workos-auth.plugin.ts",
+      "apps/platform/server/routes/auth.ts",
+      "apps/platform/server/services/auth/auth-session.service.ts",
+      "apps/platform/server/services/auth/auth-user-sync.service.ts",
+      "apps/platform/server/config.ts"
+    ],
+    "shared_contracts_and_state": [
+      "apps/platform/shared/contracts/schemas.ts",
+      "apps/platform/shared/contracts/process-work-surface.ts",
+      "apps/platform/shared/contracts/live-process-updates.ts",
+      "apps/platform/shared/contracts/state.ts"
+    ]
+  }
+}
