@@ -6,10 +6,6 @@ import {
 } from '../../apps/platform/shared/contracts/index.js';
 
 export async function renderShell(overrides: Partial<ShellBootstrapPayload> = {}) {
-  const dom = new JSDOM('<!doctype html><html lang="en"><body><div id="app"></div></body></html>', {
-    url: 'http://localhost:5001/projects',
-  });
-
   const bootstrapPayload = shellBootstrapPayloadSchema.parse({
     actor: null,
     pathname: '/projects',
@@ -20,6 +16,10 @@ export async function renderShell(overrides: Partial<ShellBootstrapPayload> = {}
       logoutPath: '/auth/logout',
     },
     ...overrides,
+  });
+
+  const dom = new JSDOM('<!doctype html><html lang="en"><body><div id="app"></div></body></html>', {
+    url: `http://localhost:5001${bootstrapPayload.pathname}${bootstrapPayload.search}`,
   });
 
   (dom.window as unknown as Window & typeof globalThis).__SHELL_BOOTSTRAP__ = bootstrapPayload;

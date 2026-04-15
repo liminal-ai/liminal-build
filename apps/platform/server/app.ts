@@ -7,11 +7,19 @@ import { story0InternalErrorCode } from './errors/codes.js';
 import { cookiesPlugin } from './plugins/cookies.plugin.js';
 import { csrfPlugin } from './plugins/csrf.plugin.js';
 import { vitePlugin } from './plugins/vite.plugin.js';
+import { websocketPlugin } from './plugins/websocket.plugin.js';
 import { workosAuthPlugin } from './plugins/workos-auth.plugin.js';
 import { registerAuthRoutes } from './routes/auth.js';
+import { registerProcessRoutes } from './routes/processes.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { AuthSessionService } from './services/auth/auth-session.service.js';
 import { AuthUserSyncService } from './services/auth/auth-user-sync.service.js';
+import { type ProcessLiveHub } from './services/processes/live/process-live-hub.js';
+import { ProcessModuleRegistry } from './services/processes/process-module-registry.js';
+import {
+  NotImplementedProcessWorkSurfaceService,
+  type ProcessWorkSurfaceService,
+} from './services/processes/process-work-surface.service.js';
 import {
   ConvexPlatformStore,
   NullPlatformStore,
@@ -34,7 +42,10 @@ export interface CreateAppOptions {
   projectCreateService?: ProjectCreateService;
   projectIndexService?: ProjectIndexService;
   projectShellService?: ProjectShellService;
+  processLiveHub?: ProcessLiveHub;
+  processModuleRegistry?: ProcessModuleRegistry;
   processRegistrationService?: ProcessRegistrationService;
+  processWorkSurfaceService?: ProcessWorkSurfaceService;
 }
 
 declare module 'fastify' {
@@ -43,7 +54,9 @@ declare module 'fastify' {
     projectCreateService: ProjectCreateService;
     projectIndexService: ProjectIndexService;
     projectShellService: ProjectShellService;
+    processModuleRegistry: ProcessModuleRegistry;
     processRegistrationService: ProcessRegistrationService;
+    processWorkSurfaceService: ProcessWorkSurfaceService;
   }
 }
 
@@ -71,10 +84,14 @@ export async function createApp(options: CreateAppOptions = {}) {
     options.projectCreateService ?? new ProjectCreateService(platformStore);
   const projectIndexService = options.projectIndexService ?? new ProjectIndexService(platformStore);
   const projectShellService = options.projectShellService ?? new ProjectShellService(platformStore);
+  const processLiveHub = options.processLiveHub;
+  const processModuleRegistry = options.processModuleRegistry ?? new ProcessModuleRegistry();
   const processDisplayLabelService = new ProcessDisplayLabelService(platformStore);
   const processRegistrationService =
     options.processRegistrationService ??
     new ProcessRegistrationService(platformStore, processDisplayLabelService, projectAccessService);
+  const processWorkSurfaceService =
+    options.processWorkSurfaceService ?? new NotImplementedProcessWorkSurfaceService();
   const app = Fastify({
     logger: options.logger ?? false,
   });
@@ -85,19 +102,25 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.decorate('projectCreateService', projectCreateService);
   app.decorate('projectIndexService', projectIndexService);
   app.decorate('projectShellService', projectShellService);
+  app.decorate('processModuleRegistry', processModuleRegistry);
   app.decorate('processRegistrationService', processRegistrationService);
+  app.decorate('processWorkSurfaceService', processWorkSurfaceService);
 
   await app.register(cookiesPlugin, {
     secret: env.WORKOS_COOKIE_PASSWORD,
   });
   await app.register(csrfPlugin);
   await app.register(vitePlugin);
+  await app.register(websocketPlugin, {
+    processLiveHub,
+  });
   await app.register(workosAuthPlugin, {
     authSessionService,
     authUserSyncService,
   });
   await app.register(registerAuthRoutes);
   await app.register(registerProjectRoutes);
+  await app.register(registerProcessRoutes);
 
   app.get('/health', async () => {
     return {

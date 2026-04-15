@@ -1,4 +1,6 @@
-import { mutationGeneric as mutation, queryGeneric as query } from 'convex/server';
+import type { ProcessAvailableAction, ProcessStatus, ProcessSummary } from '../apps/platform/shared/contracts/index.js';
+import type { Doc, Id } from './_generated/dataModel.js';
+import { mutation, query } from './_generated/server.js';
 import { v } from 'convex/values';
 
 export const supportedProcessTypeValidator = v.union(
@@ -24,6 +26,7 @@ export const processesTableFields = {
   status: processStatusValidator,
   phaseLabel: v.string(),
   nextActionLabel: v.union(v.string(), v.null()),
+  currentRequestHistoryItemId: v.union(v.id('processHistoryItems'), v.null()),
   hasEnvironment: v.boolean(),
   createdAt: v.string(),
   updatedAt: v.string(),
@@ -33,24 +36,14 @@ export const listProjectProcessSummaries = query({
   args: {
     projectId: v.string(),
   },
-  handler: async (ctx: any, args: any) => {
+  handler: async (ctx, args) => {
     const processes = await ctx.db
       .query('processes')
-      .withIndex('by_projectId_updatedAt', (query: any) => query.eq('projectId', args.projectId))
+      .withIndex('by_projectId_and_updatedAt', (query) => query.eq('projectId', args.projectId))
       .order('desc')
-      .collect();
+      .take(200);
 
-    return processes.map((process: any) => ({
-      processId: process._id,
-      displayLabel: process.displayLabel,
-      processType: process.processType,
-      status: process.status,
-      phaseLabel: process.phaseLabel,
-      nextActionLabel: process.nextActionLabel,
-      availableActions: deriveAvailableActions(process.status),
-      hasEnvironment: process.hasEnvironment,
-      updatedAt: process.updatedAt,
-    }));
+    return processes.map((process) => buildProcessSummary(process));
   },
 });
 
@@ -60,7 +53,7 @@ export const createProcess = mutation({
     processType: supportedProcessTypeValidator,
     displayLabel: v.string(),
   },
-  handler: async (ctx: any, args: any) => {
+  handler: async (ctx, args) => {
     const now = new Date().toISOString();
     const processId = await ctx.db.insert('processes', {
       projectId: args.projectId,
@@ -69,10 +62,12 @@ export const createProcess = mutation({
       status: 'draft',
       phaseLabel: 'Draft',
       nextActionLabel: 'Open the process',
+      currentRequestHistoryItemId: null,
       hasEnvironment: false,
       createdAt: now,
       updatedAt: now,
     });
+    const projectId = args.projectId as Id<'projects'>;
 
     if (args.processType === 'ProductDefinition') {
       await ctx.db.insert('processProductDefinitionStates', {
@@ -98,29 +93,46 @@ export const createProcess = mutation({
       });
     }
 
-    await ctx.db.patch(args.projectId, {
+    await ctx.db.patch(projectId, {
       lastUpdatedAt: now,
       updatedAt: now,
     });
 
     return {
       kind: 'created' as const,
-      process: {
-        processId,
-        displayLabel: args.displayLabel,
+      process: buildProcessSummary({
+        _id: processId,
+        _creationTime: Date.now(),
+        projectId: args.projectId,
         processType: args.processType,
-        status: 'draft' as const,
+        displayLabel: args.displayLabel,
+        status: 'draft',
         phaseLabel: 'Draft',
         nextActionLabel: 'Open the process',
-        availableActions: ['open'] as const,
+        currentRequestHistoryItemId: null,
         hasEnvironment: false,
+        createdAt: now,
         updatedAt: now,
-      },
+      }),
     };
   },
 });
 
-function deriveAvailableActions(status: string): string[] {
+function buildProcessSummary(process: Doc<'processes'>): ProcessSummary {
+  return {
+    processId: process._id,
+    displayLabel: process.displayLabel,
+    processType: process.processType,
+    status: process.status,
+    phaseLabel: process.phaseLabel,
+    nextActionLabel: process.nextActionLabel,
+    availableActions: deriveAvailableActions(process.status),
+    hasEnvironment: process.hasEnvironment,
+    updatedAt: process.updatedAt,
+  };
+}
+
+function deriveAvailableActions(status: ProcessStatus): ProcessAvailableAction[] {
   switch (status) {
     case 'draft':
       return ['open'];

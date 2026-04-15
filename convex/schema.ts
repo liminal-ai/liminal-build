@@ -1,9 +1,12 @@
 import { defineSchema, defineTable } from 'convex/server';
 import { artifactsTableFields } from './artifacts.js';
+import { processHistoryItemsTableFields } from './processHistoryItems.js';
 import { processesTableFields } from './processes.js';
 import { processFeatureImplementationStateTableFields } from './processFeatureImplementationStates.js';
 import { processFeatureSpecificationStateTableFields } from './processFeatureSpecificationStates.js';
+import { processOutputsTableFields } from './processOutputs.js';
 import { processProductDefinitionStateTableFields } from './processProductDefinitionStates.js';
+import { processSideWorkItemsTableFields } from './processSideWorkItems.js';
 import { projectMembersTableFields } from './projectMembers.js';
 import { projectsTableFields } from './projects.js';
 import { sourceAttachmentsTableFields } from './sourceAttachments.js';
@@ -19,7 +22,22 @@ export default defineSchema({
     .index('by_userId', ['userId']),
   processes: defineTable(processesTableFields)
     .index('by_projectId', ['projectId'])
-    .index('by_projectId_updatedAt', ['projectId', 'updatedAt']),
+    .index('by_projectId_and_updatedAt', ['projectId', 'updatedAt']),
+  processHistoryItems: defineTable(processHistoryItemsTableFields)
+    .index('by_processId_and_createdAt', ['processId', 'createdAt'])
+    .index('by_processId_and_requestState_and_createdAt', [
+      'processId',
+      'requestState',
+      'createdAt',
+    ]),
+  processSideWorkItems: defineTable(processSideWorkItemsTableFields).index(
+    'by_processId_and_updatedAt',
+    ['processId', 'updatedAt'],
+  ),
+  processOutputs: defineTable(processOutputsTableFields).index('by_processId_and_updatedAt', [
+    'processId',
+    'updatedAt',
+  ]),
   processProductDefinitionStates: defineTable(processProductDefinitionStateTableFields).index(
     'by_processId',
     ['processId'],

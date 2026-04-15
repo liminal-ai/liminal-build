@@ -44,9 +44,13 @@ export const requestErrorCodeSchema = z.enum([
   'UNAUTHENTICATED',
   'PROJECT_FORBIDDEN',
   'PROJECT_NOT_FOUND',
+  'PROCESS_NOT_FOUND',
   'PROJECT_NAME_CONFLICT',
   'INVALID_PROJECT_NAME',
   'INVALID_PROCESS_TYPE',
+  'PROCESS_ACTION_NOT_AVAILABLE',
+  'INVALID_PROCESS_RESPONSE',
+  'PROCESS_LIVE_UPDATES_UNAVAILABLE',
 ]);
 export type RequestErrorCode = z.infer<typeof requestErrorCodeSchema>;
 

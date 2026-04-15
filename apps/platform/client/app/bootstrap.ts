@@ -17,11 +17,41 @@ import { navigateTo, parseRoute } from './router.js';
 import { createShellApp } from './shell-app.js';
 import { createAppStore, defaultAppState } from './store.js';
 
+function getRoutePathname(parsedRoute: ParsedRoute): string {
+  if (parsedRoute.kind === 'project-index') {
+    return '/projects';
+  }
+
+  if (parsedRoute.kind === 'process-work-surface') {
+    return `/projects/${parsedRoute.projectId ?? ''}/processes/${parsedRoute.processId ?? ''}`;
+  }
+
+  return `/projects/${parsedRoute.projectId ?? ''}`;
+}
+
+function getProcessSurfaceRouteIdentity(parsedRoute: ParsedRoute): {
+  projectId: string | null;
+  processId: string | null;
+} {
+  if (parsedRoute.kind !== 'process-work-surface') {
+    return {
+      projectId: null,
+      processId: null,
+    };
+  }
+
+  return {
+    projectId: parsedRoute.projectId,
+    processId: parsedRoute.processId,
+  };
+}
+
 export async function bootstrapApp(
   targetWindow: Window & typeof globalThis = window,
 ): Promise<void> {
   const bootstrap = getShellBootstrapPayload(targetWindow);
   const parsedRoute = parseRoute(new URL(targetWindow.location.href));
+  const processSurfaceRouteIdentity = getProcessSurfaceRouteIdentity(parsedRoute);
   const initialState: Partial<AppState> = {
     auth: {
       actor: bootstrap?.actor ?? null,
@@ -29,25 +59,31 @@ export async function bootstrapApp(
       csrfToken: bootstrap?.csrfToken ?? null,
     },
     route: {
-      pathname:
-        parsedRoute.kind === 'project-index'
-          ? '/projects'
-          : `/projects/${parsedRoute.projectId ?? ''}`,
+      pathname: getRoutePathname(parsedRoute),
       projectId: parsedRoute.projectId,
       selectedProcessId: parsedRoute.selectedProcessId,
+    },
+    processSurface: {
+      ...defaultAppState.processSurface,
+      projectId: processSurfaceRouteIdentity.projectId,
+      processId: processSurfaceRouteIdentity.processId,
     },
   };
   const store = createAppStore(initialState);
   let routeLoadId = 0;
 
   const applyRouteState = (parsedRoute: ParsedRoute): void => {
+    const processSurfaceIdentity = getProcessSurfaceRouteIdentity(parsedRoute);
+
     store.patch('route', {
-      pathname:
-        parsedRoute.kind === 'project-index'
-          ? '/projects'
-          : `/projects/${parsedRoute.projectId ?? ''}`,
+      pathname: getRoutePathname(parsedRoute),
       projectId: parsedRoute.projectId,
       selectedProcessId: parsedRoute.selectedProcessId,
+    });
+    store.patch('processSurface', {
+      ...defaultAppState.processSurface,
+      projectId: processSurfaceIdentity.projectId,
+      processId: processSurfaceIdentity.processId,
     });
   };
 
@@ -206,6 +242,7 @@ export async function bootstrapApp(
       kind: 'project-shell',
       projectId,
       selectedProcessId: null,
+      processId: null,
     };
     navigateTo(route, {}, targetWindow);
     await loadParsedRoute(route);
@@ -226,6 +263,7 @@ export async function bootstrapApp(
         kind: 'project-shell',
         projectId: shell.project.projectId,
         selectedProcessId: null,
+        processId: null,
       };
 
       store.patch('modals', {
@@ -298,6 +336,7 @@ export async function bootstrapApp(
         kind: 'project-shell',
         projectId: currentProject.projectId,
         selectedProcessId: result.process.processId,
+        processId: null,
       };
 
       store.patch('modals', {
