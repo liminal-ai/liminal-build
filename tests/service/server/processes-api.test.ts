@@ -6,6 +6,8 @@ import {
 } from '../../../apps/platform/server/services/auth/auth-session.service.js';
 import { AuthUserSyncService } from '../../../apps/platform/server/services/auth/auth-user-sync.service.js';
 import type {
+  CurrentProcessMaterialRefs,
+  PlatformProcessOutputSummary,
   PlatformStore,
   ProcessActionStoreResult,
   ProcessCreateResult,
@@ -15,13 +17,12 @@ import type {
   StoredPlatformUser,
 } from '../../../apps/platform/server/services/projects/platform-store.js';
 import {
-  processSummarySchema,
   type ArtifactSummary,
   type CurrentProcessRequest,
   type ProcessHistoryItem,
-  type ProcessOutputReference,
   type ProcessSummary,
   type ProjectSummary,
+  processSummarySchema,
   type SideWorkItem,
   type SourceAttachmentSummary,
 } from '../../../apps/platform/shared/contracts/index.js';
@@ -218,8 +219,46 @@ class RecordingPlatformStore implements PlatformStore {
     return null;
   }
 
-  async listProcessOutputs(): Promise<ProcessOutputReference[]> {
+  async getCurrentProcessMaterialRefs(): Promise<CurrentProcessMaterialRefs> {
+    return {
+      artifactIds: [],
+      sourceAttachmentIds: [],
+    };
+  }
+
+  async setCurrentProcessMaterialRefs(args: {
+    processId: string;
+    artifactIds: string[];
+    sourceAttachmentIds: string[];
+  }): Promise<CurrentProcessMaterialRefs> {
+    return {
+      artifactIds: args.artifactIds,
+      sourceAttachmentIds: args.sourceAttachmentIds,
+    };
+  }
+
+  async listProcessOutputs(): Promise<PlatformProcessOutputSummary[]> {
     return [];
+  }
+
+  async replaceCurrentProcessOutputs(args: {
+    outputs: Array<{
+      outputId?: string;
+      linkedArtifactId: string | null;
+      displayName: string;
+      revisionLabel: string | null;
+      state: string;
+      updatedAt?: string;
+    }>;
+  }): Promise<PlatformProcessOutputSummary[]> {
+    return args.outputs.map((output, index) => ({
+      outputId: output.outputId ?? `output-${index + 1}`,
+      linkedArtifactId: output.linkedArtifactId,
+      displayName: output.displayName,
+      revisionLabel: output.revisionLabel,
+      state: output.state,
+      updatedAt: output.updatedAt ?? new Date().toISOString(),
+    }));
   }
 
   async listProcessSideWorkItems(): Promise<SideWorkItem[]> {

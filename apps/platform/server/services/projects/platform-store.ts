@@ -1,7 +1,6 @@
 import { ConvexHttpClient } from 'convex/browser';
 import { makeFunctionReference } from 'convex/server';
 import {
-  processSummarySchema,
   type ArtifactSummary,
   type CurrentProcessRequest,
   type ProcessHistoryItem,
@@ -9,6 +8,7 @@ import {
   type ProcessSummary,
   type ProjectShellResponse,
   type ProjectSummary,
+  processSummarySchema,
   type SideWorkItem,
   type SourceAttachmentSummary,
 } from '../../../shared/contracts/index.js';
@@ -56,6 +56,28 @@ export interface ProcessResponseStoreResult extends ProcessActionStoreResult {
   historyItem: ProcessHistoryItem;
 }
 
+export interface CurrentProcessMaterialRefs {
+  artifactIds: string[];
+  sourceAttachmentIds: string[];
+}
+
+export type PlatformProcessOutputSummary = ProcessOutputReference & {
+  linkedArtifactId: string | null;
+};
+
+type PlatformProcessOutputSeed = ProcessOutputReference & {
+  linkedArtifactId?: string | null;
+};
+
+export type PlatformProcessOutputWriteInput = {
+  outputId?: string;
+  linkedArtifactId: string | null;
+  displayName: string;
+  revisionLabel: string | null;
+  state: string;
+  updatedAt?: string;
+};
+
 export interface PlatformStore {
   upsertUserFromWorkOS(args: {
     workosUserId: string;
@@ -89,7 +111,17 @@ export interface PlatformStore {
   listProjectSourceAttachments(args: { projectId: string }): Promise<SourceAttachmentSummary[]>;
   listProcessHistoryItems(args: { processId: string }): Promise<ProcessHistoryItem[]>;
   getCurrentProcessRequest(args: { processId: string }): Promise<CurrentProcessRequest | null>;
-  listProcessOutputs(args: { processId: string }): Promise<ProcessOutputReference[]>;
+  getCurrentProcessMaterialRefs(args: { processId: string }): Promise<CurrentProcessMaterialRefs>;
+  setCurrentProcessMaterialRefs(args: {
+    processId: string;
+    artifactIds: string[];
+    sourceAttachmentIds: string[];
+  }): Promise<CurrentProcessMaterialRefs>;
+  listProcessOutputs(args: { processId: string }): Promise<PlatformProcessOutputSummary[]>;
+  replaceCurrentProcessOutputs(args: {
+    processId: string;
+    outputs: PlatformProcessOutputWriteInput[];
+  }): Promise<PlatformProcessOutputSummary[]>;
   listProcessSideWorkItems(args: { processId: string }): Promise<SideWorkItem[]>;
 }
 
@@ -198,11 +230,43 @@ const getCurrentProcessRequestQuery = makeFunctionReference<
   CurrentProcessRequest | null
 >('processes:getCurrentProcessRequest');
 
+const getCurrentProcessMaterialRefsQuery = makeFunctionReference<
+  'query',
+  { processId: string },
+  CurrentProcessMaterialRefs
+>('processes:getCurrentProcessMaterialRefs');
+
+const setCurrentProcessMaterialRefsMutation = makeFunctionReference<
+  'mutation',
+  {
+    processId: string;
+    artifactIds: string[];
+    sourceAttachmentIds: string[];
+  },
+  CurrentProcessMaterialRefs
+>('processes:setCurrentProcessMaterialRefs');
+
 const listProcessOutputsQuery = makeFunctionReference<
   'query',
   { processId: string },
-  ProcessOutputReference[]
+  PlatformProcessOutputSummary[]
 >('processOutputs:listProcessOutputs');
+
+const replaceCurrentProcessOutputsMutation = makeFunctionReference<
+  'mutation',
+  {
+    processId: string;
+    outputs: Array<{
+      outputId?: string;
+      linkedArtifactId: string | null;
+      displayName: string;
+      revisionLabel: string | null;
+      state: string;
+      updatedAt?: string;
+    }>;
+  },
+  PlatformProcessOutputSummary[]
+>('processOutputs:replaceCurrentProcessOutputs');
 
 const listProcessSideWorkItemsQuery = makeFunctionReference<
   'query',
@@ -348,8 +412,39 @@ export class NullPlatformStore implements PlatformStore {
     return null;
   }
 
-  async listProcessOutputs(): Promise<ProcessOutputReference[]> {
+  async getCurrentProcessMaterialRefs(): Promise<CurrentProcessMaterialRefs> {
+    return {
+      artifactIds: [],
+      sourceAttachmentIds: [],
+    };
+  }
+
+  async setCurrentProcessMaterialRefs(args: {
+    processId: string;
+    artifactIds: string[];
+    sourceAttachmentIds: string[];
+  }): Promise<CurrentProcessMaterialRefs> {
+    return {
+      artifactIds: args.artifactIds,
+      sourceAttachmentIds: args.sourceAttachmentIds,
+    };
+  }
+
+  async listProcessOutputs(): Promise<PlatformProcessOutputSummary[]> {
     return [];
+  }
+
+  async replaceCurrentProcessOutputs(args: {
+    outputs: PlatformProcessOutputWriteInput[];
+  }): Promise<PlatformProcessOutputSummary[]> {
+    return args.outputs.map((output, index) => ({
+      outputId: output.outputId ?? `output-${index + 1}`,
+      linkedArtifactId: output.linkedArtifactId,
+      displayName: output.displayName,
+      revisionLabel: output.revisionLabel,
+      state: output.state,
+      updatedAt: output.updatedAt ?? new Date().toISOString(),
+    }));
   }
 
   async listProcessSideWorkItems(): Promise<SideWorkItem[]> {
@@ -460,8 +555,43 @@ export class ConvexPlatformStore implements PlatformStore {
     return this.client.query(getCurrentProcessRequestQuery, args);
   }
 
-  async listProcessOutputs(args: { processId: string }): Promise<ProcessOutputReference[]> {
+  async getCurrentProcessMaterialRefs(args: {
+    processId: string;
+  }): Promise<CurrentProcessMaterialRefs> {
+    return this.client.query(getCurrentProcessMaterialRefsQuery, args);
+  }
+
+  async setCurrentProcessMaterialRefs(args: {
+    processId: string;
+    artifactIds: string[];
+    sourceAttachmentIds: string[];
+  }): Promise<CurrentProcessMaterialRefs> {
+    return this.client.mutation(setCurrentProcessMaterialRefsMutation, {
+      processId: args.processId,
+      artifactIds: args.artifactIds,
+      sourceAttachmentIds: args.sourceAttachmentIds,
+    });
+  }
+
+  async listProcessOutputs(args: { processId: string }): Promise<PlatformProcessOutputSummary[]> {
     return this.client.query(listProcessOutputsQuery, args);
+  }
+
+  async replaceCurrentProcessOutputs(args: {
+    processId: string;
+    outputs: PlatformProcessOutputWriteInput[];
+  }): Promise<PlatformProcessOutputSummary[]> {
+    return this.client.mutation(replaceCurrentProcessOutputsMutation, {
+      processId: args.processId,
+      outputs: args.outputs.map((output) => ({
+        outputId: output.outputId,
+        linkedArtifactId: output.linkedArtifactId,
+        displayName: output.displayName,
+        revisionLabel: output.revisionLabel,
+        state: output.state,
+        updatedAt: output.updatedAt,
+      })),
+    });
   }
 
   async listProcessSideWorkItems(args: { processId: string }): Promise<SideWorkItem[]> {
@@ -478,7 +608,8 @@ export class InMemoryPlatformStore implements PlatformStore {
   private readonly sourceAttachmentsByProjectId = new Map<string, SourceAttachmentSummary[]>();
   private readonly processHistoryItemsByProcessId = new Map<string, ProcessHistoryItem[]>();
   private readonly currentRequestsByProcessId = new Map<string, CurrentProcessRequest | null>();
-  private readonly processOutputsByProcessId = new Map<string, ProcessOutputReference[]>();
+  private readonly currentMaterialRefsByProcessId = new Map<string, CurrentProcessMaterialRefs>();
+  private readonly processOutputsByProcessId = new Map<string, PlatformProcessOutputSummary[]>();
   private readonly processSideWorkItemsByProcessId = new Map<string, SideWorkItem[]>();
   private readonly startProcessResultsByProcessId = new Map<string, ProcessActionStoreResult>();
   private readonly resumeProcessResultsByProcessId = new Map<string, ProcessActionStoreResult>();
@@ -502,7 +633,8 @@ export class InMemoryPlatformStore implements PlatformStore {
       sourceAttachmentsByProjectId?: Record<string, SourceAttachmentSummary[]>;
       processHistoryItemsByProcessId?: Record<string, ProcessHistoryItem[]>;
       currentRequestsByProcessId?: Record<string, CurrentProcessRequest | null>;
-      processOutputsByProcessId?: Record<string, ProcessOutputReference[]>;
+      currentMaterialRefsByProcessId?: Record<string, CurrentProcessMaterialRefs>;
+      processOutputsByProcessId?: Record<string, PlatformProcessOutputSeed[]>;
       processSideWorkItemsByProcessId?: Record<string, SideWorkItem[]>;
       startProcessResultsByProcessId?: Record<string, ProcessActionStoreResult>;
       resumeProcessResultsByProcessId?: Record<string, ProcessActionStoreResult>;
@@ -542,8 +674,18 @@ export class InMemoryPlatformStore implements PlatformStore {
       this.currentRequestsByProcessId.set(processId, request);
     }
 
+    for (const [processId, refs] of Object.entries(args.currentMaterialRefsByProcessId ?? {})) {
+      this.currentMaterialRefsByProcessId.set(processId, refs);
+    }
+
     for (const [processId, outputs] of Object.entries(args.processOutputsByProcessId ?? {})) {
-      this.processOutputsByProcessId.set(processId, outputs);
+      this.processOutputsByProcessId.set(
+        processId,
+        outputs.map((output) => ({
+          ...output,
+          linkedArtifactId: output.linkedArtifactId ?? null,
+        })),
+      );
     }
 
     for (const [processId, items] of Object.entries(args.processSideWorkItemsByProcessId ?? {})) {
@@ -810,8 +952,56 @@ export class InMemoryPlatformStore implements PlatformStore {
     return this.currentRequestsByProcessId.get(args.processId) ?? null;
   }
 
-  async listProcessOutputs(args: { processId: string }): Promise<ProcessOutputReference[]> {
+  async getCurrentProcessMaterialRefs(args: {
+    processId: string;
+  }): Promise<CurrentProcessMaterialRefs> {
+    return (
+      this.currentMaterialRefsByProcessId.get(args.processId) ?? {
+        artifactIds: [],
+        sourceAttachmentIds: [],
+      }
+    );
+  }
+
+  async setCurrentProcessMaterialRefs(args: {
+    processId: string;
+    artifactIds: string[];
+    sourceAttachmentIds: string[];
+  }): Promise<CurrentProcessMaterialRefs> {
+    const nextRefs = {
+      artifactIds: [...args.artifactIds],
+      sourceAttachmentIds: [...args.sourceAttachmentIds],
+    };
+    this.currentMaterialRefsByProcessId.set(args.processId, nextRefs);
+    return nextRefs;
+  }
+
+  async listProcessOutputs(args: { processId: string }): Promise<PlatformProcessOutputSummary[]> {
     return this.processOutputsByProcessId.get(args.processId) ?? [];
+  }
+
+  async replaceCurrentProcessOutputs(args: {
+    processId: string;
+    outputs: PlatformProcessOutputWriteInput[];
+  }): Promise<PlatformProcessOutputSummary[]> {
+    const existingOutputIds = new Set(
+      (this.processOutputsByProcessId.get(args.processId) ?? []).map((output) => output.outputId),
+    );
+    const nextOutputs = args.outputs.map((output, index) => {
+      const fallbackOutputId = `${args.processId}:output-${existingOutputIds.size + index + 1}`;
+
+      return {
+        outputId: output.outputId ?? fallbackOutputId,
+        linkedArtifactId: output.linkedArtifactId,
+        displayName: output.displayName,
+        revisionLabel: output.revisionLabel,
+        state: output.state,
+        updatedAt: output.updatedAt ?? new Date().toISOString(),
+      };
+    });
+
+    this.processOutputsByProcessId.set(args.processId, nextOutputs);
+    return nextOutputs;
   }
 
   async listProcessSideWorkItems(args: { processId: string }): Promise<SideWorkItem[]> {

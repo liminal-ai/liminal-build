@@ -30,6 +30,14 @@ export const standaloneOutputReferenceFixture = processOutputReferenceSchema.par
   updatedAt: '2026-04-13T12:14:00.000Z',
 });
 
+export const revisedStandaloneOutputReferenceFixture = processOutputReferenceSchema.parse({
+  outputId: standaloneOutputReferenceFixture.outputId,
+  displayName: standaloneOutputReferenceFixture.displayName,
+  revisionLabel: 'notes-2',
+  state: 'ready_for_review',
+  updatedAt: '2026-04-13T12:24:00.000Z',
+});
+
 export const processSourceReferenceFixture = processSourceReferenceSchema.parse({
   sourceAttachmentId: 'source-process-001',
   displayName: 'liminal-build',
@@ -37,6 +45,31 @@ export const processSourceReferenceFixture = processSourceReferenceSchema.parse(
   targetRef: 'main',
   hydrationState: 'hydrated',
   updatedAt: '2026-04-13T12:10:00.000Z',
+});
+
+export const phaseChangeArtifactReferenceFixture = processArtifactReferenceSchema.parse({
+  artifactId: 'artifact-process-002',
+  displayName: 'Implementation Checklist',
+  currentVersionLabel: 'review-1',
+  roleLabel: 'Current review artifact',
+  updatedAt: '2026-04-13T12:25:00.000Z',
+});
+
+export const phaseChangeOutputReferenceFixture = processOutputReferenceSchema.parse({
+  outputId: 'output-phase-change-001',
+  displayName: 'Implementation Plan',
+  revisionLabel: 'plan-4',
+  state: 'ready_for_review',
+  updatedAt: '2026-04-13T12:26:00.000Z',
+});
+
+export const phaseChangeSourceReferenceFixture = processSourceReferenceSchema.parse({
+  sourceAttachmentId: 'source-process-002',
+  displayName: 'docs/spec-build',
+  purpose: 'review',
+  targetRef: 'story-4',
+  hydrationState: 'hydrated',
+  updatedAt: '2026-04-13T12:23:00.000Z',
 });
 
 export const processMaterialsSectionErrorFixture = processSurfaceSectionErrorSchema.parse({
@@ -47,8 +80,22 @@ export const processMaterialsSectionErrorFixture = processSurfaceSectionErrorSch
 export const readyProcessMaterialsFixture = processMaterialsSectionEnvelopeSchema.parse({
   status: 'ready',
   currentArtifacts: [currentArtifactReferenceFixture],
-  currentOutputs: [standaloneOutputReferenceFixture, linkedOutputReferenceFixture],
+  currentOutputs: [standaloneOutputReferenceFixture],
   currentSources: [processSourceReferenceFixture],
+});
+
+export const revisedOutputProcessMaterialsFixture = processMaterialsSectionEnvelopeSchema.parse({
+  status: 'ready',
+  currentArtifacts: [currentArtifactReferenceFixture],
+  currentOutputs: [revisedStandaloneOutputReferenceFixture],
+  currentSources: [processSourceReferenceFixture],
+});
+
+export const phaseChangedProcessMaterialsFixture = processMaterialsSectionEnvelopeSchema.parse({
+  status: 'ready',
+  currentArtifacts: [phaseChangeArtifactReferenceFixture],
+  currentOutputs: [phaseChangeOutputReferenceFixture],
+  currentSources: [phaseChangeSourceReferenceFixture],
 });
 
 export const emptyProcessMaterialsFixture = processMaterialsSectionEnvelopeSchema.parse({

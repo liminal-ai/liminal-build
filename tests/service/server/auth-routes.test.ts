@@ -448,8 +448,30 @@ describe('auth routes', () => {
       async getCurrentProcessRequest() {
         return null;
       },
+      async getCurrentProcessMaterialRefs() {
+        return {
+          artifactIds: [],
+          sourceAttachmentIds: [],
+        };
+      },
+      async setCurrentProcessMaterialRefs(args) {
+        return {
+          artifactIds: args.artifactIds,
+          sourceAttachmentIds: args.sourceAttachmentIds,
+        };
+      },
       async listProcessOutputs() {
         return [];
+      },
+      async replaceCurrentProcessOutputs(args) {
+        return args.outputs.map((output, index) => ({
+          outputId: output.outputId ?? `output-${index + 1}`,
+          linkedArtifactId: output.linkedArtifactId,
+          displayName: output.displayName,
+          revisionLabel: output.revisionLabel,
+          state: output.state,
+          updatedAt: output.updatedAt ?? '2026-04-13T12:06:00.000Z',
+        }));
       },
       async listProcessSideWorkItems() {
         return [];

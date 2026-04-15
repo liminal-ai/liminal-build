@@ -6,20 +6,26 @@ import { renderProcessWorkSurfacePage } from '../../../apps/platform/client/feat
 import type { ProcessWorkSurfaceResponse } from '../../../apps/platform/shared/contracts/index.js';
 import { shellBootstrapPayloadSchema } from '../../../apps/platform/shared/contracts/index.js';
 import {
+  currentArtifactReferenceFixture,
+  emptyProcessMaterialsFixture,
+  processSourceReferenceFixture,
+  standaloneOutputReferenceFixture,
+} from '../../fixtures/materials.js';
+import {
   currentProcessRequestFixture,
   earlyProcessWorkSurfaceFixture,
   interruptedProcessWorkSurfaceFixture,
+  pausedProcessWorkSurfaceFixture,
   processAccessDeniedErrorFixture,
   processProjectNotFoundErrorFixture,
   processResumeNotAvailableErrorFixture,
   processStartNotAvailableErrorFixture,
   processUnavailableErrorFixture,
-  resumedInterruptedToFailedProcessResponseFixture,
-  resumedInterruptedProcessResponseFixture,
-  resumedPausedToCompletedProcessResponseFixture,
-  resumedPausedProcessResponseFixture,
-  pausedProcessWorkSurfaceFixture,
   readyProcessWorkSurfaceFixture,
+  resumedInterruptedProcessResponseFixture,
+  resumedInterruptedToFailedProcessResponseFixture,
+  resumedPausedProcessResponseFixture,
+  resumedPausedToCompletedProcessResponseFixture,
   startedProcessResponseFixture,
   startedWaitingProcessResponseFixture,
   submittedProcessResponseWithFollowUpFixture,
@@ -283,6 +289,116 @@ describe('process work surface page', () => {
     expect(view.textContent).toContain(
       readyProcessWorkSurfaceFixture.sideWork.items[0]?.displayLabel ?? '',
     );
+  });
+
+  it('TC-4.1a keeps current materials visible alongside active process work', () => {
+    const store = buildStore();
+    const view = renderProcessWorkSurfacePage({
+      store,
+      targetDocument: document,
+      targetWindow: window,
+      onOpenProject: () => {},
+    });
+    const materialsSection = view.querySelector('[data-process-materials-section="true"]');
+
+    expect(view.textContent).toContain(readyProcessWorkSurfaceFixture.history.items[0]?.text ?? '');
+    expect(materialsSection?.textContent).toContain(currentArtifactReferenceFixture.displayName);
+    expect(materialsSection?.textContent).toContain(standaloneOutputReferenceFixture.displayName);
+  });
+
+  it('TC-4.1b shows relevant source attachments in the materials panel', () => {
+    const store = buildStore();
+    const view = renderProcessWorkSurfacePage({
+      store,
+      targetDocument: document,
+      targetWindow: window,
+      onOpenProject: () => {},
+    });
+    const materialsSection = view.querySelector('[data-process-materials-section="true"]');
+
+    expect(materialsSection?.textContent).toContain(processSourceReferenceFixture.displayName);
+    expect(materialsSection?.textContent).toContain(
+      `Target ref: ${processSourceReferenceFixture.targetRef}`,
+    );
+  });
+
+  it('TC-4.2a shows artifact identity and current revision context', () => {
+    const store = buildStore();
+    const view = renderProcessWorkSurfacePage({
+      store,
+      targetDocument: document,
+      targetWindow: window,
+      onOpenProject: () => {},
+    });
+    const materialsSection = view.querySelector('[data-process-materials-section="true"]');
+
+    expect(materialsSection?.textContent).toContain(
+      `Artifact ID: ${currentArtifactReferenceFixture.artifactId}`,
+    );
+    expect(materialsSection?.textContent).toContain(
+      `Current version: ${currentArtifactReferenceFixture.currentVersionLabel}`,
+    );
+  });
+
+  it('TC-4.2b shows output identity and revision context', () => {
+    const store = buildStore();
+    const view = renderProcessWorkSurfacePage({
+      store,
+      targetDocument: document,
+      targetWindow: window,
+      onOpenProject: () => {},
+    });
+    const materialsSection = view.querySelector('[data-process-materials-section="true"]');
+
+    expect(materialsSection?.textContent).toContain(
+      `Output ID: ${standaloneOutputReferenceFixture.outputId}`,
+    );
+    expect(materialsSection?.textContent).toContain(
+      `Current revision: ${standaloneOutputReferenceFixture.revisionLabel}`,
+    );
+    expect(materialsSection?.textContent).toContain(
+      `State: ${standaloneOutputReferenceFixture.state}`,
+    );
+  });
+
+  it('TC-4.4a shows a clear empty materials state without stale context', () => {
+    const store = buildStore({
+      processSurface: {
+        projectId: readyProcessWorkSurfaceFixture.project.projectId,
+        processId: readyProcessWorkSurfaceFixture.process.processId,
+        project: readyProcessWorkSurfaceFixture.project,
+        process: readyProcessWorkSurfaceFixture.process,
+        history: readyProcessWorkSurfaceFixture.history,
+        materials: emptyProcessMaterialsFixture,
+        currentRequest: readyProcessWorkSurfaceFixture.currentRequest,
+        sideWork: readyProcessWorkSurfaceFixture.sideWork,
+        isLoading: false,
+        error: null,
+        actionError: null,
+        live: {
+          connectionState: 'idle',
+          subscriptionId: null,
+          lastSequenceNumber: null,
+          error: null,
+        },
+      },
+    });
+    const view = renderProcessWorkSurfacePage({
+      store,
+      targetDocument: document,
+      targetWindow: window,
+      onOpenProject: () => {},
+    });
+    const materialsSection = view.querySelector('[data-process-materials-section="true"]');
+
+    expect(materialsSection?.textContent).toContain('No current materials apply right now.');
+    expect(materialsSection?.textContent).not.toContain(
+      currentArtifactReferenceFixture.displayName,
+    );
+    expect(materialsSection?.textContent).not.toContain(
+      standaloneOutputReferenceFixture.displayName,
+    );
+    expect(materialsSection?.textContent).not.toContain(processSourceReferenceFixture.displayName);
   });
 
   it('renders request-level unavailable state without stale process content', () => {

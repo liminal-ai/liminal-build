@@ -5,7 +5,12 @@ import {
   processSurfaceStateSchema,
 } from '../../apps/platform/shared/contracts/index.js';
 import { progressUpdateHistoryFixture } from './process-history.js';
-import { readyProcessMaterialsFixture } from './materials.js';
+import {
+  emptyProcessMaterialsFixture,
+  phaseChangedProcessMaterialsFixture,
+  readyProcessMaterialsFixture,
+  revisedOutputProcessMaterialsFixture,
+} from './materials.js';
 import {
   currentProcessRequestFixture,
   runningProcessSurfaceFixture,
@@ -101,11 +106,35 @@ export const materialsUpsertLiveFixture = buildLiveProcessMessageFixture({
   payload: readyProcessMaterialsFixture,
 });
 
+export const materialsPhaseChangeUpsertLiveFixture = buildLiveProcessMessageFixture({
+  messageType: 'upsert',
+  entityType: 'materials',
+  entityId: 'materials',
+  sequenceNumber: 8,
+  payload: phaseChangedProcessMaterialsFixture,
+});
+
+export const materialsRevisionUpsertLiveFixture = buildLiveProcessMessageFixture({
+  messageType: 'upsert',
+  entityType: 'materials',
+  entityId: 'materials',
+  sequenceNumber: 9,
+  payload: revisedOutputProcessMaterialsFixture,
+});
+
+export const materialsClearedSnapshotLiveFixture = buildLiveProcessMessageFixture({
+  messageType: 'snapshot',
+  entityType: 'materials',
+  entityId: 'materials',
+  sequenceNumber: 10,
+  payload: emptyProcessMaterialsFixture,
+});
+
 export const sideWorkUpsertLiveFixture = buildLiveProcessMessageFixture({
   messageType: 'upsert',
   entityType: 'side_work',
   entityId: 'side-work-001',
-  sequenceNumber: 8,
+  sequenceNumber: 11,
   payload: readySideWorkFixture,
 });
 
@@ -113,7 +142,7 @@ export const historyErrorLiveFixture = buildLiveProcessMessageFixture({
   messageType: 'error',
   entityType: 'history',
   entityId: 'history',
-  sequenceNumber: 9,
+  sequenceNumber: 12,
   payload: {
     code: 'PROCESS_SURFACE_HISTORY_LOAD_FAILED',
     message: 'History reconnect failed.',
@@ -135,7 +164,7 @@ export const connectedProcessSurfaceStateFixture = processSurfaceStateSchema.par
   live: {
     connectionState: 'connected',
     subscriptionId: 'subscription-001',
-    lastSequenceNumber: 8,
+    lastSequenceNumber: 11,
     error: null,
   },
 });
@@ -145,7 +174,7 @@ export const reconnectingProcessSurfaceStateFixture = processSurfaceStateSchema.
   live: {
     connectionState: 'reconnecting',
     subscriptionId: 'subscription-001',
-    lastSequenceNumber: 8,
+    lastSequenceNumber: 11,
     error: null,
   },
 });

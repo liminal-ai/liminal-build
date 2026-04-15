@@ -3,8 +3,8 @@
 ## Run State
 
 - `state`: `STORY_ACTIVE`
-- `phase`: `acceptance`
-- `updatedAtUtc`: `2026-04-15T08:34:32Z`
+- `phase`: `fix-routing`
+- `updatedAtUtc`: `2026-04-15T09:01:41Z`
 - `orchestrator`: `gpt-5.4 xhigh`
 - `implementation default lane`: `Codex gpt-5.4 high`
 - `implementation escalation lane`: `Codex gpt-5.4 xhigh`
@@ -880,6 +880,90 @@ This does not change the fact that long-running work may require polling, but it
 - `acceptance decision`: accept Story 3 as implemented
 - `next action`: stage and commit Story 3
 
+## Story 3 Acceptance And Commit
+
+- `acceptance`: complete
+- `commit`: `a70c3240bd7a6dc5558e9cf03736b07d1057ce1c`
+- `message`: `feat: Story 3 - Conversation and Current Request`
+- `tree status after commit`: clean
+- `story boundary note`: Story 3 is sealed with its verification artifacts and implementation log included in the commit history
+
+## Story 4 Preflight
+
+- `story`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/stories/04-materials-and-outputs.md`
+- `lane`: `Codex gpt-5.4 xhigh via CLI subagent`
+- `why xhigh`:
+  - Story 4 is the first slice that makes materials and outputs current-state semantics visible rather than implicit
+  - it spans server readers, client rendering, replacement semantics, and durable/current-output distinctions
+  - stale-material carry-forward bugs would be highly visible and hard to unwind later in Story 6
+- `focus areas`:
+  - current artifacts, outputs, and source attachments visible alongside process work
+  - identity and revision context clarity for current artifacts and outputs
+  - snapshot/upsert replacement semantics when phase or current output changes
+  - empty materials state when no current context applies
+  - guard against stale prior materials lingering as current
+- `next action`: launch the Story 4 implementer through the CLI shell-session pattern and keep the orchestrator blocked on that session until a real implementation report is available
+
+## Story 4 Implementer Stall Round 1
+
+- `session`: `85966`
+- `artifact`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/04-materials-and-outputs/codex-impl-round-1.jsonl`
+- `symptom`:
+  - the worker completed the Story 4 reading journey and began code inspection
+  - then the shell session remained alive while the JSONL artifact stopped advancing
+  - no edit phase, gate phase, or implementation report followed within a bounded interval
+- `diagnosis`: stalled CLI implementer lane after inspection
+- `recovery`: terminate the stalled shell lane, preserve the round-1 artifact, and relaunch a tighter Story 4 implementer prompt that starts from the already-inspected materials seams
+
+## Story 4 Implementer Stall Round 2
+
+- `session`: `44140`
+- `artifact`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/04-materials-and-outputs/codex-impl-round-2.jsonl`
+- `symptom`:
+  - the tighter round-2 lane progressed through targeted seam inspection and focused test execution
+  - it touched Story 4 fixture files, but it did not expand into a credible implementation patch or produce a report
+  - the shell session remained alive while the JSONL stopped advancing again
+- `diagnosis`: second stalled CLI implementer lane, likely over-indexing on exploration and local test probing instead of converging into the implementation/report path
+- `recovery`: preserve the round-2 artifact, terminate the lane, and relaunch an even tighter round-3 implementer prompt that names the minimum acceptable Story 4 write surface and requires immediate movement into edits plus the full gate
+
+## Story 4 Implementation Round 3
+
+- `implementer`: `Codex gpt-5.4 xhigh via CLI shell session`
+- `artifact`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/04-materials-and-outputs/codex-impl-round-3.jsonl`
+- `materialized report`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/04-materials-and-outputs/codex-impl-round-3.md`
+- `verification bundle`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/04-materials-and-outputs/verification-bundle.md`
+- `implementation outcome`:
+  - materials panel now renders clearer artifact, output, and source identity/revision context
+  - empty materials state copy now explicitly clears stale context
+  - client live materials tests now prove envelope replacement on phase change, output revision, and empty-state clearing
+  - client page tests now prove Story 4 visibility and empty-state rendering requirements
+- `gate result`:
+  - `corepack pnpm run red-verify`
+    - first pass failed on formatter output only
+    - rerun after formatter passed
+  - `corepack pnpm run test:service` -> `PASS`
+  - `corepack pnpm run test:client` -> `PASS`
+- `claimed residual risks`:
+  - server/API coverage for materials dedup remains intentionally light in this round
+  - no Story 5 or Story 6 behavior was introduced
+- `next action`: fresh dual verification through CLI-managed lanes only
+
+## Story 4 Verification Summary
+
+- `primary codex verifier`: `REVISE`
+  - `artifact`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/04-materials-and-outputs/codex-review.jsonl`
+  - `materialized report`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/04-materials-and-outputs/codex-review.md`
+  - `gate`: `corepack pnpm run red-verify && corepack pnpm run test:service && corepack pnpm run test:client` -> `PASS`
+- `second-lane cursor verifier`: `BLOCK`
+  - `session`: `a11872a9-9233-4a68-95c6-fd44f33bbb49`
+  - `materialized report`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/04-materials-and-outputs/cursor-review.md`
+  - `meaning`: no independent gate execution in this lane because Cursor plan mode rejected shell commands
+- `blocking findings for fix-routing`:
+  - durable bootstrap still returns broad process-scoped materials instead of truly current phase-relevant materials
+  - output/artifact dedupe still relies on display-name-plus-revision heuristics instead of the real artifact linkage
+- `fix list`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/04-materials-and-outputs/fix-list-round-1.md`
+- `next action`: route Story 4 fix round 1 through the CLI worker lane
+
 ## Prompt Map
 
 ### Handoff Structure
@@ -1038,6 +1122,25 @@ For each finding:
   After your review: what else did you notice but chose not to report?
 </output_contract>
 ```
+
+## 2026-04-15 - Story 4 local repair round 2
+
+- Context: the fresh post-fix primary review still returned `REVISE` because Story 4’s reader/bootstrap path had been corrected, but the durable layer still had no non-test writer surfaces for `currentArtifactIds`, `currentSourceAttachmentIds`, or current process outputs.
+- Decision: took Story 4 locally instead of dispatching another async worker so the fix could be carried through implementation, verification, and artifact updates without another orchestration stall.
+- Durable fix shipped:
+  - added public Convex mutation `processes:setCurrentProcessMaterialRefs`
+  - added public Convex mutation `processOutputs:replaceCurrentProcessOutputs`
+  - exposed both writers through `PlatformStore` (`NullPlatformStore`, `ConvexPlatformStore`, `InMemoryPlatformStore`) and updated affected store test doubles
+  - added direct Convex tests `convex/processes.test.ts` and `convex/processOutputs.test.ts`
+  - added `test:convex` and folded it into `corepack pnpm run verify`
+- Why this closes the blocker: Story 4 now has shipped durable writer paths for current material refs and current outputs, plus direct Convex-layer proof for exact-set write/read, stale clearing, linked-artifact preservation, output replacement, and cross-project validation. The app is no longer relying only on seeded `InMemoryPlatformStore` state to make the reader look correct.
+- Verification:
+  - `corepack pnpm run test:convex` -> `PASS`
+  - `corepack pnpm run verify` -> `PASS`
+- Acceptance: Story 4 is accepted at the story level after repair round 2.
+- Skill / troubleshooting note:
+  - The earlier blocker was not “reader logic still broken.” It was “reader logic fixed but durable write path still missing.”
+  - One recovery wrinkle during the local repair: importing Convex generated `Id` types into `apps/platform/server/.../platform-store.ts` broke the platform package `rootDir` boundary during app typecheck. The fix was to keep strict `Id` usage inside `convex/` and use plain string types on the app-side adapter boundary.
 
 ### Prompt 3: Story Verifier - Sonnet (`claude sonnet 4.6 max`)
 

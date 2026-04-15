@@ -8,8 +8,17 @@ import {
 import {
   buildLiveProcessMessageFixture,
   connectedProcessSurfaceStateFixture,
+  materialsClearedSnapshotLiveFixture,
+  materialsPhaseChangeUpsertLiveFixture,
+  materialsRevisionUpsertLiveFixture,
   processSnapshotLiveFixture,
 } from '../../fixtures/live-process.js';
+import {
+  emptyProcessMaterialsFixture,
+  phaseChangedProcessMaterialsFixture,
+  readyProcessMaterialsFixture,
+  revisedOutputProcessMaterialsFixture,
+} from '../../fixtures/materials.js';
 import {
   completedProcessSurfaceFixture,
   failedProcessSurfaceFixture,
@@ -29,6 +38,19 @@ function buildRunningSurfaceState() {
       connectionState: 'connected',
       subscriptionId: 'subscription-001',
       lastSequenceNumber: 1,
+      error: null,
+    },
+  });
+}
+
+function buildConnectedMaterialsState(lastSequenceNumber: number) {
+  return processSurfaceStateSchema.parse({
+    ...connectedProcessSurfaceStateFixture,
+    materials: readyProcessMaterialsFixture,
+    live: {
+      connectionState: 'connected',
+      subscriptionId: 'subscription-001',
+      lastSequenceNumber,
       error: null,
     },
   });
@@ -179,5 +201,50 @@ describe('process live foundation', () => {
       nextActionLabel: interruptedProcessSurfaceFixture.nextActionLabel,
       availableActions: ['resume', 'review', 'restart'],
     });
+  });
+
+  it('TC-4.3a phase changes replace the visible materials envelope', () => {
+    const nextState = applyLiveProcessMessage({
+      state: buildConnectedMaterialsState(materialsPhaseChangeUpsertLiveFixture.sequenceNumber - 1),
+      message: materialsPhaseChangeUpsertLiveFixture,
+    });
+
+    expect(nextState.materials).toEqual(phaseChangedProcessMaterialsFixture);
+    expect(nextState.materials?.currentArtifacts).toEqual(
+      phaseChangedProcessMaterialsFixture.currentArtifacts,
+    );
+    expect(nextState.materials?.currentArtifacts).not.toEqual(
+      readyProcessMaterialsFixture.currentArtifacts,
+    );
+    expect(nextState.materials?.currentSources).not.toEqual(
+      readyProcessMaterialsFixture.currentSources,
+    );
+  });
+
+  it('TC-4.3b output revision updates replace the current output context', () => {
+    const nextState = applyLiveProcessMessage({
+      state: buildConnectedMaterialsState(materialsRevisionUpsertLiveFixture.sequenceNumber - 1),
+      message: materialsRevisionUpsertLiveFixture,
+    });
+
+    expect(nextState.materials).toEqual(revisedOutputProcessMaterialsFixture);
+    expect(nextState.materials?.currentOutputs).toEqual(
+      revisedOutputProcessMaterialsFixture.currentOutputs,
+    );
+    expect(nextState.materials?.currentOutputs).not.toEqual(
+      readyProcessMaterialsFixture.currentOutputs,
+    );
+  });
+
+  it('TC-4.4b empty materials snapshots clear stale prior materials context', () => {
+    const nextState = applyLiveProcessMessage({
+      state: buildConnectedMaterialsState(materialsClearedSnapshotLiveFixture.sequenceNumber - 1),
+      message: materialsClearedSnapshotLiveFixture,
+    });
+
+    expect(nextState.materials).toEqual(emptyProcessMaterialsFixture);
+    expect(nextState.materials?.currentArtifacts).toHaveLength(0);
+    expect(nextState.materials?.currentOutputs).toHaveLength(0);
+    expect(nextState.materials?.currentSources).toHaveLength(0);
   });
 });

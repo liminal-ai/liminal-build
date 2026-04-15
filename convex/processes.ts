@@ -1,3 +1,4 @@
+import { v } from 'convex/values';
 import type {
   CurrentProcessRequest,
   ProcessAvailableAction,
@@ -6,8 +7,7 @@ import type {
   ProcessSummary,
 } from '../apps/platform/shared/contracts/index.js';
 import type { Doc, Id } from './_generated/dataModel.js';
-import { mutation, query, type MutationCtx, type QueryCtx } from './_generated/server.js';
-import { v } from 'convex/values';
+import { type MutationCtx, mutation, type QueryCtx, query } from './_generated/server.js';
 
 export const supportedProcessTypeValidator = v.union(
   v.literal('ProductDefinition'),
@@ -115,6 +115,78 @@ export const getCurrentProcessRequest = query({
   },
 });
 
+export const getCurrentProcessMaterialRefs = query({
+  args: {
+    processId: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ artifactIds: string[]; sourceAttachmentIds: string[] }> => {
+    let processRecord: Doc<'processes'> | null = null;
+
+    try {
+      processRecord = await ctx.db.get(args.processId as Id<'processes'>);
+    } catch {
+      return {
+        artifactIds: [],
+        sourceAttachmentIds: [],
+      };
+    }
+
+    if (processRecord === null) {
+      return {
+        artifactIds: [],
+        sourceAttachmentIds: [],
+      };
+    }
+
+    return resolveCurrentProcessMaterialRefs(ctx, processRecord);
+  },
+});
+
+export const setCurrentProcessMaterialRefs = mutation({
+  args: {
+    processId: v.string(),
+    artifactIds: v.array(v.id('artifacts')),
+    sourceAttachmentIds: v.array(v.id('sourceAttachments')),
+  },
+  handler: async (ctx, args): Promise<{ artifactIds: string[]; sourceAttachmentIds: string[] }> => {
+    let processRecord: Doc<'processes'> | null = null;
+
+    try {
+      processRecord = await ctx.db.get(args.processId as Id<'processes'>);
+    } catch {
+      throw new Error('Process not found.');
+    }
+
+    if (processRecord === null) {
+      throw new Error('Process not found.');
+    }
+
+    const artifactIds = dedupeIds(args.artifactIds);
+    const sourceAttachmentIds = dedupeIds(args.sourceAttachmentIds);
+
+    await assertMaterialRefsBelongToProject(ctx, {
+      artifactIds,
+      sourceAttachmentIds,
+      projectId: processRecord.projectId,
+    });
+
+    const now = new Date().toISOString();
+
+    await writeCurrentProcessMaterialRefs(ctx, processRecord, {
+      artifactIds,
+      sourceAttachmentIds,
+      updatedAt: now,
+    });
+
+    await touchProcessAndProject(ctx, processRecord, now);
+
+    return {
+      artifactIds,
+      sourceAttachmentIds,
+    };
+  },
+});
+
 export const getSubmittedProcessResponse = query({
   args: {
     processId: v.string(),
@@ -192,6 +264,8 @@ export const createProcess = mutation({
     if (args.processType === 'ProductDefinition') {
       await ctx.db.insert('processProductDefinitionStates', {
         processId,
+        currentArtifactIds: [],
+        currentSourceAttachmentIds: [],
         createdAt: now,
         updatedAt: now,
       });
@@ -200,6 +274,8 @@ export const createProcess = mutation({
     if (args.processType === 'FeatureSpecification') {
       await ctx.db.insert('processFeatureSpecificationStates', {
         processId,
+        currentArtifactIds: [],
+        currentSourceAttachmentIds: [],
         createdAt: now,
         updatedAt: now,
       });
@@ -208,6 +284,8 @@ export const createProcess = mutation({
     if (args.processType === 'FeatureImplementation') {
       await ctx.db.insert('processFeatureImplementationStates', {
         processId,
+        currentArtifactIds: [],
+        currentSourceAttachmentIds: [],
         createdAt: now,
         updatedAt: now,
       });
@@ -423,6 +501,168 @@ async function resolveCurrentProcessRequest(
   };
 }
 
+async function resolveCurrentProcessMaterialRefs(
+  ctx: MutationCtx | QueryCtx,
+  processRecord: Doc<'processes'>,
+): Promise<{ artifactIds: string[]; sourceAttachmentIds: string[] }> {
+  switch (processRecord.processType) {
+    case 'ProductDefinition': {
+      const state = await ctx.db
+        .query('processProductDefinitionStates')
+        .withIndex('by_processId', (query) => query.eq('processId', processRecord._id))
+        .unique();
+
+      return {
+        artifactIds: state?.currentArtifactIds ?? [],
+        sourceAttachmentIds: state?.currentSourceAttachmentIds ?? [],
+      };
+    }
+    case 'FeatureSpecification': {
+      const state = await ctx.db
+        .query('processFeatureSpecificationStates')
+        .withIndex('by_processId', (query) => query.eq('processId', processRecord._id))
+        .unique();
+
+      return {
+        artifactIds: state?.currentArtifactIds ?? [],
+        sourceAttachmentIds: state?.currentSourceAttachmentIds ?? [],
+      };
+    }
+    case 'FeatureImplementation': {
+      const state = await ctx.db
+        .query('processFeatureImplementationStates')
+        .withIndex('by_processId', (query) => query.eq('processId', processRecord._id))
+        .unique();
+
+      return {
+        artifactIds: state?.currentArtifactIds ?? [],
+        sourceAttachmentIds: state?.currentSourceAttachmentIds ?? [],
+      };
+    }
+    default:
+      return {
+        artifactIds: [],
+        sourceAttachmentIds: [],
+      };
+  }
+}
+
+async function assertMaterialRefsBelongToProject(
+  ctx: MutationCtx,
+  args: {
+    artifactIds: Id<'artifacts'>[];
+    sourceAttachmentIds: Id<'sourceAttachments'>[];
+    projectId: string;
+  },
+): Promise<void> {
+  for (const artifactId of args.artifactIds) {
+    const artifact = await ctx.db.get(artifactId);
+
+    if (artifact === null || artifact.projectId !== args.projectId) {
+      throw new Error('Current artifacts must belong to the same project as the process.');
+    }
+  }
+
+  for (const sourceAttachmentId of args.sourceAttachmentIds) {
+    const sourceAttachment = await ctx.db.get(sourceAttachmentId);
+
+    if (sourceAttachment === null || sourceAttachment.projectId !== args.projectId) {
+      throw new Error('Current source attachments must belong to the same project as the process.');
+    }
+  }
+}
+
+function dedupeIds<TId extends string>(ids: TId[]): TId[] {
+  return [...new Set(ids)];
+}
+
+async function writeCurrentProcessMaterialRefs(
+  ctx: MutationCtx,
+  processRecord: Doc<'processes'>,
+  args: {
+    artifactIds: Id<'artifacts'>[];
+    sourceAttachmentIds: Id<'sourceAttachments'>[];
+    updatedAt: string;
+  },
+): Promise<void> {
+  switch (processRecord.processType) {
+    case 'ProductDefinition': {
+      const state = await ctx.db
+        .query('processProductDefinitionStates')
+        .withIndex('by_processId', (query) => query.eq('processId', processRecord._id))
+        .unique();
+
+      if (state === null) {
+        await ctx.db.insert('processProductDefinitionStates', {
+          processId: processRecord._id,
+          currentArtifactIds: args.artifactIds,
+          currentSourceAttachmentIds: args.sourceAttachmentIds,
+          createdAt: args.updatedAt,
+          updatedAt: args.updatedAt,
+        });
+        return;
+      }
+
+      await ctx.db.patch(state._id, {
+        currentArtifactIds: args.artifactIds,
+        currentSourceAttachmentIds: args.sourceAttachmentIds,
+        updatedAt: args.updatedAt,
+      });
+      return;
+    }
+    case 'FeatureSpecification': {
+      const state = await ctx.db
+        .query('processFeatureSpecificationStates')
+        .withIndex('by_processId', (query) => query.eq('processId', processRecord._id))
+        .unique();
+
+      if (state === null) {
+        await ctx.db.insert('processFeatureSpecificationStates', {
+          processId: processRecord._id,
+          currentArtifactIds: args.artifactIds,
+          currentSourceAttachmentIds: args.sourceAttachmentIds,
+          createdAt: args.updatedAt,
+          updatedAt: args.updatedAt,
+        });
+        return;
+      }
+
+      await ctx.db.patch(state._id, {
+        currentArtifactIds: args.artifactIds,
+        currentSourceAttachmentIds: args.sourceAttachmentIds,
+        updatedAt: args.updatedAt,
+      });
+      return;
+    }
+    case 'FeatureImplementation': {
+      const state = await ctx.db
+        .query('processFeatureImplementationStates')
+        .withIndex('by_processId', (query) => query.eq('processId', processRecord._id))
+        .unique();
+
+      if (state === null) {
+        await ctx.db.insert('processFeatureImplementationStates', {
+          processId: processRecord._id,
+          currentArtifactIds: args.artifactIds,
+          currentSourceAttachmentIds: args.sourceAttachmentIds,
+          createdAt: args.updatedAt,
+          updatedAt: args.updatedAt,
+        });
+        return;
+      }
+
+      await ctx.db.patch(state._id, {
+        currentArtifactIds: args.artifactIds,
+        currentSourceAttachmentIds: args.sourceAttachmentIds,
+        updatedAt: args.updatedAt,
+      });
+      return;
+    }
+    default:
+      return;
+  }
+}
+
 function deriveAvailableActions(status: ProcessStatus): ProcessAvailableAction[] {
   switch (status) {
     case 'draft':
@@ -487,4 +727,23 @@ async function transitionProcessToRunning(
     }),
     currentRequest: null,
   };
+}
+
+async function touchProcessAndProject(
+  ctx: MutationCtx,
+  processRecord: Doc<'processes'>,
+  now: string,
+): Promise<void> {
+  await ctx.db.patch(processRecord._id, {
+    updatedAt: now,
+  });
+
+  try {
+    await ctx.db.patch(processRecord.projectId as Id<'projects'>, {
+      lastUpdatedAt: now,
+      updatedAt: now,
+    });
+  } catch {
+    // Keep the process material update durable even if the project lookup is stale.
+  }
 }
