@@ -476,6 +476,16 @@ describe('auth routes', () => {
       async listProcessSideWorkItems() {
         return [];
       },
+      async replaceCurrentProcessSideWorkItems(args) {
+        return args.items.map((item, index) => ({
+          sideWorkId: item.sideWorkId ?? `side-work-${index + 1}`,
+          displayLabel: item.displayLabel,
+          purposeSummary: item.purposeSummary,
+          status: item.status,
+          resultSummary: item.resultSummary,
+          updatedAt: item.updatedAt ?? '2026-04-13T12:06:00.000Z',
+        }));
+      },
     };
     const app = await buildApp({
       authSessionService: createTestAuthSessionService({

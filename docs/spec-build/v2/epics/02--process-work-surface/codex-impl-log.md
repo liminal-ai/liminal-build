@@ -1142,6 +1142,30 @@ For each finding:
   - The earlier blocker was not “reader logic still broken.” It was “reader logic fixed but durable write path still missing.”
   - One recovery wrinkle during the local repair: importing Convex generated `Id` types into `apps/platform/server/.../platform-store.ts` broke the platform package `rootDir` boundary during app typecheck. The fix was to keep strict `Id` usage inside `convex/` and use plain string types on the app-side adapter boundary.
 
+## 2026-04-15 - Story 5 acceptance
+
+- Reload boundary: Story 5 continued from clean commit `d7337e422875fc0621031f5250687a86eacaf01e`.
+- Local implementation decision: kept Story 5 on the local orchestrator lane to avoid reintroducing async-worker stalls on the critical path.
+- Main Story 5 gap found during preflight:
+  - real Convex side-work reads were only `updatedAt desc`
+  - Story 5 and the tech design require `running` side work first, with remaining items ordered by `updatedAt desc`
+  - the repo also lacked the dedicated side-work Convex/client tests the test plan called for
+- Changes shipped:
+  - added active-first side-work ordering in `convex/processSideWorkItems.ts`
+  - added durable writer surface `replaceCurrentProcessSideWorkItems`
+  - exposed that writer through `PlatformStore`
+  - added defensive ordering in `side-work-section.reader.ts`
+  - improved `side-work-section.ts` rendering so purpose, status, result/failure, and updated context are distinct
+  - added `convex/processSideWorkItems.test.ts`
+  - added `tests/service/client/side-work-section.test.ts`
+  - added server bootstrap coverage for distinct side-work summaries and active-first ordering
+  - added page-level coverage for parent-process change after side-work outcome
+  - added store/live coverage for side-work upsert replacement
+- Verification:
+  - targeted Convex, server, and client story lanes -> `PASS`
+  - `corepack pnpm run verify` -> `PASS`
+- Acceptance: Story 5 is accepted at the story level.
+
 ### Prompt 3: Story Verifier - Sonnet (`claude sonnet 4.6 max`)
 
 ```xml

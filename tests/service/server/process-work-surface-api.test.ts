@@ -496,6 +496,98 @@ describe('process work surface api', () => {
     await app.close();
   });
 
+  it('TC-5.3a, TC-5.3b, TC-5.4a, and TC-5.4b return distinct side-work summaries with active items first', async () => {
+    const runningSideWork = readySideWorkFixture.items[0];
+    const completedSideWork = readySideWorkFixture.items[1];
+    const failedSideWork = readySideWorkFixture.items[2];
+
+    if (
+      runningSideWork === undefined ||
+      completedSideWork === undefined ||
+      failedSideWork === undefined
+    ) {
+      throw new Error('Expected side-work fixtures to be populated.');
+    }
+
+    const unsortedSideWorkItems = [failedSideWork, runningSideWork, completedSideWork];
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectSummary.projectId]: [waitingProcessSummary],
+      },
+      artifactsByProjectId: {
+        [projectSummary.projectId]: [],
+      },
+      sourceAttachmentsByProjectId: {
+        [projectSummary.projectId]: [],
+      },
+      currentRequestsByProcessId: {
+        [waitingProcessSummary.processId]: currentProcessRequestFixture,
+      },
+      currentMaterialRefsByProcessId: {
+        [waitingProcessSummary.processId]: {
+          artifactIds: [],
+          sourceAttachmentIds: [],
+        },
+      },
+      processOutputsByProcessId: {
+        [waitingProcessSummary.processId]: [],
+      },
+      processSideWorkItemsByProcessId: {
+        [waitingProcessSummary.processId]: unsortedSideWorkItems,
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().sideWork).toEqual({
+      status: 'ready',
+      items: readySideWorkFixture.items,
+    });
+    expect(response.json().sideWork.items[0]).toMatchObject({
+      sideWorkId: runningSideWork.sideWorkId,
+      status: 'running',
+      purposeSummary: runningSideWork.purposeSummary,
+    });
+    expect(response.json().sideWork.items[1]).toMatchObject({
+      status: 'completed',
+      resultSummary: completedSideWork.resultSummary,
+    });
+    expect(response.json().sideWork.items[2]).toMatchObject({
+      status: 'failed',
+      resultSummary: failedSideWork.resultSummary,
+    });
+
+    await app.close();
+  });
+
   it('TC-6.4b omits project data from a forbidden bootstrap response', async () => {
     const platformStore = new InMemoryPlatformStore({
       projectAccessByProjectId: {

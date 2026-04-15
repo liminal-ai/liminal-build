@@ -265,6 +265,26 @@ class RecordingPlatformStore implements PlatformStore {
     return [];
   }
 
+  async replaceCurrentProcessSideWorkItems(args: {
+    items: Array<{
+      sideWorkId?: string;
+      displayLabel: string;
+      purposeSummary: string;
+      status: SideWorkItem['status'];
+      resultSummary: string | null;
+      updatedAt?: string;
+    }>;
+  }): Promise<SideWorkItem[]> {
+    return args.items.map((item, index) => ({
+      sideWorkId: item.sideWorkId ?? `side-work-${index + 1}`,
+      displayLabel: item.displayLabel,
+      purposeSummary: item.purposeSummary,
+      status: item.status,
+      resultSummary: item.resultSummary,
+      updatedAt: item.updatedAt ?? new Date().toISOString(),
+    }));
+  }
+
   private updateProjectSummary(
     projectId: string,
     update: (project: ProjectSummary) => ProjectSummary,

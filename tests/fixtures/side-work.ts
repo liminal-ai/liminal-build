@@ -19,7 +19,7 @@ export const completedSideWorkFixture = sideWorkItemSchema.parse({
   purposeSummary: 'Gather additional supporting references.',
   status: 'completed',
   resultSummary: 'Three relevant references were added.',
-  updatedAt: '2026-04-13T12:16:00.000Z',
+  updatedAt: '2026-04-13T12:18:00.000Z',
 });
 
 export const failedSideWorkFixture = sideWorkItemSchema.parse({

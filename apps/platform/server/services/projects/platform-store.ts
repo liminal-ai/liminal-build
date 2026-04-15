@@ -78,6 +78,15 @@ export type PlatformProcessOutputWriteInput = {
   updatedAt?: string;
 };
 
+export type PlatformSideWorkWriteInput = {
+  sideWorkId?: string;
+  displayLabel: string;
+  purposeSummary: string;
+  status: SideWorkItem['status'];
+  resultSummary: string | null;
+  updatedAt?: string;
+};
+
 export interface PlatformStore {
   upsertUserFromWorkOS(args: {
     workosUserId: string;
@@ -123,6 +132,10 @@ export interface PlatformStore {
     outputs: PlatformProcessOutputWriteInput[];
   }): Promise<PlatformProcessOutputSummary[]>;
   listProcessSideWorkItems(args: { processId: string }): Promise<SideWorkItem[]>;
+  replaceCurrentProcessSideWorkItems(args: {
+    processId: string;
+    items: PlatformSideWorkWriteInput[];
+  }): Promise<SideWorkItem[]>;
 }
 
 const upsertUserMutation = makeFunctionReference<
@@ -273,6 +286,22 @@ const listProcessSideWorkItemsQuery = makeFunctionReference<
   { processId: string },
   SideWorkItem[]
 >('processSideWorkItems:listProcessSideWorkItems');
+
+const replaceCurrentProcessSideWorkItemsMutation = makeFunctionReference<
+  'mutation',
+  {
+    processId: string;
+    items: Array<{
+      sideWorkId?: string;
+      displayLabel: string;
+      purposeSummary: string;
+      status: SideWorkItem['status'];
+      resultSummary: string | null;
+      updatedAt?: string;
+    }>;
+  },
+  SideWorkItem[]
+>('processSideWorkItems:replaceCurrentProcessSideWorkItems');
 
 export class NullPlatformStore implements PlatformStore {
   async upsertUserFromWorkOS(args: {
@@ -450,6 +479,19 @@ export class NullPlatformStore implements PlatformStore {
   async listProcessSideWorkItems(): Promise<SideWorkItem[]> {
     return [];
   }
+
+  async replaceCurrentProcessSideWorkItems(args: {
+    items: PlatformSideWorkWriteInput[];
+  }): Promise<SideWorkItem[]> {
+    return args.items.map((item, index) => ({
+      sideWorkId: item.sideWorkId ?? `side-work-${index + 1}`,
+      displayLabel: item.displayLabel,
+      purposeSummary: item.purposeSummary,
+      status: item.status,
+      resultSummary: item.resultSummary,
+      updatedAt: item.updatedAt ?? new Date().toISOString(),
+    }));
+  }
 }
 
 export class ConvexPlatformStore implements PlatformStore {
@@ -596,6 +638,23 @@ export class ConvexPlatformStore implements PlatformStore {
 
   async listProcessSideWorkItems(args: { processId: string }): Promise<SideWorkItem[]> {
     return this.client.query(listProcessSideWorkItemsQuery, args);
+  }
+
+  async replaceCurrentProcessSideWorkItems(args: {
+    processId: string;
+    items: PlatformSideWorkWriteInput[];
+  }): Promise<SideWorkItem[]> {
+    return this.client.mutation(replaceCurrentProcessSideWorkItemsMutation, {
+      processId: args.processId,
+      items: args.items.map((item) => ({
+        sideWorkId: item.sideWorkId,
+        displayLabel: item.displayLabel,
+        purposeSummary: item.purposeSummary,
+        status: item.status,
+        resultSummary: item.resultSummary,
+        updatedAt: item.updatedAt,
+      })),
+    });
   }
 }
 
@@ -1006,6 +1065,32 @@ export class InMemoryPlatformStore implements PlatformStore {
 
   async listProcessSideWorkItems(args: { processId: string }): Promise<SideWorkItem[]> {
     return this.processSideWorkItemsByProcessId.get(args.processId) ?? [];
+  }
+
+  async replaceCurrentProcessSideWorkItems(args: {
+    processId: string;
+    items: PlatformSideWorkWriteInput[];
+  }): Promise<SideWorkItem[]> {
+    const existingSideWorkIds = new Set(
+      (this.processSideWorkItemsByProcessId.get(args.processId) ?? []).map(
+        (item) => item.sideWorkId,
+      ),
+    );
+    const nextItems = args.items.map((item, index) => {
+      const fallbackSideWorkId = `${args.processId}:side-work-${existingSideWorkIds.size + index + 1}`;
+
+      return {
+        sideWorkId: item.sideWorkId ?? fallbackSideWorkId,
+        displayLabel: item.displayLabel,
+        purposeSummary: item.purposeSummary,
+        status: item.status,
+        resultSummary: item.resultSummary,
+        updatedAt: item.updatedAt ?? new Date().toISOString(),
+      };
+    });
+
+    this.processSideWorkItemsByProcessId.set(args.processId, nextItems);
+    return nextItems;
   }
 
   private updateProjectSummary(

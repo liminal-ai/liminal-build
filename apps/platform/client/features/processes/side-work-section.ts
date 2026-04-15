@@ -1,5 +1,20 @@
 import type { SideWorkSectionEnvelope } from '../../../shared/contracts/index.js';
 
+function formatStatusLabel(status: string): string {
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function appendDetail(args: {
+  entry: HTMLElement;
+  label: string;
+  value: string;
+  targetDocument: Document;
+}): void {
+  const detail = args.targetDocument.createElement('p');
+  detail.textContent = `${args.label}: ${args.value}`;
+  args.entry.append(detail);
+}
+
 export function renderSideWorkSection(args: {
   envelope: SideWorkSectionEnvelope | null;
   targetDocument: Document;
@@ -36,15 +51,38 @@ export function renderSideWorkSection(args: {
   for (const item of args.envelope.items) {
     const entry = args.targetDocument.createElement('li');
     const label = args.targetDocument.createElement('strong');
-    const purpose = args.targetDocument.createElement('p');
-    const status = args.targetDocument.createElement('p');
+    entry.setAttribute('data-side-work-id', item.sideWorkId);
+    entry.setAttribute('data-side-work-status', item.status);
     label.textContent = item.displayLabel;
-    purpose.textContent = item.purposeSummary;
-    status.textContent =
-      item.resultSummary === null
-        ? `Status: ${item.status}`
-        : `Status: ${item.status} — ${item.resultSummary}`;
-    entry.append(label, purpose, status);
+    entry.append(label);
+    appendDetail({
+      entry,
+      label: 'Purpose',
+      value: item.purposeSummary,
+      targetDocument: args.targetDocument,
+    });
+    appendDetail({
+      entry,
+      label: 'Status',
+      value: formatStatusLabel(item.status),
+      targetDocument: args.targetDocument,
+    });
+
+    if (item.resultSummary !== null) {
+      appendDetail({
+        entry,
+        label: item.status === 'failed' ? 'Failure' : 'Result',
+        value: item.resultSummary,
+        targetDocument: args.targetDocument,
+      });
+    }
+
+    appendDetail({
+      entry,
+      label: 'Updated',
+      value: item.updatedAt,
+      targetDocument: args.targetDocument,
+    });
     list.append(entry);
   }
 

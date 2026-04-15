@@ -12,6 +12,7 @@ import {
   materialsPhaseChangeUpsertLiveFixture,
   materialsRevisionUpsertLiveFixture,
   processSnapshotLiveFixture,
+  sideWorkUpsertLiveFixture,
 } from '../../fixtures/live-process.js';
 import {
   emptyProcessMaterialsFixture,
@@ -27,6 +28,7 @@ import {
   runningProcessSurfaceFixture,
   waitingProcessSurfaceFixture,
 } from '../../fixtures/process-surface.js';
+import { readySideWorkFixture } from '../../fixtures/side-work.js';
 
 function buildRunningSurfaceState() {
   return processSurfaceStateSchema.parse({
@@ -47,6 +49,22 @@ function buildConnectedMaterialsState(lastSequenceNumber: number) {
   return processSurfaceStateSchema.parse({
     ...connectedProcessSurfaceStateFixture,
     materials: readyProcessMaterialsFixture,
+    live: {
+      connectionState: 'connected',
+      subscriptionId: 'subscription-001',
+      lastSequenceNumber,
+      error: null,
+    },
+  });
+}
+
+function buildConnectedSideWorkState(lastSequenceNumber: number) {
+  return processSurfaceStateSchema.parse({
+    ...connectedProcessSurfaceStateFixture,
+    sideWork: {
+      status: 'empty',
+      items: [],
+    },
     live: {
       connectionState: 'connected',
       subscriptionId: 'subscription-001',
@@ -246,5 +264,16 @@ describe('process live foundation', () => {
     expect(nextState.materials?.currentArtifacts).toHaveLength(0);
     expect(nextState.materials?.currentOutputs).toHaveLength(0);
     expect(nextState.materials?.currentSources).toHaveLength(0);
+  });
+
+  it('applies side-work upserts as a replacement of the visible side-work summary state', () => {
+    const nextState = applyLiveProcessMessage({
+      state: buildConnectedSideWorkState(sideWorkUpsertLiveFixture.sequenceNumber - 1),
+      message: sideWorkUpsertLiveFixture,
+    });
+
+    expect(nextState.sideWork).toEqual(readySideWorkFixture);
+    expect(nextState.sideWork?.items[0]?.status).toBe('running');
+    expect(nextState.sideWork?.items[1]?.status).toBe('completed');
   });
 });

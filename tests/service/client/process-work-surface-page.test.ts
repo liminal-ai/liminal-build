@@ -32,6 +32,7 @@ import {
   unauthenticatedRequestErrorFixture,
   unexpectedProcessActionErrorFixture,
 } from '../../fixtures/process-surface.js';
+import { completedSideWorkFixture } from '../../fixtures/side-work.js';
 
 function buildStore(overrides: Parameters<typeof createAppStore>[0] = {}) {
   return createAppStore({
@@ -399,6 +400,50 @@ describe('process work surface page', () => {
       standaloneOutputReferenceFixture.displayName,
     );
     expect(materialsSection?.textContent).not.toContain(processSourceReferenceFixture.displayName);
+  });
+
+  it('TC-5.4c shows the parent-process change after a side-work outcome is applied', () => {
+    const store = buildStore({
+      processSurface: {
+        projectId: readyProcessWorkSurfaceFixture.project.projectId,
+        processId: readyProcessWorkSurfaceFixture.process.processId,
+        project: readyProcessWorkSurfaceFixture.project,
+        process: {
+          ...readyProcessWorkSurfaceFixture.process,
+          phaseLabel: 'Reviewing returned references',
+          nextActionLabel: 'Review the refreshed direction',
+          updatedAt: '2026-04-13T12:19:00.000Z',
+        },
+        history: readyProcessWorkSurfaceFixture.history,
+        materials: readyProcessWorkSurfaceFixture.materials,
+        currentRequest: readyProcessWorkSurfaceFixture.currentRequest,
+        sideWork: {
+          status: 'ready',
+          items: [completedSideWorkFixture],
+        },
+        isLoading: false,
+        error: null,
+        actionError: null,
+        live: {
+          connectionState: 'idle',
+          subscriptionId: null,
+          lastSequenceNumber: null,
+          error: null,
+        },
+      },
+    });
+    const view = renderProcessWorkSurfacePage({
+      store,
+      targetDocument: document,
+      targetWindow: window,
+      onOpenProject: () => {},
+    });
+    const sideWorkSection = view.querySelector('[data-side-work-section="true"]');
+
+    expect(view.textContent).toContain('Phase: Reviewing returned references');
+    expect(view.textContent).toContain('Next action: Review the refreshed direction');
+    expect(sideWorkSection?.textContent).toContain(completedSideWorkFixture.displayLabel);
+    expect(sideWorkSection?.textContent).toContain(completedSideWorkFixture.resultSummary ?? '');
   });
 
   it('renders request-level unavailable state without stale process content', () => {
