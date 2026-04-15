@@ -1,5 +1,6 @@
 import type {
   AppState,
+  LiveProcessUpdateMessage,
   ParsedRoute,
   ProcessHistoryItem,
   ProcessHistorySectionEnvelope,
@@ -10,6 +11,10 @@ import type {
   ProjectSummary,
   StartProcessResponse,
   SubmitProcessResponseResponse,
+} from '../../shared/contracts/index.js';
+import {
+  buildProcessLiveUpdatesPath,
+  liveProcessUpdateMessageSchema,
 } from '../../shared/contracts/index.js';
 import { ApiRequestError, getAuthenticatedUser } from '../browser-api/auth-api.js';
 import {
@@ -25,6 +30,7 @@ import {
   listProjects,
 } from '../browser-api/projects-api.js';
 import { getRequiredRootElement, getShellBootstrapPayload } from './dom.js';
+import { applyLiveProcessMessage } from './process-live.js';
 import { navigateTo, parseRoute } from './router.js';
 import { createShellApp } from './shell-app.js';
 import { createAppStore, defaultAppState } from './store.js';
@@ -83,13 +89,207 @@ export async function bootstrapApp(
   };
   const store = createAppStore(initialState);
   let routeLoadId = 0;
+  let closeLiveConnection: (() => void) | null = null;
 
   const redirectToLogin = (): void => {
     const returnTo = `${targetWindow.location.pathname}${targetWindow.location.search}`;
     targetWindow.location.assign(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
   };
 
+  const buildLiveUnavailableError = (message: string): RequestError => ({
+    code: 'PROCESS_LIVE_UPDATES_UNAVAILABLE',
+    message,
+    status: 503,
+  });
+
+  const stopLiveConnection = (): void => {
+    closeLiveConnection?.();
+    closeLiveConnection = null;
+  };
+
+  const updateLiveState = (
+    projectId: string,
+    processId: string,
+    nextLive: AppState['processSurface']['live'],
+  ): void => {
+    const currentSurface = store.get().processSurface;
+
+    if (currentSurface.projectId !== projectId || currentSurface.processId !== processId) {
+      return;
+    }
+
+    store.patch('processSurface', {
+      ...currentSurface,
+      live: nextLive,
+    });
+  };
+
+  const buildProcessLiveUrl = (projectId: string, processId: string): string => {
+    const livePath = buildProcessLiveUpdatesPath({
+      projectId,
+      processId,
+    });
+    const currentUrl = new URL(targetWindow.location.href);
+    currentUrl.protocol = currentUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+    currentUrl.pathname = livePath;
+    currentUrl.search = '';
+    currentUrl.hash = '';
+    return currentUrl.toString();
+  };
+
+  const startProcessLiveSubscription = (projectId: string, processId: string): void => {
+    stopLiveConnection();
+
+    const WebSocketCtor = targetWindow.WebSocket;
+
+    if (typeof WebSocketCtor !== 'function') {
+      return;
+    }
+
+    const currentSurface = store.get().processSurface;
+
+    if (currentSurface.projectId !== projectId || currentSurface.processId !== processId) {
+      return;
+    }
+
+    updateLiveState(projectId, processId, {
+      connectionState: 'connecting',
+      subscriptionId: null,
+      lastSequenceNumber: null,
+      error: null,
+    });
+
+    let socket: WebSocket;
+    let opened = false;
+    let closedByClient = false;
+
+    const applyLiveFailure = (connectionState: 'reconnecting' | 'error', message: string): void => {
+      const latestSurface = store.get().processSurface;
+
+      if (latestSurface.projectId !== projectId || latestSurface.processId !== processId) {
+        return;
+      }
+
+      updateLiveState(projectId, processId, {
+        ...latestSurface.live,
+        connectionState,
+        error: buildLiveUnavailableError(message),
+      });
+    };
+
+    try {
+      socket = new WebSocketCtor(buildProcessLiveUrl(projectId, processId));
+    } catch {
+      applyLiveFailure('error', 'Live updates are currently unavailable.');
+      return;
+    }
+
+    closeLiveConnection = () => {
+      closedByClient = true;
+      socket.close();
+    };
+
+    socket.addEventListener('open', () => {
+      opened = true;
+    });
+
+    socket.addEventListener('message', (event: MessageEvent<string>) => {
+      const parsed = liveProcessUpdateMessageSchema.safeParse(
+        JSON.parse(String(event.data)) as LiveProcessUpdateMessage,
+      );
+
+      if (!parsed.success) {
+        return;
+      }
+
+      const nextState = applyLiveProcessMessage({
+        state: store.get().processSurface,
+        message: parsed.data,
+      });
+      store.patch('processSurface', nextState);
+    });
+
+    socket.addEventListener('error', () => {
+      if (!opened && !closedByClient) {
+        applyLiveFailure('error', 'Live updates are currently unavailable.');
+      }
+    });
+
+    socket.addEventListener('close', () => {
+      if (closedByClient) {
+        return;
+      }
+
+      applyLiveFailure(
+        opened ? 'reconnecting' : 'error',
+        opened
+          ? 'Live updates disconnected. Retry to reconnect.'
+          : 'Live updates are currently unavailable.',
+      );
+      closeLiveConnection = null;
+    });
+  };
+
+  const retryLiveSubscription = async (projectId: string, processId: string): Promise<void> => {
+    const currentSurface = store.get().processSurface;
+
+    if (currentSurface.projectId !== projectId || currentSurface.processId !== processId) {
+      return;
+    }
+
+    updateLiveState(projectId, processId, {
+      connectionState: 'connecting',
+      subscriptionId: null,
+      lastSequenceNumber: null,
+      error: null,
+    });
+
+    try {
+      const surface = await getProcessWorkSurface({
+        projectId,
+        processId,
+      });
+      const latestSurface = store.get().processSurface;
+
+      if (latestSurface.projectId !== projectId || latestSurface.processId !== processId) {
+        return;
+      }
+
+      store.patch('processSurface', {
+        ...latestSurface,
+        project: surface.project,
+        process: surface.process,
+        history: surface.history,
+        materials: surface.materials,
+        currentRequest: surface.currentRequest,
+        sideWork: surface.sideWork,
+        isLoading: false,
+        error: null,
+        actionError: null,
+        live: {
+          connectionState: 'connecting',
+          subscriptionId: null,
+          lastSequenceNumber: null,
+          error: null,
+        },
+      });
+      startProcessLiveSubscription(projectId, processId);
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        handleProcessActionRequestError(projectId, processId, error);
+        return;
+      }
+
+      updateLiveState(projectId, processId, {
+        ...store.get().processSurface.live,
+        connectionState: 'error',
+        error: buildLiveUnavailableError('Live updates are currently unavailable.'),
+      });
+    }
+  };
+
   const applyRouteState = (parsedRoute: ParsedRoute): void => {
+    stopLiveConnection();
     const processSurfaceIdentity = getProcessSurfaceRouteIdentity(parsedRoute);
 
     store.patch('route', {
@@ -414,6 +614,7 @@ export async function bootstrapApp(
           isLoading: false,
           error: null,
         });
+        startProcessLiveSubscription(parsedRoute.projectId ?? '', parsedRoute.processId ?? '');
       } catch (error) {
         if (requestId !== routeLoadId) {
           return;
@@ -690,6 +891,7 @@ export async function bootstrapApp(
     onStartProcess: startCurrentProcess,
     onResumeProcess: resumeCurrentProcess,
     onSubmitProcessResponse: submitCurrentProcessResponse,
+    onRetryLiveSubscription: retryLiveSubscription,
   });
   shellApp.render();
   targetWindow.addEventListener('popstate', () => {

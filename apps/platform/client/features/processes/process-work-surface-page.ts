@@ -7,6 +7,7 @@ import {
 } from '../projects/unavailable-state.js';
 import { renderCurrentRequestPanel } from './current-request-panel.js';
 import { renderProcessHistorySection } from './process-history-section.js';
+import { renderProcessLiveStatus } from './process-live-status.js';
 import { renderProcessMaterialsSection } from './process-materials-section.js';
 import { renderProcessResponseComposer } from './process-response-composer.js';
 import { renderSideWorkSection } from './side-work-section.js';
@@ -27,6 +28,7 @@ export function renderProcessWorkSurfacePage(args: {
   onStartProcess?: (projectId: string, processId: string) => void;
   onResumeProcess?: (projectId: string, processId: string) => void;
   onSubmitProcessResponse?: (projectId: string, processId: string, message: string) => void;
+  onRetryLiveSubscription?: (projectId: string, processId: string) => void;
 }): HTMLElement {
   const container = args.targetDocument.createElement('section');
   const state = args.store.get();
@@ -140,6 +142,21 @@ export function renderProcessWorkSurfacePage(args: {
     const nextAction = args.targetDocument.createElement('p');
     nextAction.textContent = `Next action: ${activeProcess.nextActionLabel}`;
     container.append(nextAction);
+  }
+
+  const liveStatus = renderProcessLiveStatus({
+    liveState: processSurface.live,
+    targetDocument: args.targetDocument,
+    onRetry:
+      args.onRetryLiveSubscription === undefined
+        ? undefined
+        : () => {
+            args.onRetryLiveSubscription?.(activeProject.projectId, activeProcess.processId);
+          },
+  });
+
+  if (liveStatus !== null) {
+    container.append(liveStatus);
   }
 
   container.append(

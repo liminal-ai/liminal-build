@@ -8,6 +8,7 @@ import {
 import {
   buildLiveProcessMessageFixture,
   connectedProcessSurfaceStateFixture,
+  historyUpsertLiveFixture,
   materialsClearedSnapshotLiveFixture,
   materialsPhaseChangeUpsertLiveFixture,
   materialsRevisionUpsertLiveFixture,
@@ -28,6 +29,10 @@ import {
   runningProcessSurfaceFixture,
   waitingProcessSurfaceFixture,
 } from '../../fixtures/process-surface.js';
+import {
+  progressUpdateHistoryFixture,
+  userMessageHistoryFixture,
+} from '../../fixtures/process-history.js';
 import { readySideWorkFixture } from '../../fixtures/side-work.js';
 
 function buildRunningSurfaceState() {
@@ -75,6 +80,54 @@ function buildConnectedSideWorkState(lastSequenceNumber: number) {
 }
 
 describe('process live foundation', () => {
+  it('TC-2.2a running state becomes visible during active work', () => {
+    const nextState = applyLiveProcessMessage({
+      state: {
+        ...connectedProcessSurfaceStateFixture,
+        live: {
+          connectionState: 'connected',
+          subscriptionId: 'subscription-001',
+          lastSequenceNumber: 1,
+          error: null,
+        },
+      },
+      message: buildLiveProcessMessageFixture({
+        messageType: 'upsert',
+        entityType: 'process',
+        sequenceNumber: 2,
+        payload: processSurfaceSummarySchema.parse({
+          ...runningProcessSurfaceFixture,
+          processId: connectedProcessSurfaceStateFixture.processId,
+        }),
+      }),
+    });
+
+    expect(nextState.process).toMatchObject({
+      processId: connectedProcessSurfaceStateFixture.processId,
+      status: 'running',
+      nextActionLabel: runningProcessSurfaceFixture.nextActionLabel,
+    });
+  });
+
+  it('TC-2.2b phase changes become visible while the process remains open', () => {
+    const nextState = applyLiveProcessMessage({
+      state: buildRunningSurfaceState(),
+      message: buildLiveProcessMessageFixture({
+        messageType: 'upsert',
+        entityType: 'process',
+        sequenceNumber: 2,
+        payload: processSurfaceSummarySchema.parse({
+          ...runningProcessSurfaceFixture,
+          processId: runningProcessSurfaceFixture.processId,
+          phaseLabel: 'Reviewing returned results',
+          updatedAt: '2026-04-13T12:40:00.000Z',
+        }),
+      }),
+    });
+
+    expect(nextState.process?.phaseLabel).toBe('Reviewing returned results');
+  });
+
   it('rejects process messages whose top-level process id differs from the payload process id', () => {
     expect(() =>
       liveProcessUpdateMessageSchema.parse({
@@ -275,5 +328,102 @@ describe('process live foundation', () => {
     expect(nextState.sideWork).toEqual(readySideWorkFixture);
     expect(nextState.sideWork?.items[0]?.status).toBe('running');
     expect(nextState.sideWork?.items[1]?.status).toBe('completed');
+  });
+
+  it('TC-2.3a progress updates appear as readable process-facing activity', () => {
+    const nextState = applyLiveProcessMessage({
+      state: {
+        ...connectedProcessSurfaceStateFixture,
+        history: {
+          status: 'ready',
+          items: [],
+        },
+        live: {
+          connectionState: 'connected',
+          subscriptionId: 'subscription-001',
+          lastSequenceNumber: historyUpsertLiveFixture.sequenceNumber - 1,
+          error: null,
+        },
+      },
+      message: historyUpsertLiveFixture,
+    });
+
+    expect(nextState.history?.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          historyItemId: progressUpdateHistoryFixture.historyItemId,
+          kind: 'progress_update',
+          text: progressUpdateHistoryFixture.text,
+        }),
+      ]),
+    );
+  });
+
+  it('TC-2.3b new history activity appears in chronological order', () => {
+    const nextState = applyLiveProcessMessage({
+      state: {
+        ...connectedProcessSurfaceStateFixture,
+        history: {
+          status: 'ready',
+          items: [
+            {
+              ...progressUpdateHistoryFixture,
+              historyItemId: 'history-progress-late-001',
+              createdAt: '2026-04-13T12:10:00.000Z',
+            },
+          ],
+        },
+        live: {
+          connectionState: 'connected',
+          subscriptionId: 'subscription-001',
+          lastSequenceNumber: 1,
+          error: null,
+        },
+      },
+      message: buildLiveProcessMessageFixture({
+        messageType: 'upsert',
+        entityType: 'history',
+        entityId: userMessageHistoryFixture.historyItemId,
+        sequenceNumber: 2,
+        payload: userMessageHistoryFixture,
+      }),
+    });
+
+    expect(nextState.history?.items.map((item) => item.historyItemId)).toEqual([
+      userMessageHistoryFixture.historyItemId,
+      'history-progress-late-001',
+    ]);
+  });
+
+  it('TC-6.3b reconnect snapshots do not duplicate finalized history items', () => {
+    const reconnectSnapshot = buildLiveProcessMessageFixture({
+      messageType: 'snapshot',
+      entityType: 'history',
+      subscriptionId: 'subscription-002',
+      sequenceNumber: 1,
+      entityId: userMessageHistoryFixture.historyItemId,
+      payload: userMessageHistoryFixture,
+    });
+    const nextState = applyLiveProcessMessage({
+      state: {
+        ...connectedProcessSurfaceStateFixture,
+        history: {
+          status: 'ready',
+          items: [userMessageHistoryFixture],
+        },
+        live: {
+          connectionState: 'reconnecting',
+          subscriptionId: 'subscription-001',
+          lastSequenceNumber: 12,
+          error: null,
+        },
+      },
+      message: reconnectSnapshot,
+    });
+
+    expect(nextState.history?.items).toHaveLength(1);
+    expect(nextState.history?.items[0]?.historyItemId).toBe(
+      userMessageHistoryFixture.historyItemId,
+    );
   });
 });

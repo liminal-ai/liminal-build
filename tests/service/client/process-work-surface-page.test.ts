@@ -4,7 +4,10 @@ import { bootstrapApp } from '../../../apps/platform/client/app/bootstrap.js';
 import { createAppStore } from '../../../apps/platform/client/app/store.js';
 import { renderProcessWorkSurfacePage } from '../../../apps/platform/client/features/processes/process-work-surface-page.js';
 import type { ProcessWorkSurfaceResponse } from '../../../apps/platform/shared/contracts/index.js';
-import { shellBootstrapPayloadSchema } from '../../../apps/platform/shared/contracts/index.js';
+import {
+  liveProcessUpdateMessageSchema,
+  shellBootstrapPayloadSchema,
+} from '../../../apps/platform/shared/contracts/index.js';
 import {
   currentArtifactReferenceFixture,
   emptyProcessMaterialsFixture,
@@ -22,6 +25,7 @@ import {
   processStartNotAvailableErrorFixture,
   processUnavailableErrorFixture,
   readyProcessWorkSurfaceFixture,
+  runningProcessSurfaceFixture,
   resumedInterruptedProcessResponseFixture,
   resumedInterruptedToFailedProcessResponseFixture,
   resumedPausedProcessResponseFixture,
@@ -84,6 +88,59 @@ function buildJsonResponse(body: unknown, status = 200): Response {
 
 function flush(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+class FakeWebSocket {
+  static instances: FakeWebSocket[] = [];
+
+  readonly url: string;
+  readyState = 0;
+  private readonly listeners = new Map<string, Set<(event: Event) => void>>();
+
+  constructor(url: string) {
+    this.url = url;
+    FakeWebSocket.instances.push(this);
+  }
+
+  addEventListener(type: string, listener: (event: Event) => void): void {
+    const listeners = this.listeners.get(type) ?? new Set();
+    listeners.add(listener);
+    this.listeners.set(type, listeners);
+  }
+
+  close(): void {
+    this.readyState = 3;
+    this.dispatch('close', new Event('close'));
+  }
+
+  emitOpen(): void {
+    this.readyState = 1;
+    this.dispatch('open', new Event('open'));
+  }
+
+  emitMessage(data: unknown): void {
+    this.dispatch(
+      'message',
+      new MessageEvent('message', {
+        data: JSON.stringify(data),
+      }),
+    );
+  }
+
+  emitError(): void {
+    this.dispatch('error', new Event('error'));
+  }
+
+  emitClose(): void {
+    this.readyState = 3;
+    this.dispatch('close', new Event('close'));
+  }
+
+  private dispatch(type: string, event: Event): void {
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener(event);
+    }
+  }
 }
 
 async function captureUnhandledRejections(action: () => void | Promise<void>): Promise<unknown[]> {
@@ -188,6 +245,7 @@ async function renderInteractiveProcessSurface(
   startUrl: string,
   options: {
     locationAssign?: (url: string) => void;
+    WebSocketCtor?: typeof WebSocket;
   } = {},
 ) {
   const dom = new JSDOM('<!doctype html><html><body><div id="app"></div></body></html>', {
@@ -208,6 +266,7 @@ async function renderInteractiveProcessSurface(
     dispatchEvent: dom.window.dispatchEvent.bind(dom.window),
     setTimeout: dom.window.setTimeout.bind(dom.window),
     clearTimeout: dom.window.clearTimeout.bind(dom.window),
+    WebSocket: options.WebSocketCtor,
   } as unknown as Window & typeof globalThis;
 
   targetWindow.__SHELL_BOOTSTRAP__ = shellBootstrapPayloadSchema.parse({
@@ -233,6 +292,7 @@ async function renderInteractiveProcessSurface(
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  FakeWebSocket.instances = [];
 });
 
 describe('process work surface page', () => {
@@ -444,6 +504,211 @@ describe('process work surface page', () => {
     expect(view.textContent).toContain('Next action: Review the refreshed direction');
     expect(sideWorkSection?.textContent).toContain(completedSideWorkFixture.displayLabel);
     expect(sideWorkSection?.textContent).toContain(completedSideWorkFixture.resultSummary ?? '');
+  });
+
+  it('TC-6.5a and TC-6.5b keep the durable surface visible when live setup fails and show a retry path', async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const rawUrl =
+        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const url = new URL(rawUrl, 'http://localhost:5001');
+      const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+
+      if (url.pathname === '/auth/me') {
+        return buildJsonResponse({
+          user: {
+            id: 'user:workos-user-1',
+            email: 'lee@example.com',
+            displayName: 'Lee Moore',
+          },
+        });
+      }
+
+      if (
+        method === 'GET' &&
+        url.pathname ===
+          `/api/projects/${readyProcessWorkSurfaceFixture.project.projectId}/processes/${readyProcessWorkSurfaceFixture.process.processId}`
+      ) {
+        return buildJsonResponse(readyProcessWorkSurfaceFixture);
+      }
+
+      throw new Error(`Unexpected fetch request: ${method} ${url.pathname}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const dom = await renderInteractiveProcessSurface(
+      `http://localhost:5001/projects/${readyProcessWorkSurfaceFixture.project.projectId}/processes/${readyProcessWorkSurfaceFixture.process.processId}`,
+      {
+        WebSocketCtor: FakeWebSocket as unknown as typeof WebSocket,
+      },
+    );
+    const socket = FakeWebSocket.instances[0];
+
+    if (socket === undefined) {
+      throw new Error('Expected bootstrap to start a live websocket.');
+    }
+
+    socket.emitError();
+    socket.emitClose();
+    await flush();
+
+    expect(dom.window.document.body.textContent).toContain(
+      readyProcessWorkSurfaceFixture.process.displayLabel,
+    );
+    expect(dom.window.document.body.textContent).toContain(
+      'Live updates are currently unavailable.',
+    );
+    expect(dom.window.document.body.textContent).toContain('Retry live updates');
+  });
+
+  it('TC-6.2a and TC-6.2b preserve visible state on connection loss and show reconnecting status', async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const rawUrl =
+        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const url = new URL(rawUrl, 'http://localhost:5001');
+      const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+
+      if (url.pathname === '/auth/me') {
+        return buildJsonResponse({
+          user: {
+            id: 'user:workos-user-1',
+            email: 'lee@example.com',
+            displayName: 'Lee Moore',
+          },
+        });
+      }
+
+      if (
+        method === 'GET' &&
+        url.pathname ===
+          `/api/projects/${readyProcessWorkSurfaceFixture.project.projectId}/processes/${readyProcessWorkSurfaceFixture.process.processId}`
+      ) {
+        return buildJsonResponse(readyProcessWorkSurfaceFixture);
+      }
+
+      throw new Error(`Unexpected fetch request: ${method} ${url.pathname}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const dom = await renderInteractiveProcessSurface(
+      `http://localhost:5001/projects/${readyProcessWorkSurfaceFixture.project.projectId}/processes/${readyProcessWorkSurfaceFixture.process.processId}`,
+      {
+        WebSocketCtor: FakeWebSocket as unknown as typeof WebSocket,
+      },
+    );
+    const socket = FakeWebSocket.instances[0];
+
+    if (socket === undefined) {
+      throw new Error('Expected bootstrap to start a live websocket.');
+    }
+
+    socket.emitOpen();
+    socket.emitMessage(
+      liveProcessUpdateMessageSchema.parse({
+        subscriptionId: 'subscription-001',
+        processId: readyProcessWorkSurfaceFixture.process.processId,
+        sequenceNumber: 2,
+        correlationId: null,
+        completedAt: null,
+        messageType: 'upsert',
+        entityType: 'process',
+        entityId: readyProcessWorkSurfaceFixture.process.processId,
+        payload: {
+          ...runningProcessSurfaceFixture,
+          processId: readyProcessWorkSurfaceFixture.process.processId,
+        },
+      }),
+    );
+    await flush();
+    socket.emitClose();
+    await flush();
+
+    expect(dom.window.document.body.textContent).toContain(
+      readyProcessWorkSurfaceFixture.process.displayLabel,
+    );
+    expect(dom.window.document.body.textContent).toContain(
+      readyProcessWorkSurfaceFixture.history.items[0]?.text ?? '',
+    );
+    expect(dom.window.document.body.textContent).toContain(
+      'Live updates are reconnecting. Visible state remains available.',
+    );
+  });
+
+  it('TC-6.3a retry re-fetches the latest durable state without duplicating finalized history items', async () => {
+    const refreshedSurface = {
+      ...readyProcessWorkSurfaceFixture,
+      process: {
+        ...readyProcessWorkSurfaceFixture.process,
+        status: 'running' as const,
+        phaseLabel: 'Recovered after reconnect',
+        nextActionLabel: 'Monitor the reconciled process',
+        availableActions: ['review'],
+        updatedAt: '2026-04-13T12:40:00.000Z',
+      },
+    };
+    let bootstrapCount = 0;
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const rawUrl =
+        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const url = new URL(rawUrl, 'http://localhost:5001');
+      const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+
+      if (url.pathname === '/auth/me') {
+        return buildJsonResponse({
+          user: {
+            id: 'user:workos-user-1',
+            email: 'lee@example.com',
+            displayName: 'Lee Moore',
+          },
+        });
+      }
+
+      if (
+        method === 'GET' &&
+        url.pathname ===
+          `/api/projects/${readyProcessWorkSurfaceFixture.project.projectId}/processes/${readyProcessWorkSurfaceFixture.process.processId}`
+      ) {
+        bootstrapCount += 1;
+        return buildJsonResponse(
+          bootstrapCount === 1 ? readyProcessWorkSurfaceFixture : refreshedSurface,
+        );
+      }
+
+      throw new Error(`Unexpected fetch request: ${method} ${url.pathname}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const dom = await renderInteractiveProcessSurface(
+      `http://localhost:5001/projects/${readyProcessWorkSurfaceFixture.project.projectId}/processes/${readyProcessWorkSurfaceFixture.process.processId}`,
+      {
+        WebSocketCtor: FakeWebSocket as unknown as typeof WebSocket,
+      },
+    );
+    const firstSocket = FakeWebSocket.instances[0];
+
+    if (firstSocket === undefined) {
+      throw new Error('Expected bootstrap to start a live websocket.');
+    }
+
+    firstSocket.emitError();
+    firstSocket.emitClose();
+    await flush();
+
+    const retryButton = [...dom.window.document.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Retry live updates',
+    );
+
+    if (!(retryButton instanceof dom.window.HTMLButtonElement)) {
+      throw new Error('Expected a retry live updates button.');
+    }
+
+    retryButton.click();
+    await flush();
+    await flush();
+
+    expect(dom.window.document.body.textContent).toContain('Recovered after reconnect');
+    expect(dom.window.document.body.textContent).toContain('Monitor the reconciled process');
+    expect(
+      dom.window.document.querySelectorAll('[data-process-history-kind="user_message"]').length,
+    ).toBe(1);
+    expect(bootstrapCount).toBe(2);
+    expect(FakeWebSocket.instances).toHaveLength(2);
   });
 
   it('renders request-level unavailable state without stale process content', () => {

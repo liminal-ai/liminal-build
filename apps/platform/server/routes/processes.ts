@@ -18,6 +18,31 @@ import {
   processWorkSurfaceApiPathnamePattern,
   processWorkSurfaceRoutePathnamePattern,
 } from '../../shared/contracts/index.js';
+import type { ProcessWorkSurfaceResponse, RequestError } from '../../shared/contracts/index.js';
+
+function buildRequestError(error: AppError): RequestError {
+  return {
+    code: error.code as RequestError['code'],
+    message: error.message,
+    status: error.statusCode,
+  };
+}
+
+function buildInitialLivePublication(surface: ProcessWorkSurfaceResponse) {
+  return {
+    messageType: 'snapshot' as const,
+    process: surface.process,
+    historyItems: surface.history.status === 'ready' ? surface.history.items : [],
+    currentRequest: surface.currentRequest,
+    materials: surface.materials,
+    sideWork: surface.sideWork,
+    sectionErrors: {
+      history: surface.history.status === 'error' ? surface.history.error : undefined,
+      materials: surface.materials.status === 'error' ? surface.materials.error : undefined,
+      side_work: surface.sideWork.status === 'error' ? surface.sideWork.error : undefined,
+    },
+  };
+}
 
 export const processRoutePatterns = {
   shell: processWorkSurfaceRoutePathnamePattern,
@@ -53,6 +78,101 @@ export async function registerProcessRoutes(app: FastifyInstance): Promise<void>
   void processRoutePatterns;
 
   const typedApp = app.withTypeProvider<ZodTypeProvider>();
+
+  typedApp.get(
+    '/ws/projects/:projectId/processes/:processId',
+    {
+      schema: {
+        params: getProcessWorkSurfaceRouteSchema.params,
+      },
+      websocket: true,
+      preValidation: async (request, reply) => {
+        const params = request.params as { projectId: string; processId: string };
+        const resolution = await app.authSessionService.resolveSession(
+          request.cookies[sessionCookieName],
+        );
+
+        request.actor = resolution.actor;
+        request.authFailureReason = resolution.reason;
+
+        if (request.actor !== null) {
+          request.actor = await app.authUserSyncService.syncActor(request.actor);
+        }
+
+        if (request.actor === null) {
+          if (request.authFailureReason === 'invalid_session') {
+            reply.clearCookie(sessionCookieName, { path: '/' });
+          }
+
+          return reply.code(401).send({
+            code: 'UNAUTHENTICATED',
+            message: 'Authenticated access is required.',
+            status: 401,
+          });
+        }
+
+        try {
+          await app.processAccessService.assertProcessAccess({
+            actor: request.actor,
+            projectId: params.projectId,
+            processId: params.processId,
+          });
+        } catch (error) {
+          if (error instanceof AppError) {
+            return reply.code(error.statusCode).send(buildRequestError(error));
+          }
+
+          throw error;
+        }
+      },
+    },
+    (socket, request) => {
+      const params = request.params as { projectId: string; processId: string };
+      socket.on('message', () => {});
+
+      const actor = request.actor;
+
+      if (actor === null) {
+        socket.close(1008, 'Authenticated access is required.');
+        return;
+      }
+
+      let subscription = { close() {} };
+      let isClosed = false;
+
+      socket.on('close', () => {
+        isClosed = true;
+        subscription.close();
+      });
+
+      void app.processWorkSurfaceService
+        .getSurface({
+          actor,
+          projectId: params.projectId,
+          processId: params.processId,
+        })
+        .then((surface) => {
+          if (isClosed) {
+            return;
+          }
+
+          subscription = app.processLiveHub.subscribe({
+            actorId: actor.userId,
+            projectId: params.projectId,
+            processId: params.processId,
+            send: (message) => {
+              socket.send(JSON.stringify(message));
+            },
+            initialPublication: buildInitialLivePublication(surface),
+          });
+        })
+        .catch(() => {
+          if (!isClosed) {
+            socket.close(1011, 'Process live updates unavailable.');
+          }
+        });
+    },
+  );
 
   typedApp.get(
     '/projects/:projectId/processes/:processId',

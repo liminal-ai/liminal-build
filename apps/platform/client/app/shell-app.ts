@@ -21,6 +21,7 @@ export interface ShellAppOptions {
   onStartProcess: (projectId: string, processId: string) => Promise<void>;
   onResumeProcess: (projectId: string, processId: string) => Promise<void>;
   onSubmitProcessResponse: (projectId: string, processId: string, message: string) => Promise<void>;
+  onRetryLiveSubscription: (projectId: string, processId: string) => Promise<void>;
 }
 
 export function createShellApp(options: ShellAppOptions) {
@@ -54,6 +55,9 @@ export function createShellApp(options: ShellAppOptions) {
               },
               onSubmitProcessResponse: (projectId, processId, message) => {
                 void options.onSubmitProcessResponse(projectId, processId, message);
+              },
+              onRetryLiveSubscription: (projectId, processId) => {
+                void options.onRetryLiveSubscription(projectId, processId);
               },
             })
           : renderProjectShellPage({

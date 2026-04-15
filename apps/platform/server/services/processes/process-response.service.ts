@@ -8,6 +8,7 @@ import {
 } from '../../../shared/contracts/index.js';
 import { AppError } from '../../errors/app-error.js';
 import type { AuthenticatedActor } from '../auth/auth-session.service.js';
+import type { ProcessLiveHub } from './live/process-live-hub.js';
 import type { PlatformStore } from '../projects/platform-store.js';
 import { buildProcessSurfaceSummary } from './process-work-surface.service.js';
 import type { ProcessAccessService } from './process-access.service.js';
@@ -16,6 +17,7 @@ export class ProcessResponseService {
   constructor(
     private readonly platformStore: PlatformStore,
     private readonly processAccessService: ProcessAccessService,
+    private readonly processLiveHub: ProcessLiveHub,
   ) {}
 
   async respond(args: {
@@ -63,11 +65,24 @@ export class ProcessResponseService {
         processId: access.process.processId,
         ...normalizedRequest,
       });
+      const process = buildProcessSurfaceSummary(result.process);
+
+      this.processLiveHub.publish({
+        projectId: access.project.projectId,
+        processId: access.process.processId,
+        publication: {
+          messageType: isTerminalProcessStatus(process.status) ? 'complete' : 'upsert',
+          completedAt: isTerminalProcessStatus(process.status) ? process.updatedAt : null,
+          process,
+          historyItems: [result.historyItem],
+          currentRequest: result.currentRequest,
+        },
+      });
 
       return submitProcessResponseResponseSchema.parse({
         accepted: true,
         historyItemId: result.historyItem.historyItemId,
-        process: buildProcessSurfaceSummary(result.process),
+        process,
         currentRequest: result.currentRequest,
       });
     } catch (_error) {
@@ -86,4 +101,10 @@ export class ProcessResponseService {
       message: request.message.trim(),
     };
   }
+}
+
+function isTerminalProcessStatus(
+  status: SubmitProcessResponseResponse['process']['status'],
+): boolean {
+  return status === 'completed' || status === 'failed' || status === 'interrupted';
 }

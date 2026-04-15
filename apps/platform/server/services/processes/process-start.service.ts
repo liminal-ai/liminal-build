@@ -2,6 +2,7 @@ import type { StartProcessResponse } from '../../../shared/contracts/index.js';
 import { startProcessResponseSchema } from '../../../shared/contracts/index.js';
 import { AppError } from '../../errors/app-error.js';
 import type { AuthenticatedActor } from '../auth/auth-session.service.js';
+import type { ProcessLiveHub } from './live/process-live-hub.js';
 import type { PlatformStore } from '../projects/platform-store.js';
 import { buildProcessSurfaceSummary } from './process-work-surface.service.js';
 import type { ProcessAccessService } from './process-access.service.js';
@@ -10,6 +11,7 @@ export class ProcessStartService {
   constructor(
     private readonly platformStore: PlatformStore,
     private readonly processAccessService: ProcessAccessService,
+    private readonly processLiveHub: ProcessLiveHub,
   ) {}
 
   async start(args: {
@@ -30,10 +32,26 @@ export class ProcessStartService {
     const result = await this.platformStore.startProcess({
       processId: access.process.processId,
     });
+    const process = buildProcessSurfaceSummary(result.process);
+
+    this.processLiveHub.publish({
+      projectId: access.project.projectId,
+      processId: access.process.processId,
+      publication: {
+        messageType: isTerminalProcessStatus(process.status) ? 'complete' : 'upsert',
+        completedAt: isTerminalProcessStatus(process.status) ? process.updatedAt : null,
+        process,
+        currentRequest: result.currentRequest,
+      },
+    });
 
     return startProcessResponseSchema.parse({
-      process: buildProcessSurfaceSummary(result.process),
+      process,
       currentRequest: result.currentRequest,
     });
   }
+}
+
+function isTerminalProcessStatus(status: StartProcessResponse['process']['status']): boolean {
+  return status === 'completed' || status === 'failed' || status === 'interrupted';
 }

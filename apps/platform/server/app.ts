@@ -14,7 +14,10 @@ import { registerProcessRoutes } from './routes/processes.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { AuthSessionService } from './services/auth/auth-session.service.js';
 import { AuthUserSyncService } from './services/auth/auth-user-sync.service.js';
-import type { ProcessLiveHub } from './services/processes/live/process-live-hub.js';
+import {
+  InMemoryProcessLiveHub,
+  type ProcessLiveHub,
+} from './services/processes/live/process-live-hub.js';
 import { ProcessModuleRegistry } from './services/processes/process-module-registry.js';
 import { ProcessAccessService } from './services/processes/process-access.service.js';
 import { ProcessResponseService } from './services/processes/process-response.service.js';
@@ -96,7 +99,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     options.projectCreateService ?? new ProjectCreateService(platformStore);
   const projectIndexService = options.projectIndexService ?? new ProjectIndexService(platformStore);
   const projectShellService = options.projectShellService ?? new ProjectShellService(platformStore);
-  const processLiveHub = options.processLiveHub;
+  const processLiveHub = options.processLiveHub ?? new InMemoryProcessLiveHub();
   const processAccessService =
     options.processAccessService ?? new ProcessAccessService(platformStore, projectAccessService);
   const processModuleRegistry = options.processModuleRegistry ?? new ProcessModuleRegistry();
@@ -106,11 +109,13 @@ export async function createApp(options: CreateAppOptions = {}) {
     new ProcessRegistrationService(platformStore, processDisplayLabelService, projectAccessService);
   const processResponseService =
     options.processResponseService ??
-    new ProcessResponseService(platformStore, processAccessService);
+    new ProcessResponseService(platformStore, processAccessService, processLiveHub);
   const processStartService =
-    options.processStartService ?? new ProcessStartService(platformStore, processAccessService);
+    options.processStartService ??
+    new ProcessStartService(platformStore, processAccessService, processLiveHub);
   const processResumeService =
-    options.processResumeService ?? new ProcessResumeService(platformStore, processAccessService);
+    options.processResumeService ??
+    new ProcessResumeService(platformStore, processAccessService, processLiveHub);
   const processWorkSurfaceService =
     options.processWorkSurfaceService ??
     new DefaultProcessWorkSurfaceService(platformStore, processAccessService);
@@ -151,7 +156,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.get('/health', async () => {
     return {
       status: 'ok',
-      story: 'story-5-return-and-recovery-visibility',
+      story: 'story-6-live-reconciliation-and-degradation',
     };
   });
 

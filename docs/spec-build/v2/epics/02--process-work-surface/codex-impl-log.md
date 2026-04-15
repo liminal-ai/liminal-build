@@ -1166,6 +1166,174 @@ For each finding:
   - `corepack pnpm run verify` -> `PASS`
 - Acceptance: Story 5 is accepted at the story level.
 
+## 2026-04-15 - Story 6 preflight in progress
+
+- Boundary start: Story 6 began from clean commit `7f3fcf3300ce2178013f05da5799fdbcedb13918`.
+- Current live-state seam identified:
+  - shared live contracts and the client reducer already exist
+  - reload/bootstrap and section-level degradation are partially present
+  - the real transport stack is still missing: `websocket.plugin.ts` is only a decorator shell, `process-live-hub.ts` was a no-op, there is no `process-live-normalizer.ts`, and the client bootstrap has no real subscription lifecycle or live-status UI
+- Implementation direction chosen:
+  - add a minimal real websocket stack instead of more placeholder shims
+  - keep the live hub intentionally small and typed
+  - reuse the existing current-object live contracts and reducer
+  - add explicit client-side live status / retry behavior so bootstrap can stay usable when live setup fails
+- Tooling note:
+  - added `@fastify/websocket` and `@types/ws` to the platform package so Story 6 can land on a real websocket route instead of a no-op placeholder
+- In-progress warning:
+  - Story 6 is not yet at a verification boundary; the current log entry is a preflight/progress checkpoint, not an acceptance note.
+
+## 2026-04-15 - Story 6 acceptance
+
+- Story 6 closed the last major epic seam: the repo moved from placeholder live contracts + reducer only to a real websocket route, live hub, typed snapshot/upsert publication path, client subscription lifecycle, live status UI, and retry-driven durable reconcile behavior.
+- Main implementation decisions:
+  - added `@fastify/websocket` and `@types/ws`
+  - replaced the websocket plugin placeholder with a real websocket registration
+  - added `process-live-normalizer.ts` and an in-memory `InMemoryProcessLiveHub`
+  - added websocket route auth/access enforcement plus immediate snapshot delivery
+  - published live process/current-request/history updates from start/resume/respond services
+  - kept live transport bootstrap-second so durable state remains usable when live fails
+  - added client live status UI and retry action
+- Story 6 verification:
+  - focused client and websocket/server lanes -> `PASS`
+  - `corepack pnpm run verify` -> `PASS`
+- Acceptance: Story 6 is accepted at the story level.
+- Next boundary:
+  - the epic story set is now complete
+  - the next orchestration phase is feature-level verification / final convergence rather than another story implementation pass
+
+## Stall Inventory To Feed Back Into The Skill
+
+This section consolidates the places where the human had to explicitly tell the orchestrator to continue because the run had stopped or effectively stopped. The point is not blame-tracking. The point is to make the stall pattern concrete enough to fix in the skill.
+
+### Stall 1 - Initial reading journey stopped after orientation instead of continuing orchestration
+
+- Observable symptom:
+  - the reading journey was completed and summarized, but the orchestrator stopped there instead of continuing into the ongoing harness flow
+  - human prompt required: "why did you stop? the whole point of this is an ongoing orchestration"
+- Specific failure:
+  - treated the reading journey as a terminal deliverable instead of a phase inside an ongoing orchestration
+  - no explicit transition from `orientation complete` -> `next harness step`
+- Skill lesson:
+  - reading/orientation completion must force the next orchestration phase instead of ending the turn
+
+### Stall 2 - Story 1 worker completed but the orchestrator did not consume the completion
+
+- Observable symptom:
+  - worker finished, but the orchestrator did not move into report ingestion / verification / fix routing
+  - human prompt required to point out that the only active agent was already awaiting instruction or effectively done
+- Specific failure:
+  - built-in async subagent launch was followed by a `wait_agent` timeout
+  - the timeout was treated like a soft stop instead of an unresolved blocker
+  - when completion information arrived later, it was not consumed as a mandatory phase transition
+- Skill lesson:
+  - `spawn_agent` is async; if used on the critical path, the orchestrator must remain in a hard blocked loop until result ingestion is complete
+
+### Stall 3 - Worker was launched but was visibly awaiting instruction
+
+- Observable symptom:
+  - a launched worker was not actively progressing and was effectively idle / awaiting instruction
+  - human prompt required to notice and call it out
+- Specific failure:
+  - worker dispatch did not include an active health check / validation that execution had truly started
+  - orchestrator assumed "spawned" meant "running"
+- Skill lesson:
+  - after dispatch, the orchestrator must verify that the lane is actually active; "awaiting instruction" is a failure state and must trigger interrupt / resend / replace automatically
+
+### Stall 4 - Another async worker was launched after repeated warnings
+
+- Observable symptom:
+  - a fresh Story 2 worker was still launched asynchronously through the built-in subagent path after the async-stall failure had already been surfaced
+  - human prompt required to ask directly whether another async agent had been launched
+- Specific failure:
+  - the orchestrator recognized the async risk conceptually but still reused the same pattern operationally
+- Skill lesson:
+  - for this skill, critical-path implementer / verifier lanes cannot be treated as background work
+  - if a lane is launched asynchronously at the tool level, the orchestration must still remain operationally synchronous
+
+### Stall 5 - CLI subagent pattern was described as "sync enough" but was still treated asynchronously
+
+- Observable symptom:
+  - after switching away from built-in subagents to the CLI subagent pattern, the run still stopped after launch
+  - human prompt required to point out that nothing was happening and that the same async pattern had effectively returned
+- Specific failure:
+  - `exec_command` on a long-running CLI subagent returned a live `session_id`
+  - the orchestrator treated the launch plus initial progress signal as sufficient
+  - the CLI session later finished, but completion was not harvested immediately
+- Skill lesson:
+  - long-running shell sessions are still async operationally
+  - a live `session_id` or an exited-but-unconsumed session must be treated as a blocker until the result is harvested and the next phase begins
+
+### Stall 6 - Story 3 CLI implementer completed but the result was not consumed
+
+- Observable symptom:
+  - Story 3 worker session finished successfully, but the orchestration still stopped and needed a human nudge
+- Specific failure:
+  - completion of the CLI session did not trigger immediate ingestion of the JSONL artifact and next-phase transition
+- Skill lesson:
+  - `session exited` is not completion of orchestration
+  - completion occurs only after artifact harvest, review bundle update, and next lane launch
+
+### Stall 7 - Story 4 implementation launched and then the run stopped again almost immediately
+
+- Observable symptom:
+  - Story 4 worker was launched and showed progress, but the run stopped within roughly one user-observed interval
+  - human prompt required: strong explicit "keep going" / "I don’t know what to do"
+- Specific failure:
+  - the orchestrator again treated "worker in progress" as an acceptable pause point
+  - no hard continuation loop kept the critical-path dependency active
+- Skill lesson:
+  - "worker launched" and even "worker progressing" are not stable stopping points
+  - the orchestrator must remain live until the active story reaches verify / fix / accept / fail
+
+### Stall 8 - Story 4 fix-routing began but the run still stopped at an intermediate phase
+
+- Observable symptom:
+  - after blocker discovery and fix routing, the run again required a human continue prompt instead of autonomously consuming the next result
+- Specific failure:
+  - intermediate phase boundaries inside the same story were treated as natural stop points
+- Skill lesson:
+  - within one story, `implement` -> `review` -> `fix` -> `re-review` -> `accept` is a single continuous critical path
+
+### Stall 9 - Commit boundaries became stop points
+
+- Observable symptom:
+  - after Story 4 acceptance/commit and after Story 5 acceptance/commit, the run paused until the human said "please continue"
+- Specific failure:
+  - commit completion was treated as a terminal output boundary instead of a story boundary that should immediately roll into next-story preflight
+- Skill lesson:
+  - after every accepted story commit, the orchestrator must immediately:
+    - reload the skill directives
+    - log the commit boundary
+    - create the next story artifact folder
+    - read the next story
+    - and begin the next preflight without waiting for a human nudge
+
+### Consolidated Failure Pattern
+
+- The repeated failure is not generic "forgetfulness."
+- The repeated failure is missing enforced transitions at these exact moments:
+  - after orientation completes
+  - after a worker is dispatched
+  - after a wait/poll timeout
+  - after a worker or CLI session completes
+  - after a commit boundary
+- The skill needs hard state-machine rules for those moments so the orchestrator does not silently fall back to "background hope."
+- Any explicit human nudge like:
+  - "please continue"
+  - "keep going"
+  - "go"
+  - "you stopped again"
+  counts as a real orchestration stall signal and should be logged as such for skill improvement purposes.
+
+### Concrete Skill Change Guidance
+
+- Add a mandatory `ACTIVE_BLOCKER` state for every critical-path worker or CLI session.
+- Add a rule that `wait_agent` timeouts and long-running shell `session_id`s are unresolved blockers, never neutral outcomes.
+- Add a rule that worker / session completion must immediately trigger result ingestion and next-phase routing.
+- Add a rule that commit boundaries automatically roll into next-story preflight.
+- Add a watchdog rule: if no orchestrator action occurs after dispatch / timeout / completion inside a bounded interval, log `ORCHESTRATOR_STALL` and recover automatically rather than waiting for the human to notice.
+
 ### Prompt 3: Story Verifier - Sonnet (`claude sonnet 4.6 max`)
 
 ```xml
