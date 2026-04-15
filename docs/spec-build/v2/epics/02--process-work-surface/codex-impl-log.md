@@ -1202,6 +1202,21 @@ For each finding:
   - the epic story set is now complete
   - the next orchestration phase is feature-level verification / final convergence rather than another story implementation pass
 
+## 2026-04-15 - Feature verification
+
+- Feature verification bundle created under `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/feature-verification`.
+- Final feature acceptance gate:
+  - `corepack pnpm run verify-all` -> `PASS`
+  - `test:integration` -> `PASS`
+  - `test:e2e` -> explicit scaffolded `SKIP`, as currently encoded in repo policy/scripts
+- Final acceptance state:
+  - Epic 2 `02--process-work-surface` accepted at the implemented repo boundary
+  - story set complete
+  - feature gate complete
+- Non-blocking residuals recorded:
+  - live hub is in-memory for the current Fastify process
+  - e2e lane remains scaffolded rather than implemented
+
 ## Stall Inventory To Feed Back Into The Skill
 
 This section consolidates the places where the human had to explicitly tell the orchestrator to continue because the run had stopped or effectively stopped. The point is not blame-tracking. The point is to make the stall pattern concrete enough to fix in the skill.
