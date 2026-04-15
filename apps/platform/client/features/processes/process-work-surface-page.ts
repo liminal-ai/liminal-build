@@ -23,6 +23,8 @@ export function renderProcessWorkSurfacePage(args: {
   targetDocument: Document;
   targetWindow: Window & typeof globalThis;
   onOpenProject: (projectId: string) => void;
+  onStartProcess?: (projectId: string, processId: string) => void;
+  onResumeProcess?: (projectId: string, processId: string) => void;
 }): HTMLElement {
   const container = args.targetDocument.createElement('section');
   const state = args.store.get();
@@ -74,11 +76,14 @@ export function renderProcessWorkSurfacePage(args: {
     return container;
   }
 
+  const activeProject = processSurface.project;
+  const activeProcess = processSurface.process;
+
   const backButton = args.targetDocument.createElement('button');
   backButton.type = 'button';
   backButton.textContent = 'Back to project';
   backButton.addEventListener('click', () => {
-    args.onOpenProject(processSurface.project?.projectId ?? '');
+    args.onOpenProject(activeProject.projectId);
   });
 
   const projectHeading = args.targetDocument.createElement('h2');
@@ -87,11 +92,11 @@ export function renderProcessWorkSurfacePage(args: {
   const processMeta = args.targetDocument.createElement('p');
   const processPhase = args.targetDocument.createElement('p');
 
-  projectHeading.textContent = processSurface.project.name;
-  projectRole.textContent = `Role: ${processSurface.project.role}`;
-  processHeading.textContent = processSurface.process.displayLabel;
-  processMeta.textContent = `${formatProcessTypeLabel(processSurface.process.processType)} • ${formatProcessStatusLabel(processSurface.process.status)}`;
-  processPhase.textContent = `Phase: ${processSurface.process.phaseLabel}`;
+  projectHeading.textContent = activeProject.name;
+  projectRole.textContent = `Role: ${activeProject.role}`;
+  processHeading.textContent = activeProcess.displayLabel;
+  processMeta.textContent = `${formatProcessTypeLabel(activeProcess.processType)} • ${formatProcessStatusLabel(activeProcess.status)}`;
+  processPhase.textContent = `Phase: ${activeProcess.phaseLabel}`;
   container.append(
     backButton,
     projectHeading,
@@ -101,9 +106,37 @@ export function renderProcessWorkSurfacePage(args: {
     processPhase,
   );
 
-  if (processSurface.process.nextActionLabel !== null) {
+  if (activeProcess.availableActions.includes('start')) {
+    const startButton = args.targetDocument.createElement('button');
+    startButton.type = 'button';
+    startButton.textContent = 'Start process';
+    startButton.addEventListener('click', () => {
+      args.onStartProcess?.(activeProject.projectId, activeProcess.processId);
+    });
+    container.append(startButton);
+  }
+
+  if (activeProcess.availableActions.includes('resume')) {
+    const resumeButton = args.targetDocument.createElement('button');
+    resumeButton.type = 'button';
+    resumeButton.textContent = 'Resume process';
+    resumeButton.addEventListener('click', () => {
+      args.onResumeProcess?.(activeProject.projectId, activeProcess.processId);
+    });
+    container.append(resumeButton);
+  }
+
+  if (processSurface.actionError !== null) {
+    const actionError = args.targetDocument.createElement('p');
+    actionError.setAttribute('data-process-action-error', 'true');
+    actionError.setAttribute('role', 'alert');
+    actionError.textContent = processSurface.actionError.message;
+    container.append(actionError);
+  }
+
+  if (activeProcess.nextActionLabel !== null) {
     const nextAction = args.targetDocument.createElement('p');
-    nextAction.textContent = `Next action: ${processSurface.process.nextActionLabel}`;
+    nextAction.textContent = `Next action: ${activeProcess.nextActionLabel}`;
     container.append(nextAction);
   }
 

@@ -5,7 +5,7 @@ import type {
   ProcessSummary,
 } from '../apps/platform/shared/contracts/index.js';
 import type { Doc, Id } from './_generated/dataModel.js';
-import { mutation, query } from './_generated/server.js';
+import { mutation, query, type MutationCtx } from './_generated/server.js';
 import { v } from 'convex/values';
 
 export const supportedProcessTypeValidator = v.union(
@@ -185,6 +185,24 @@ export const createProcess = mutation({
   },
 });
 
+export const startProcess = mutation({
+  args: {
+    processId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return transitionProcessToRunning(ctx, args.processId);
+  },
+});
+
+export const resumeProcess = mutation({
+  args: {
+    processId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return transitionProcessToRunning(ctx, args.processId);
+  },
+});
+
 function buildProcessSummary(process: Doc<'processes'>): ProcessSummary {
   return {
     processId: process._id,
@@ -218,4 +236,49 @@ function deriveAvailableActions(status: ProcessStatus): ProcessAvailableAction[]
     default:
       return [];
   }
+}
+
+async function transitionProcessToRunning(
+  ctx: MutationCtx,
+  processIdValue: string,
+): Promise<{ process: ProcessSummary; currentRequest: CurrentProcessRequest | null }> {
+  let processRecord: Doc<'processes'> | null = null;
+
+  try {
+    processRecord = await ctx.db.get(processIdValue as Id<'processes'>);
+  } catch {
+    throw new Error('Process not found.');
+  }
+
+  if (processRecord === null) {
+    throw new Error('Process not found.');
+  }
+
+  const now = new Date().toISOString();
+  const nextProcessFields = {
+    status: 'running' as const,
+    phaseLabel: processRecord.phaseLabel === 'Draft' ? 'Working' : processRecord.phaseLabel,
+    nextActionLabel: 'Monitor progress in the work surface',
+    currentRequestHistoryItemId: null,
+    updatedAt: now,
+  };
+
+  await ctx.db.patch(processRecord._id, nextProcessFields);
+
+  try {
+    await ctx.db.patch(processRecord.projectId as Id<'projects'>, {
+      lastUpdatedAt: now,
+      updatedAt: now,
+    });
+  } catch {
+    // Keep the process transition durable even if the project lookup is stale.
+  }
+
+  return {
+    process: buildProcessSummary({
+      ...processRecord,
+      ...nextProcessFields,
+    }),
+    currentRequest: null,
+  };
 }

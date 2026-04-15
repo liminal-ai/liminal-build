@@ -1,12 +1,19 @@
 import type {
   AppState,
   ParsedRoute,
+  RequestError,
+  ResumeProcessResponse,
   ProcessSummary,
   ProjectShellResponse,
   ProjectSummary,
+  StartProcessResponse,
 } from '../../shared/contracts/index.js';
 import { ApiRequestError, getAuthenticatedUser } from '../browser-api/auth-api.js';
-import { getProcessWorkSurface } from '../browser-api/process-work-surface-api.js';
+import {
+  getProcessWorkSurface,
+  resumeProcess,
+  startProcess,
+} from '../browser-api/process-work-surface-api.js';
 import {
   createProcess,
   createProject,
@@ -73,6 +80,11 @@ export async function bootstrapApp(
   const store = createAppStore(initialState);
   let routeLoadId = 0;
 
+  const redirectToLogin = (): void => {
+    const returnTo = `${targetWindow.location.pathname}${targetWindow.location.search}`;
+    targetWindow.location.assign(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
+  };
+
   const applyRouteState = (parsedRoute: ParsedRoute): void => {
     const processSurfaceIdentity = getProcessSurfaceRouteIdentity(parsedRoute);
 
@@ -93,6 +105,117 @@ export async function bootstrapApp(
 
   const sortProcesses = (processes: ProcessSummary[]): ProcessSummary[] =>
     [...processes].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+
+  const applyProcessActionResponse = (
+    projectId: string,
+    processId: string,
+    response: StartProcessResponse | ResumeProcessResponse,
+  ): void => {
+    const currentSurface = store.get().processSurface;
+
+    if (
+      currentSurface.projectId === null ||
+      currentSurface.projectId !== projectId ||
+      currentSurface.processId === null ||
+      currentSurface.processId !== processId
+    ) {
+      return;
+    }
+
+    store.patch('processSurface', {
+      ...currentSurface,
+      process: response.process,
+      currentRequest: response.currentRequest,
+      error: null,
+      actionError: null,
+    });
+  };
+
+  const clearProcessActionError = (projectId: string, processId: string): void => {
+    const currentSurface = store.get().processSurface;
+
+    if (
+      currentSurface.projectId !== projectId ||
+      currentSurface.processId !== processId ||
+      currentSurface.actionError === null
+    ) {
+      return;
+    }
+
+    store.patch('processSurface', {
+      ...currentSurface,
+      actionError: null,
+    });
+  };
+
+  const setProcessSurfaceUnavailableError = (
+    projectId: string,
+    processId: string,
+    error: RequestError,
+  ): void => {
+    const currentSurface = store.get().processSurface;
+
+    if (currentSurface.projectId !== projectId || currentSurface.processId !== processId) {
+      return;
+    }
+
+    store.patch('processSurface', {
+      ...defaultAppState.processSurface,
+      projectId,
+      processId,
+      isLoading: false,
+      error,
+    });
+  };
+
+  const setProcessActionError = (
+    projectId: string,
+    processId: string,
+    error: RequestError,
+  ): void => {
+    const currentSurface = store.get().processSurface;
+
+    if (currentSurface.projectId !== projectId || currentSurface.processId !== processId) {
+      return;
+    }
+
+    store.patch('processSurface', {
+      ...currentSurface,
+      error: null,
+      actionError: error,
+    });
+  };
+
+  const handleProcessActionRequestError = (
+    projectId: string,
+    processId: string,
+    error: ApiRequestError,
+  ): void => {
+    switch (error.payload.code) {
+      case 'UNAUTHENTICATED':
+        redirectToLogin();
+        return;
+      case 'PROJECT_FORBIDDEN':
+      case 'PROJECT_NOT_FOUND':
+      case 'PROCESS_NOT_FOUND':
+        setProcessSurfaceUnavailableError(projectId, processId, error.payload);
+        return;
+      case 'PROCESS_ACTION_NOT_AVAILABLE':
+        setProcessActionError(projectId, processId, error.payload);
+        return;
+      default:
+        setProcessActionError(projectId, processId, error.payload);
+        return;
+    }
+  };
+
+  const handleUnexpectedProcessActionFailure = (projectId: string, processId: string): void => {
+    setProcessActionError(projectId, processId, {
+      code: 'PROCESS_ACTION_FAILED',
+      message: 'The process action could not be completed right now. Try again or reload the page.',
+      status: 500,
+    });
+  };
 
   const applyShell = (shell: ProjectShellResponse): void => {
     store.patch('shell', {
@@ -316,6 +439,47 @@ export async function bootstrapApp(
     navigateTo(route, {}, targetWindow);
     await loadParsedRoute(route);
   };
+
+  const startCurrentProcess = async (projectId: string, processId: string): Promise<void> => {
+    clearProcessActionError(projectId, processId);
+
+    try {
+      const response = await startProcess({
+        projectId,
+        processId,
+      });
+
+      applyProcessActionResponse(projectId, processId, response);
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        handleProcessActionRequestError(projectId, processId, error);
+        return;
+      }
+
+      handleUnexpectedProcessActionFailure(projectId, processId);
+    }
+  };
+
+  const resumeCurrentProcess = async (projectId: string, processId: string): Promise<void> => {
+    clearProcessActionError(projectId, processId);
+
+    try {
+      const response = await resumeProcess({
+        projectId,
+        processId,
+      });
+
+      applyProcessActionResponse(projectId, processId, response);
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        handleProcessActionRequestError(projectId, processId, error);
+        return;
+      }
+
+      handleUnexpectedProcessActionFailure(projectId, processId);
+    }
+  };
+
   const root = getRequiredRootElement(targetWindow.document);
   const shellApp = createShellApp({
     root,
@@ -441,6 +605,8 @@ export async function bootstrapApp(
     onOpenProcess: (projectId: string, processId: string) => {
       void openProcess(projectId, processId);
     },
+    onStartProcess: startCurrentProcess,
+    onResumeProcess: resumeCurrentProcess,
   });
   shellApp.render();
   targetWindow.addEventListener('popstate', () => {
@@ -456,8 +622,7 @@ export async function bootstrapApp(
     });
   } catch (error) {
     if (error instanceof ApiRequestError && error.payload.code === 'UNAUTHENTICATED') {
-      const returnTo = `${targetWindow.location.pathname}${targetWindow.location.search}`;
-      targetWindow.location.assign(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
+      redirectToLogin();
       return;
     }
 

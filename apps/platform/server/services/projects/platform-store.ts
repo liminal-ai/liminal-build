@@ -1,15 +1,16 @@
 import { ConvexHttpClient } from 'convex/browser';
 import { makeFunctionReference } from 'convex/server';
-import type {
-  ArtifactSummary,
-  CurrentProcessRequest,
-  ProcessHistoryItem,
-  ProcessOutputReference,
-  ProcessSummary,
-  ProjectShellResponse,
-  ProjectSummary,
-  SideWorkItem,
-  SourceAttachmentSummary,
+import {
+  processSummarySchema,
+  type ArtifactSummary,
+  type CurrentProcessRequest,
+  type ProcessHistoryItem,
+  type ProcessOutputReference,
+  type ProcessSummary,
+  type ProjectShellResponse,
+  type ProjectSummary,
+  type SideWorkItem,
+  type SourceAttachmentSummary,
 } from '../../../shared/contracts/index.js';
 
 export interface StoredPlatformUser {
@@ -45,6 +46,11 @@ export type ProcessCreateResult = {
   process: ProcessSummary;
 };
 
+export interface ProcessActionStoreResult {
+  process: ProcessSummary;
+  currentRequest: CurrentProcessRequest | null;
+}
+
 export interface PlatformStore {
   upsertUserFromWorkOS(args: {
     workosUserId: string;
@@ -59,6 +65,8 @@ export interface PlatformStore {
     processType: ProcessSummary['processType'];
     displayLabel: string;
   }): Promise<ProcessCreateResult>;
+  startProcess(args: { processId: string }): Promise<ProcessActionStoreResult>;
+  resumeProcess(args: { processId: string }): Promise<ProcessActionStoreResult>;
   getProcessRecord(args: {
     processId: string;
   }): Promise<(ProcessSummary & { projectId: string }) | null>;
@@ -108,6 +116,18 @@ const createProcessMutation = makeFunctionReference<
   },
   ProcessCreateResult
 >('processes:createProcess');
+
+const startProcessMutation = makeFunctionReference<
+  'mutation',
+  { processId: string },
+  ProcessActionStoreResult
+>('processes:startProcess');
+
+const resumeProcessMutation = makeFunctionReference<
+  'mutation',
+  { processId: string },
+  ProcessActionStoreResult
+>('processes:resumeProcess');
 
 const listProjectProcessesQuery = makeFunctionReference<
   'query',
@@ -211,6 +231,29 @@ export class NullPlatformStore implements PlatformStore {
     };
   }
 
+  async startProcess(args: { processId: string }): Promise<ProcessActionStoreResult> {
+    const now = new Date().toISOString();
+
+    return {
+      process: {
+        processId: args.processId,
+        displayLabel: 'Unavailable process',
+        processType: 'FeatureSpecification',
+        status: 'running',
+        phaseLabel: 'Working',
+        nextActionLabel: 'Monitor progress in the work surface',
+        availableActions: ['open', 'review'],
+        hasEnvironment: false,
+        updatedAt: now,
+      },
+      currentRequest: null,
+    };
+  }
+
+  async resumeProcess(args: { processId: string }): Promise<ProcessActionStoreResult> {
+    return this.startProcess(args);
+  }
+
   async getProcessRecord(): Promise<(ProcessSummary & { projectId: string }) | null> {
     return null;
   }
@@ -288,6 +331,18 @@ export class ConvexPlatformStore implements PlatformStore {
     });
   }
 
+  async startProcess(args: { processId: string }): Promise<ProcessActionStoreResult> {
+    return this.client.mutation(startProcessMutation, args, {
+      skipQueue: true,
+    });
+  }
+
+  async resumeProcess(args: { processId: string }): Promise<ProcessActionStoreResult> {
+    return this.client.mutation(resumeProcessMutation, args, {
+      skipQueue: true,
+    });
+  }
+
   async listProjectProcesses(args: { projectId: string }): Promise<ProcessSummary[]> {
     return this.client.query(listProjectProcessesQuery, args);
   }
@@ -338,6 +393,8 @@ export class InMemoryPlatformStore implements PlatformStore {
   private readonly currentRequestsByProcessId = new Map<string, CurrentProcessRequest | null>();
   private readonly processOutputsByProcessId = new Map<string, ProcessOutputReference[]>();
   private readonly processSideWorkItemsByProcessId = new Map<string, SideWorkItem[]>();
+  private readonly startProcessResultsByProcessId = new Map<string, ProcessActionStoreResult>();
+  private readonly resumeProcessResultsByProcessId = new Map<string, ProcessActionStoreResult>();
 
   constructor(
     args: {
@@ -351,6 +408,8 @@ export class InMemoryPlatformStore implements PlatformStore {
       currentRequestsByProcessId?: Record<string, CurrentProcessRequest | null>;
       processOutputsByProcessId?: Record<string, ProcessOutputReference[]>;
       processSideWorkItemsByProcessId?: Record<string, SideWorkItem[]>;
+      startProcessResultsByProcessId?: Record<string, ProcessActionStoreResult>;
+      resumeProcessResultsByProcessId?: Record<string, ProcessActionStoreResult>;
     } = {},
   ) {
     for (const user of args.users ?? []) {
@@ -391,6 +450,14 @@ export class InMemoryPlatformStore implements PlatformStore {
 
     for (const [processId, items] of Object.entries(args.processSideWorkItemsByProcessId ?? {})) {
       this.processSideWorkItemsByProcessId.set(processId, items);
+    }
+
+    for (const [processId, result] of Object.entries(args.startProcessResultsByProcessId ?? {})) {
+      this.startProcessResultsByProcessId.set(processId, result);
+    }
+
+    for (const [processId, result] of Object.entries(args.resumeProcessResultsByProcessId ?? {})) {
+      this.resumeProcessResultsByProcessId.set(processId, result);
     }
   }
 
@@ -523,6 +590,26 @@ export class InMemoryPlatformStore implements PlatformStore {
     };
   }
 
+  async startProcess(args: { processId: string }): Promise<ProcessActionStoreResult> {
+    const override = this.startProcessResultsByProcessId.get(args.processId);
+
+    if (override !== undefined) {
+      return this.applyStoredProcessActionResult(args.processId, override);
+    }
+
+    return this.transitionProcessToRunning(args.processId);
+  }
+
+  async resumeProcess(args: { processId: string }): Promise<ProcessActionStoreResult> {
+    const override = this.resumeProcessResultsByProcessId.get(args.processId);
+
+    if (override !== undefined) {
+      return this.applyStoredProcessActionResult(args.processId, override);
+    }
+
+    return this.transitionProcessToRunning(args.processId);
+  }
+
   async getProcessRecord(args: {
     processId: string;
   }): Promise<(ProcessSummary & { projectId: string }) | null> {
@@ -590,6 +677,88 @@ export class InMemoryPlatformStore implements PlatformStore {
         project: update(directAccess.project),
       });
     }
+  }
+
+  private applyStoredProcessActionResult(
+    processId: string,
+    result: ProcessActionStoreResult,
+  ): ProcessActionStoreResult {
+    for (const [projectId, processes] of this.processesByProjectId.entries()) {
+      const index = processes.findIndex((process) => process.processId === processId);
+
+      if (index === -1) {
+        continue;
+      }
+
+      const nextProcesses = [...processes];
+      nextProcesses[index] = result.process;
+      this.processesByProjectId.set(projectId, nextProcesses);
+      this.currentRequestsByProcessId.set(processId, result.currentRequest);
+      this.updateProjectSummary(projectId, (project) => ({
+        ...project,
+        lastUpdatedAt: result.process.updatedAt,
+      }));
+
+      return result;
+    }
+
+    return result;
+  }
+
+  private transitionProcessToRunning(processId: string): ProcessActionStoreResult {
+    for (const [projectId, processes] of this.processesByProjectId.entries()) {
+      const index = processes.findIndex((process) => process.processId === processId);
+
+      if (index === -1) {
+        continue;
+      }
+
+      const existing = processes[index];
+
+      if (existing === undefined) {
+        continue;
+      }
+
+      const now = new Date().toISOString();
+      const nextProcess = processSummarySchema.parse({
+        ...existing,
+        status: 'running',
+        phaseLabel: existing.phaseLabel === 'Draft' ? 'Working' : existing.phaseLabel,
+        nextActionLabel: 'Monitor progress in the work surface',
+        availableActions: ['open', 'review'],
+        updatedAt: now,
+      });
+      const nextProcesses = [...processes];
+      nextProcesses[index] = nextProcess;
+      this.processesByProjectId.set(projectId, nextProcesses);
+      this.currentRequestsByProcessId.set(processId, null);
+      this.updateProjectSummary(projectId, (project) => ({
+        ...project,
+        lastUpdatedAt: now,
+      }));
+
+      return {
+        process: nextProcess,
+        currentRequest: null,
+      };
+    }
+
+    const now = new Date().toISOString();
+
+    return {
+      process: processSummarySchema.parse({
+        processId,
+        displayLabel: 'Unavailable process',
+        processType: 'FeatureSpecification',
+        status: 'running',
+        phaseLabel: 'Working',
+        nextActionLabel: 'Monitor progress in the work surface',
+        availableActions: ['open', 'review'],
+        hasEnvironment: false,
+        updatedAt: now,
+      }),
+      currentRequest: null,
+    };
   }
 }
 

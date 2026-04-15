@@ -18,6 +18,8 @@ export interface ShellAppOptions {
   onCancelCreateProcess: () => void;
   onOpenProject: (projectId: string) => void;
   onOpenProcess: (projectId: string, processId: string) => void;
+  onStartProcess: (projectId: string, processId: string) => Promise<void>;
+  onResumeProcess: (projectId: string, processId: string) => Promise<void>;
 }
 
 export function createShellApp(options: ShellAppOptions) {
@@ -43,6 +45,12 @@ export function createShellApp(options: ShellAppOptions) {
               targetDocument: options.targetWindow.document,
               targetWindow: options.targetWindow,
               onOpenProject: options.onOpenProject,
+              onStartProcess: (projectId, processId) => {
+                void options.onStartProcess(projectId, processId);
+              },
+              onResumeProcess: (projectId, processId) => {
+                void options.onResumeProcess(projectId, processId);
+              },
             })
           : renderProjectShellPage({
               store: options.store,

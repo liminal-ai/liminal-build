@@ -1,8 +1,10 @@
 import { z } from 'zod/v4';
 import {
+  resumeProcessResponseSchema,
   processWorkSurfaceResponseSchema,
   processWorkSurfaceRouteParamsSchema,
   requestErrorSchema,
+  startProcessResponseSchema,
 } from '../../shared/contracts/index.js';
 
 export const processHtmlRouteSchema = {
@@ -21,5 +23,27 @@ export const getProcessWorkSurfaceRouteSchema = {
     401: requestErrorSchema,
     403: requestErrorSchema,
     404: requestErrorSchema,
+  },
+} as const;
+
+export const startProcessRouteSchema = {
+  params: processWorkSurfaceRouteParamsSchema,
+  response: {
+    200: startProcessResponseSchema,
+    401: requestErrorSchema,
+    403: requestErrorSchema,
+    404: requestErrorSchema,
+    409: requestErrorSchema,
+  },
+} as const;
+
+export const resumeProcessRouteSchema = {
+  params: processWorkSurfaceRouteParamsSchema,
+  response: {
+    200: resumeProcessResponseSchema,
+    401: requestErrorSchema,
+    403: requestErrorSchema,
+    404: requestErrorSchema,
+    409: requestErrorSchema,
   },
 } as const;

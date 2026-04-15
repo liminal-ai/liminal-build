@@ -2,7 +2,12 @@ import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { buildShellBootstrapPayload } from '../config.js';
 import { AppError } from '../errors/app-error.js';
-import { getProcessWorkSurfaceRouteSchema, processHtmlRouteSchema } from '../schemas/processes.js';
+import {
+  getProcessWorkSurfaceRouteSchema,
+  processHtmlRouteSchema,
+  resumeProcessRouteSchema,
+  startProcessRouteSchema,
+} from '../schemas/processes.js';
 import { sessionCookieName } from '../services/auth/auth-session.service.js';
 import {
   processLiveUpdatesPathnamePattern,
@@ -151,6 +156,100 @@ export async function registerProcessRoutes(app: FastifyInstance): Promise<void>
             | 'PROJECT_FORBIDDEN'
             | 'PROJECT_NOT_FOUND'
             | 'PROCESS_NOT_FOUND';
+
+          return reply.code(statusCode).send({
+            code,
+            message: error.message,
+            status: statusCode,
+          });
+        }
+
+        throw error;
+      }
+    },
+  );
+
+  typedApp.post(
+    '/api/projects/:projectId/processes/:processId/start',
+    {
+      schema: startProcessRouteSchema,
+    },
+    async (request, reply) => {
+      if (request.actor === null) {
+        if (request.authFailureReason === 'invalid_session') {
+          reply.clearCookie(sessionCookieName, { path: '/' });
+        }
+
+        return reply.code(401).send({
+          code: 'UNAUTHENTICATED',
+          message: 'Authenticated access is required.',
+          status: 401,
+        });
+      }
+
+      try {
+        const response = await app.processStartService.start({
+          actor: request.actor,
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+        });
+
+        return reply.code(200).send(response);
+      } catch (error) {
+        if (error instanceof AppError) {
+          const statusCode = error.statusCode as 403 | 404 | 409;
+          const code = error.code as
+            | 'PROJECT_FORBIDDEN'
+            | 'PROJECT_NOT_FOUND'
+            | 'PROCESS_NOT_FOUND'
+            | 'PROCESS_ACTION_NOT_AVAILABLE';
+
+          return reply.code(statusCode).send({
+            code,
+            message: error.message,
+            status: statusCode,
+          });
+        }
+
+        throw error;
+      }
+    },
+  );
+
+  typedApp.post(
+    '/api/projects/:projectId/processes/:processId/resume',
+    {
+      schema: resumeProcessRouteSchema,
+    },
+    async (request, reply) => {
+      if (request.actor === null) {
+        if (request.authFailureReason === 'invalid_session') {
+          reply.clearCookie(sessionCookieName, { path: '/' });
+        }
+
+        return reply.code(401).send({
+          code: 'UNAUTHENTICATED',
+          message: 'Authenticated access is required.',
+          status: 401,
+        });
+      }
+
+      try {
+        const response = await app.processResumeService.resume({
+          actor: request.actor,
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+        });
+
+        return reply.code(200).send(response);
+      } catch (error) {
+        if (error instanceof AppError) {
+          const statusCode = error.statusCode as 403 | 404 | 409;
+          const code = error.code as
+            | 'PROJECT_FORBIDDEN'
+            | 'PROJECT_NOT_FOUND'
+            | 'PROCESS_NOT_FOUND'
+            | 'PROCESS_ACTION_NOT_AVAILABLE';
 
           return reply.code(statusCode).send({
             code,

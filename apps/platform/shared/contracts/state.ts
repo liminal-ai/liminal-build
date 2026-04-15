@@ -104,6 +104,7 @@ export const processSurfaceStateSchema = z.object({
   sideWork: sideWorkSectionEnvelopeSchema.nullable(),
   isLoading: z.boolean(),
   error: requestErrorSchema.nullable(),
+  actionError: requestErrorSchema.nullable(),
   live: z.object({
     connectionState: processSurfaceLiveConnectionStateSchema,
     subscriptionId: z.string().min(1).nullable(),

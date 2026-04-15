@@ -64,7 +64,7 @@ export class NotImplementedProcessWorkSurfaceService implements ProcessWorkSurfa
   }
 }
 
-function deriveProcessSurfaceAvailableActions(
+export function deriveProcessSurfaceAvailableActions(
   status: ProcessSummary['status'],
 ): ProcessSurfaceSummary['availableActions'] {
   switch (status) {
@@ -87,7 +87,7 @@ function deriveProcessSurfaceAvailableActions(
   }
 }
 
-function buildProcessSurfaceSummary(process: ProcessSummary): ProcessSurfaceSummary {
+export function buildProcessSurfaceSummary(process: ProcessSummary): ProcessSurfaceSummary {
   return processSurfaceSummarySchema.parse({
     processId: process.processId,
     displayLabel: process.displayLabel,

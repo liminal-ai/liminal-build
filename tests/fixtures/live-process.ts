@@ -131,6 +131,7 @@ export const connectedProcessSurfaceStateFixture = processSurfaceStateSchema.par
   sideWork: readySideWorkFixture,
   isLoading: false,
   error: null,
+  actionError: null,
   live: {
     connectionState: 'connected',
     subscriptionId: 'subscription-001',

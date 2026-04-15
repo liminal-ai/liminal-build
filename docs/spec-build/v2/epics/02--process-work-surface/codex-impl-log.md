@@ -3,8 +3,8 @@
 ## Run State
 
 - `state`: `STORY_ACTIVE`
-- `phase`: `implementing`
-- `updatedAtUtc`: `2026-04-15T01:26:39Z`
+- `phase`: `acceptance`
+- `updatedAtUtc`: `2026-04-15T04:04:45Z`
 - `orchestrator`: `gpt-5.4 xhigh`
 - `implementation default lane`: `Codex gpt-5.4 high`
 - `implementation escalation lane`: `Codex gpt-5.4 xhigh`
@@ -570,6 +570,234 @@ If that happens again, it is an orchestrator failure, not a worker failure.
   - process access enforcement for process routes: `integrated`
   - process-surface client bootstrap branch: `integrated`
 - Next story target: `02-start-and-resume.md`
+
+## Story 1 Commit
+
+- `commit`: `7308d84e6825f1558a0211b666fa71aebdbec119`
+- `message`: `feat: Story 1 - Process Entry and Bootstrap`
+
+## Story 2 Preflight
+
+- `story`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/stories/02-start-and-resume.md`
+- `next story skimmed`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/stories/03-conversation-and-current-request.md`
+- `story kind`: `standard`
+- `story base commit`: `7308d84e6825f1558a0211b666fa71aebdbec119`
+- `lane choice`: `Codex gpt-5.4 xhigh`
+- `lane rationale`: Story 2 is the first mutation-heavy slice across client, server, and durable state, and it affects same-session correctness plus future Story 3 request continuity.
+- `story gate`: `corepack pnpm run red-verify && corepack pnpm run test:service && corepack pnpm run test:client`
+- `expected Epic 2 cumulative test baseline after Story 2`: `about 26 executable tests total in this run`
+  Story 1 ended at about `18`; Story 2 should add about `8` more.
+- `story-specific warnings`:
+  - do not quietly implement response submission from Story 3
+  - same-session state updates must come from the start/resume action result, not from fake live behavior
+  - keep resulting waiting/completed/failed/interrupted state rendering coherent without drifting into Story 6 reconnect logic
+
+## Continued Orchestration Trouble
+
+- `issue type`: critical-path async delegation remains brittle
+- `current evidence`:
+  - Story 1 already exposed two separate orchestrator failures:
+    - worker stall after dispatch
+    - worker completion not consumed immediately
+  - despite that diagnosis, Story 2 was still launched with the built-in async `spawn_agent` path
+  - Story 2 then completed via subagent notification, which means the same fragile pattern is still in use
+- `why this is happening`:
+  - the built-in subagent tool is asynchronous by design
+  - correct use requires a strict blocked-state / wait / consume loop
+  - that loop is proving unreliable in practice for this orchestration skill
+  - generic delegation guidance and async notifications are too easy to drift with on the critical path
+- `what specifically is failing`:
+  - after `spawn_agent`, the orchestrator is not being operationally forced into a synchronous control loop
+  - timeouts and notifications require immediate continuation behavior, but the current pattern still leaves room for phase drift
+  - this is not a worker-quality problem; it is a critical-path control-pattern problem
+
+## Proposed Mitigation Trial
+
+For critical-path implementer and verifier work, try replacing built-in async `spawn_agent` orchestration with the local Codex CLI subagent pattern executed through shell in a blocking session.
+
+### Local References
+
+- `codex-subagent skill reference`:
+  - `/Users/leemoore/code/cli-as-subagent-skills/codex-subagent-skill/dist/codex-subagent/SKILL.md`
+- `codex-result helper`:
+  - `/Users/leemoore/code/cli-as-subagent-skills/codex-subagent-skill/dist/codex-subagent/scripts/codex-result`
+- `codex cli`:
+  - `/opt/homebrew/bin/codex`
+
+### Why This May Work Better
+
+- the shell session is the blocked object, not a background agent notification
+- the orchestrator can stay attached to one command/session until completion
+- result harvesting becomes explicit:
+  - run `codex exec --json ... > file`
+  - keep polling the same shell session if needed
+  - extract final output from the JSONL file with `codex-result`
+  - continue immediately
+- this reduces reliance on remembering to re-enter a built-in async wait loop after spawn/timeout/notification
+
+### Trial Rule
+
+- do not use built-in `spawn_agent` for critical-path story implementer work during the mitigation trial
+- do not use built-in `spawn_agent` for critical-path verifier work during the mitigation trial
+- if CLI-based Codex work is used, treat it as operationally synchronous:
+  - launch
+  - stay blocked on the shell session
+  - harvest output
+  - continue immediately
+
+### Expected Benefit
+
+This does not change the fact that long-running work may require polling, but it changes the control object from “async subagent completion notification” to “explicit shell session still running,” which is easier to manage deterministically inside this skill.
+
+## Mitigation Trial Status
+
+- `current story`: `02-start-and-resume`
+- `current plan`: use blocking CLI-based subagent execution for Story 2 fix-routing and verification lanes instead of built-in async `spawn_agent`
+- `codex cli verifier pattern`:
+  - run `codex exec --json ... > jsonl`
+  - stay attached to the shell session until completion
+  - extract the final result from the JSONL file
+- `second-lane verifier pattern`:
+  - continue to use shell-driven helper execution with durable output files
+  - treat helper completion as shell-session completion, not as an async notification
+- `codex cli fix-routing status`:
+  - Story 2 fix round 1 was executed through the local Codex CLI subagent pattern in a blocking shell session
+  - the orchestrator stayed on the session, harvested the result from the JSONL artifact, and moved directly into the next phase
+  - this is the first clean proof in this run that the CLI-shell pattern is more controllable than built-in async `spawn_agent` for critical-path work
+
+## Story 2 Verification Artifacts
+
+- `verification bundle`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/02-start-and-resume/verification-bundle.md`
+- `codex cli review output`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/02-start-and-resume/codex-review.jsonl`
+- `codex cli review report`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/02-start-and-resume/codex-review.md`
+- `second-lane review output`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/02-start-and-resume/cursor-review.json`
+- `second-lane review report`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/02-start-and-resume/cursor-review.md`
+
+## Story 2 Second-Lane Fallback
+
+- initial second-lane attempt used the shell-driven Claude helper
+- failure symptom:
+  - long-lived shell session
+  - zero-byte output file
+  - no durable review artifact produced
+- disposition:
+  - treat the Claude helper lane as unhealthy for Story 2
+  - switch the second verifier lane to the approved Cursor CLI fallback using the same blocking shell-session pattern
+
+## Story 2 Verification Summary
+
+- `codex cli verdict`: `REVISE`
+- `cursor fallback verdict`: `REVISE`
+- `overlap`:
+  - client-side stale-action `409 PROCESS_ACTION_NOT_AVAILABLE` handling is missing/incomplete
+  - AC-2.4 resulting-state proof is weaker than the happy-path start/resume proof
+- `codex-specific stronger claim`:
+  - Story 2 does not yet prove the actual work surface can show later settled states in-session without Story 6 live transport
+- `cursor-specific framing`:
+  - stale-action 409 handling is the clearest spec-level blocker
+  - AC-2.4 evidence is partial and needs stronger proof / paused coverage
+- `fix list`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/02-start-and-resume/fix-list-round-1.md`
+
+## Story 2 Fix Routing Round 1
+
+- `driver`: `Codex CLI subagent via blocking shell session`
+- `prompt`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/02-start-and-resume/codex-fix-round-1-prompt.md`
+- `jsonl artifact`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/02-start-and-resume/codex-fix-round-1.jsonl`
+- `scope`: fix the verifier-agreed Story 2 gaps only
+  - add client-side handling for stale-action `409 PROCESS_ACTION_NOT_AVAILABLE`
+  - preserve the current process surface and show an inline action-scoped error
+  - strengthen Story 2 evidence for resulting waiting/paused/completed/failed/interrupted state visibility without pulling Story 6 transport forward
+- `implementation outcome`:
+  - added `actionError` to the process-surface client state contract
+  - `startCurrentProcess` and `resumeCurrentProcess` now clear stale action errors on entry, apply successful action payloads directly, and trap `PROCESS_ACTION_NOT_AVAILABLE` into in-surface error state instead of surfacing an unhandled rejection
+  - the process work-surface page now renders `Start process` and `Resume process` controls plus an inline action error region
+  - client test coverage now proves:
+    - stale `409` start/resume responses preserve the existing surface and show inline feedback
+    - Story 2 action responses can render waiting/completed/failed state transitions at the page boundary
+    - reducer-level live process fixtures now include paused/completed/failed/interrupted state transitions as explicit visibility proof
+- `gate notes`:
+  - focused `process-work-surface-page` execution initially failed when run without `jsdom`; rerunning it with `--environment jsdom` confirmed the test behavior and identified the failure as harness/environmental, not product-level
+  - the full Story 2 acceptance gate then passed cleanly:
+    - `corepack pnpm run red-verify`
+    - `corepack pnpm run test:service`
+    - `corepack pnpm run test:client`
+- `phase exit`: return to fresh dual verification on the updated Story 2 implementation
+
+## Story 2 Primary Verifier Recovery
+
+- initial replacement attempt:
+  - `artifact`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/02-start-and-resume/codex-review-stalled.jsonl`
+  - `failure shape`: the Codex CLI verifier over-read the implementation and never emitted the requested review artifact
+  - `recovery`: treat the lane as stalled, preserve the JSONL, and relaunch a tighter replacement verifier prompt focused on the remaining high-risk seams
+- replacement primary verifier:
+  - `artifact`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/02-start-and-resume/codex-review.jsonl`
+  - `materialized report`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/02-start-and-resume/codex-review.md`
+  - `result`: full Story 2 gate executed cleanly and the verifier isolated one remaining blocker
+
+## Story 2 Reverification Summary
+
+- `codex replacement verdict`: `REVISE`
+- `cursor fallback verdict`: `PASS`
+- `cursor caveat`: Cursor shell execution failed in-session, so the second lane did not independently rerun the gate; its report was materialized from the saved transcript and code inspection
+- `codex blocker`:
+  - non-`PROCESS_ACTION_NOT_AVAILABLE` start/resume failures still become dropped async rejections
+  - cause:
+    - `bootstrap.ts` rethrows non-409 action failures
+    - `shell-app.ts` invokes action handlers with `void`
+  - impact:
+    - forbidden/not-found/server/network action failures have no coherent same-session recovery path even though Story 2 owns same-session action behavior
+- `codex nonblocking notes`:
+  - Story 2 action implementations still transition through a generic running baseline, but the current page/reducer proof is adequate for accepted Story 2 scope
+  - shell-summary versus process-surface action derivation remains a seam worth watching, but it is not the current blocker
+- `gate result from replacement codex verifier`:
+  - `corepack pnpm run red-verify && corepack pnpm run test:service && corepack pnpm run test:client` -> `PASS`
+- `next action`: route Story 2 fix round 2 for the remaining client-side async failure handling gap
+
+## Story 2 Fix Routing Round 2 And Round 3
+
+- `fix list`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/02-start-and-resume/fix-list-round-2.md`
+- initial round 2 dispatch:
+  - `artifact`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/02-start-and-resume/codex-fix-round-2-superseded.jsonl`
+  - `issue`: the first follow-up fix prompt only targeted the async-failure blocker even though the verifier had established two blockers
+  - `disposition`: superseded before acceptance; preserved as evidence of prompt-scope recovery
+- active round 3 dispatch:
+  - `artifact`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/02-start-and-resume/codex-fix-round-3.jsonl`
+  - `materialized report`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/02-start-and-resume/codex-fix-round-3.md`
+  - `driver`: Codex CLI subagent via blocking shell session
+- `implementation outcome`:
+  - `bootstrap.ts` now routes non-409 action failures into bounded in-session recovery behavior instead of letting them escape via `void`ed async handlers
+  - `process-work-surface-api.ts` now falls back to typed request errors by HTTP status when action endpoints return malformed or empty error bodies
+  - `platform-store.ts` now supports richer per-process start/resume result overrides in the in-memory store so server tests can prove returned action outcomes directly
+  - `process-actions-api.test.ts` now proves waiting plus `currentRequest`, completed, and failed outcomes through the real `POST` action boundary and follow-up `GET` bootstrap reads
+- `gate notes`:
+  - the first full gate attempt failed on formatting only
+  - the fix worker applied the exact `biome format` changes and reran the required gate cleanly
+  - final gate:
+    - `corepack pnpm run red-verify && corepack pnpm run test:service && corepack pnpm run test:client` -> `PASS`
+- `orchestrator control note`:
+  - the superseded round 2 CLI worker was still alive after round 3 began
+  - the orchestrator terminated the stale round 2 shell lane so only one critical-path CLI worker remained active
+- `phase exit`: return to fresh dual verification on the updated Story 2 implementation
+
+## Story 2 Final Verification Summary
+
+- `primary codex verifier`: `PASS`
+  - `artifact`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/02-start-and-resume/codex-review.jsonl`
+  - `materialized report`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/02-start-and-resume/codex-review.md`
+  - `gate`: `corepack pnpm run red-verify && corepack pnpm run test:service && corepack pnpm run test:client` -> `PASS`
+- `second-lane cursor verifier`: `PASS`
+  - `session`: `f660e102-3ac5-432e-b525-76eec9959ced`
+  - `materialized report`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/02-start-and-resume/cursor-review.md`
+  - `caveat`: Cursor's command runner rejected the requested shell gate, so the second lane is code-inspection-only for this round
+- `convergence`:
+  - both fresh verifiers agree the two previously blocking seams are closed
+  - no verifier found a Story 2 acceptance blocker after round 3
+- `nonblocking residual risks`:
+  - `interrupted` remains reducer-proven rather than action-boundary-proven in a dedicated `POST` -> `GET` server test
+  - malformed or empty action error body fallback lacks a targeted test
+  - empty-body `404` fallback can only infer `PROCESS_NOT_FOUND`, not `PROJECT_NOT_FOUND`
+- `acceptance decision`: accept Story 2 as implemented
+- `next action`: stage and commit Story 2, then advance orchestration to Story 3
 
 ## Prompt Map
 

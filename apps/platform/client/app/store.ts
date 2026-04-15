@@ -43,6 +43,7 @@ export const defaultAppState: AppState = appStateSchema.parse({
     sideWork: null,
     isLoading: false,
     error: null,
+    actionError: null,
     live: {
       connectionState: 'idle',
       subscriptionId: null,

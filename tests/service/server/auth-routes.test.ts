@@ -369,6 +369,38 @@ describe('auth routes', () => {
           },
         };
       },
+      async startProcess(args) {
+        return {
+          process: {
+            processId: args.processId,
+            displayLabel: 'Feature Specification #1',
+            processType: 'FeatureSpecification',
+            status: 'running',
+            phaseLabel: 'Working',
+            nextActionLabel: 'Monitor progress in the work surface',
+            availableActions: ['open', 'review'],
+            hasEnvironment: false,
+            updatedAt: '2026-04-13T12:05:00.000Z',
+          },
+          currentRequest: null,
+        };
+      },
+      async resumeProcess(args) {
+        return {
+          process: {
+            processId: args.processId,
+            displayLabel: 'Feature Specification #1',
+            processType: 'FeatureSpecification',
+            status: 'running',
+            phaseLabel: 'Working',
+            nextActionLabel: 'Monitor progress in the work surface',
+            availableActions: ['open', 'review'],
+            hasEnvironment: false,
+            updatedAt: '2026-04-13T12:05:00.000Z',
+          },
+          currentRequest: null,
+        };
+      },
       async listProjectProcesses() {
         return [];
       },

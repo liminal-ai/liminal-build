@@ -17,6 +17,8 @@ import { AuthUserSyncService } from './services/auth/auth-user-sync.service.js';
 import type { ProcessLiveHub } from './services/processes/live/process-live-hub.js';
 import { ProcessModuleRegistry } from './services/processes/process-module-registry.js';
 import { ProcessAccessService } from './services/processes/process-access.service.js';
+import { ProcessResumeService } from './services/processes/process-resume.service.js';
+import { ProcessStartService } from './services/processes/process-start.service.js';
 import {
   DefaultProcessWorkSurfaceService,
   type ProcessWorkSurfaceService,
@@ -47,6 +49,8 @@ export interface CreateAppOptions {
   processAccessService?: ProcessAccessService;
   processModuleRegistry?: ProcessModuleRegistry;
   processRegistrationService?: ProcessRegistrationService;
+  processResumeService?: ProcessResumeService;
+  processStartService?: ProcessStartService;
   processWorkSurfaceService?: ProcessWorkSurfaceService;
 }
 
@@ -59,6 +63,8 @@ declare module 'fastify' {
     processAccessService: ProcessAccessService;
     processModuleRegistry: ProcessModuleRegistry;
     processRegistrationService: ProcessRegistrationService;
+    processResumeService: ProcessResumeService;
+    processStartService: ProcessStartService;
     processWorkSurfaceService: ProcessWorkSurfaceService;
   }
 }
@@ -95,6 +101,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   const processRegistrationService =
     options.processRegistrationService ??
     new ProcessRegistrationService(platformStore, processDisplayLabelService, projectAccessService);
+  const processStartService =
+    options.processStartService ?? new ProcessStartService(platformStore, processAccessService);
+  const processResumeService =
+    options.processResumeService ?? new ProcessResumeService(platformStore, processAccessService);
   const processWorkSurfaceService =
     options.processWorkSurfaceService ??
     new DefaultProcessWorkSurfaceService(platformStore, processAccessService);
@@ -111,6 +121,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.decorate('processAccessService', processAccessService);
   app.decorate('processModuleRegistry', processModuleRegistry);
   app.decorate('processRegistrationService', processRegistrationService);
+  app.decorate('processResumeService', processResumeService);
+  app.decorate('processStartService', processStartService);
   app.decorate('processWorkSurfaceService', processWorkSurfaceService);
 
   await app.register(cookiesPlugin, {

@@ -3,7 +3,9 @@ import {
   processSurfaceProjectSchema,
   processSurfaceSummarySchema,
   processWorkSurfaceResponseSchema,
+  resumeProcessResponseSchema,
   requestErrorSchema,
+  startProcessResponseSchema,
 } from '../../apps/platform/shared/contracts/index.js';
 import {
   emptyProcessHistoryFixture,
@@ -42,6 +44,7 @@ export const runningProcessSurfaceFixture = processSurfaceSummarySchema.parse({
   ...baseProcessSurfaceSummary,
   processId: 'process-surface-running-001',
   status: 'running',
+  nextActionLabel: 'Monitor progress in the work surface',
   availableActions: ['review'],
 });
 
@@ -51,6 +54,38 @@ export const waitingProcessSurfaceFixture = processSurfaceSummarySchema.parse({
   status: 'waiting',
   nextActionLabel: 'Respond to the current request',
   availableActions: ['respond'],
+});
+
+export const pausedProcessSurfaceFixture = processSurfaceSummarySchema.parse({
+  ...baseProcessSurfaceSummary,
+  processId: 'process-surface-paused-001',
+  status: 'paused',
+  nextActionLabel: 'Resume the process to continue working',
+  availableActions: ['resume'],
+});
+
+export const interruptedProcessSurfaceFixture = processSurfaceSummarySchema.parse({
+  ...baseProcessSurfaceSummary,
+  processId: 'process-surface-interrupted-001',
+  status: 'interrupted',
+  nextActionLabel: 'Resume the process to continue working',
+  availableActions: ['resume', 'review', 'restart'],
+});
+
+export const completedProcessSurfaceFixture = processSurfaceSummarySchema.parse({
+  ...baseProcessSurfaceSummary,
+  processId: 'process-surface-completed-001',
+  status: 'completed',
+  nextActionLabel: null,
+  availableActions: ['review'],
+});
+
+export const failedProcessSurfaceFixture = processSurfaceSummarySchema.parse({
+  ...baseProcessSurfaceSummary,
+  processId: 'process-surface-failed-001',
+  status: 'failed',
+  nextActionLabel: 'Investigate the failure before retrying',
+  availableActions: ['review', 'restart'],
 });
 
 export const currentProcessRequestFixture = currentProcessRequestSchema.parse({
@@ -79,6 +114,24 @@ export const earlyProcessWorkSurfaceFixture = processWorkSurfaceResponseSchema.p
   sideWork: emptySideWorkFixture,
 });
 
+export const pausedProcessWorkSurfaceFixture = processWorkSurfaceResponseSchema.parse({
+  project: processSurfaceProjectFixture,
+  process: pausedProcessSurfaceFixture,
+  history: emptyProcessHistoryFixture,
+  materials: emptyProcessMaterialsFixture,
+  currentRequest: null,
+  sideWork: emptySideWorkFixture,
+});
+
+export const interruptedProcessWorkSurfaceFixture = processWorkSurfaceResponseSchema.parse({
+  project: processSurfaceProjectFixture,
+  process: interruptedProcessSurfaceFixture,
+  history: emptyProcessHistoryFixture,
+  materials: emptyProcessMaterialsFixture,
+  currentRequest: null,
+  sideWork: emptySideWorkFixture,
+});
+
 export const degradedProcessWorkSurfaceFixture = processWorkSurfaceResponseSchema.parse({
   project: processSurfaceProjectFixture,
   process: runningProcessSurfaceFixture,
@@ -86,6 +139,66 @@ export const degradedProcessWorkSurfaceFixture = processWorkSurfaceResponseSchem
   materials: errorProcessMaterialsFixture,
   currentRequest: null,
   sideWork: errorSideWorkFixture,
+});
+
+export const startedProcessResponseFixture = startProcessResponseSchema.parse({
+  process: processSurfaceSummarySchema.parse({
+    ...runningProcessSurfaceFixture,
+    processId: draftProcessSurfaceFixture.processId,
+    phaseLabel: draftProcessSurfaceFixture.phaseLabel,
+    updatedAt: '2026-04-13T12:20:00.000Z',
+  }),
+  currentRequest: null,
+});
+
+export const startedWaitingProcessResponseFixture = startProcessResponseSchema.parse({
+  process: processSurfaceSummarySchema.parse({
+    ...waitingProcessSurfaceFixture,
+    processId: draftProcessSurfaceFixture.processId,
+    phaseLabel: draftProcessSurfaceFixture.phaseLabel,
+    updatedAt: '2026-04-13T12:21:00.000Z',
+  }),
+  currentRequest: currentProcessRequestFixture,
+});
+
+export const resumedPausedProcessResponseFixture = resumeProcessResponseSchema.parse({
+  process: processSurfaceSummarySchema.parse({
+    ...runningProcessSurfaceFixture,
+    processId: pausedProcessSurfaceFixture.processId,
+    phaseLabel: pausedProcessSurfaceFixture.phaseLabel,
+    updatedAt: '2026-04-13T12:24:00.000Z',
+  }),
+  currentRequest: null,
+});
+
+export const resumedPausedToCompletedProcessResponseFixture = resumeProcessResponseSchema.parse({
+  process: processSurfaceSummarySchema.parse({
+    ...completedProcessSurfaceFixture,
+    processId: pausedProcessSurfaceFixture.processId,
+    phaseLabel: pausedProcessSurfaceFixture.phaseLabel,
+    updatedAt: '2026-04-13T12:25:00.000Z',
+  }),
+  currentRequest: null,
+});
+
+export const resumedInterruptedProcessResponseFixture = resumeProcessResponseSchema.parse({
+  process: processSurfaceSummarySchema.parse({
+    ...runningProcessSurfaceFixture,
+    processId: interruptedProcessSurfaceFixture.processId,
+    phaseLabel: interruptedProcessSurfaceFixture.phaseLabel,
+    updatedAt: '2026-04-13T12:27:00.000Z',
+  }),
+  currentRequest: null,
+});
+
+export const resumedInterruptedToFailedProcessResponseFixture = resumeProcessResponseSchema.parse({
+  process: processSurfaceSummarySchema.parse({
+    ...failedProcessSurfaceFixture,
+    processId: interruptedProcessSurfaceFixture.processId,
+    phaseLabel: interruptedProcessSurfaceFixture.phaseLabel,
+    updatedAt: '2026-04-13T12:28:00.000Z',
+  }),
+  currentRequest: null,
 });
 
 export const processUnavailableErrorFixture = requestErrorSchema.parse({
@@ -98,6 +211,36 @@ export const processAccessDeniedErrorFixture = requestErrorSchema.parse({
   code: 'PROJECT_FORBIDDEN',
   message: 'You do not have access to this process.',
   status: 403,
+});
+
+export const processProjectNotFoundErrorFixture = requestErrorSchema.parse({
+  code: 'PROJECT_NOT_FOUND',
+  message: 'The requested project could not be found.',
+  status: 404,
+});
+
+export const unauthenticatedRequestErrorFixture = requestErrorSchema.parse({
+  code: 'UNAUTHENTICATED',
+  message: 'Sign in to continue.',
+  status: 401,
+});
+
+export const processStartNotAvailableErrorFixture = requestErrorSchema.parse({
+  code: 'PROCESS_ACTION_NOT_AVAILABLE',
+  message: 'Start is not available for this process right now.',
+  status: 409,
+});
+
+export const processResumeNotAvailableErrorFixture = requestErrorSchema.parse({
+  code: 'PROCESS_ACTION_NOT_AVAILABLE',
+  message: 'Resume is not available for this process right now.',
+  status: 409,
+});
+
+export const unexpectedProcessActionErrorFixture = requestErrorSchema.parse({
+  code: 'PROCESS_ACTION_FAILED',
+  message: 'The process action could not be completed right now. Try again or reload the page.',
+  status: 500,
 });
 
 // Live transport state fixture for post-bootstrap disconnect/error handling.

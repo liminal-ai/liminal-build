@@ -7,20 +7,22 @@ import {
 import { AuthUserSyncService } from '../../../apps/platform/server/services/auth/auth-user-sync.service.js';
 import type {
   PlatformStore,
+  ProcessActionStoreResult,
   ProcessCreateResult,
   ProjectAccessResult,
   ProjectCreateResult,
   StoredPlatformUser,
 } from '../../../apps/platform/server/services/projects/platform-store.js';
-import type {
-  ArtifactSummary,
-  CurrentProcessRequest,
-  ProcessHistoryItem,
-  ProcessOutputReference,
-  ProcessSummary,
-  ProjectSummary,
-  SideWorkItem,
-  SourceAttachmentSummary,
+import {
+  processSummarySchema,
+  type ArtifactSummary,
+  type CurrentProcessRequest,
+  type ProcessHistoryItem,
+  type ProcessOutputReference,
+  type ProcessSummary,
+  type ProjectSummary,
+  type SideWorkItem,
+  type SourceAttachmentSummary,
 } from '../../../apps/platform/shared/contracts/index.js';
 import { memberProjectSummary, ownerProjectSummary } from '../../fixtures/projects.js';
 import { buildApp } from '../../utils/build-app.js';
@@ -141,6 +143,14 @@ class RecordingPlatformStore implements PlatformStore {
     };
   }
 
+  async startProcess(args: { processId: string }) {
+    return this.transitionProcessToRunning(args.processId);
+  }
+
+  async resumeProcess(args: { processId: string }) {
+    return this.transitionProcessToRunning(args.processId);
+  }
+
   async listProjectProcesses(args: { projectId: string }): Promise<ProcessSummary[]> {
     return this.processesByProjectId.get(args.projectId) ?? [];
   }
@@ -206,6 +216,42 @@ class RecordingPlatformStore implements PlatformStore {
         project: update(direct.project),
       });
     }
+  }
+
+  private transitionProcessToRunning(processId: string): ProcessActionStoreResult {
+    for (const [projectId, processes] of this.processesByProjectId.entries()) {
+      const index = processes.findIndex((process) => process.processId === processId);
+
+      if (index === -1) {
+        continue;
+      }
+
+      const existing = processes[index];
+
+      if (existing === undefined) {
+        continue;
+      }
+
+      const now = new Date().toISOString();
+      const nextProcess = processSummarySchema.parse({
+        ...existing,
+        status: 'running',
+        phaseLabel: existing.phaseLabel === 'Draft' ? 'Working' : existing.phaseLabel,
+        nextActionLabel: 'Monitor progress in the work surface',
+        availableActions: ['open', 'review'],
+        updatedAt: now,
+      });
+      const nextProcesses = [...processes];
+      nextProcesses[index] = nextProcess;
+      this.processesByProjectId.set(projectId, nextProcesses);
+
+      return {
+        process: nextProcess,
+        currentRequest: null,
+      };
+    }
+
+    throw new Error(`Unknown process ${processId}`);
   }
 }
 
