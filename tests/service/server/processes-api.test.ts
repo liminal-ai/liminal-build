@@ -9,6 +9,7 @@ import type {
   PlatformStore,
   ProcessActionStoreResult,
   ProcessCreateResult,
+  ProcessResponseStoreResult,
   ProjectAccessResult,
   ProjectCreateResult,
   StoredPlatformUser,
@@ -149,6 +150,33 @@ class RecordingPlatformStore implements PlatformStore {
 
   async resumeProcess(args: { processId: string }) {
     return this.transitionProcessToRunning(args.processId);
+  }
+
+  async getSubmittedProcessResponse() {
+    return null;
+  }
+
+  async submitProcessResponse(args: {
+    processId: string;
+    clientRequestId: string;
+    message: string;
+  }): Promise<ProcessResponseStoreResult> {
+    const now = new Date().toISOString();
+
+    return {
+      accepted: true,
+      historyItem: {
+        historyItemId: `history:${args.processId}:${args.clientRequestId}`,
+        kind: 'user_message',
+        lifecycleState: 'finalized',
+        text: args.message,
+        createdAt: now,
+        relatedSideWorkId: null,
+        relatedArtifactId: null,
+      },
+      process: this.transitionProcessToRunning(args.processId).process,
+      currentRequest: null,
+    };
   }
 
   async listProjectProcesses(args: { projectId: string }): Promise<ProcessSummary[]> {

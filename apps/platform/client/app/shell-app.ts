@@ -20,6 +20,7 @@ export interface ShellAppOptions {
   onOpenProcess: (projectId: string, processId: string) => void;
   onStartProcess: (projectId: string, processId: string) => Promise<void>;
   onResumeProcess: (projectId: string, processId: string) => Promise<void>;
+  onSubmitProcessResponse: (projectId: string, processId: string, message: string) => Promise<void>;
 }
 
 export function createShellApp(options: ShellAppOptions) {
@@ -50,6 +51,9 @@ export function createShellApp(options: ShellAppOptions) {
               },
               onResumeProcess: (projectId, processId) => {
                 void options.onResumeProcess(projectId, processId);
+              },
+              onSubmitProcessResponse: (projectId, processId, message) => {
+                void options.onSubmitProcessResponse(projectId, processId, message);
               },
             })
           : renderProjectShellPage({

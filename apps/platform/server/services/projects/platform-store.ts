@@ -51,6 +51,11 @@ export interface ProcessActionStoreResult {
   currentRequest: CurrentProcessRequest | null;
 }
 
+export interface ProcessResponseStoreResult extends ProcessActionStoreResult {
+  accepted: true;
+  historyItem: ProcessHistoryItem;
+}
+
 export interface PlatformStore {
   upsertUserFromWorkOS(args: {
     workosUserId: string;
@@ -67,6 +72,15 @@ export interface PlatformStore {
   }): Promise<ProcessCreateResult>;
   startProcess(args: { processId: string }): Promise<ProcessActionStoreResult>;
   resumeProcess(args: { processId: string }): Promise<ProcessActionStoreResult>;
+  getSubmittedProcessResponse(args: {
+    processId: string;
+    clientRequestId: string;
+  }): Promise<ProcessResponseStoreResult | null>;
+  submitProcessResponse(args: {
+    processId: string;
+    clientRequestId: string;
+    message: string;
+  }): Promise<ProcessResponseStoreResult>;
   getProcessRecord(args: {
     processId: string;
   }): Promise<(ProcessSummary & { projectId: string }) | null>;
@@ -128,6 +142,25 @@ const resumeProcessMutation = makeFunctionReference<
   { processId: string },
   ProcessActionStoreResult
 >('processes:resumeProcess');
+
+const submitProcessResponseMutation = makeFunctionReference<
+  'mutation',
+  {
+    processId: string;
+    clientRequestId: string;
+    message: string;
+  },
+  ProcessResponseStoreResult
+>('processes:submitProcessResponse');
+
+const getSubmittedProcessResponseQuery = makeFunctionReference<
+  'query',
+  {
+    processId: string;
+    clientRequestId: string;
+  },
+  ProcessResponseStoreResult | null
+>('processes:getSubmittedProcessResponse');
 
 const listProjectProcessesQuery = makeFunctionReference<
   'query',
@@ -254,6 +287,43 @@ export class NullPlatformStore implements PlatformStore {
     return this.startProcess(args);
   }
 
+  async submitProcessResponse(args: {
+    processId: string;
+    clientRequestId: string;
+    message: string;
+  }): Promise<ProcessResponseStoreResult> {
+    const now = new Date().toISOString();
+
+    return {
+      accepted: true,
+      historyItem: {
+        historyItemId: `${args.processId}:history-response`,
+        kind: 'user_message',
+        lifecycleState: 'finalized',
+        text: args.message.trim(),
+        createdAt: now,
+        relatedSideWorkId: null,
+        relatedArtifactId: null,
+      },
+      process: {
+        processId: args.processId,
+        displayLabel: 'Unavailable process',
+        processType: 'FeatureSpecification',
+        status: 'running',
+        phaseLabel: 'Working',
+        nextActionLabel: 'Monitor progress in the work surface',
+        availableActions: ['open', 'review'],
+        hasEnvironment: false,
+        updatedAt: now,
+      },
+      currentRequest: null,
+    };
+  }
+
+  async getSubmittedProcessResponse(): Promise<ProcessResponseStoreResult | null> {
+    return null;
+  }
+
   async getProcessRecord(): Promise<(ProcessSummary & { projectId: string }) | null> {
     return null;
   }
@@ -343,6 +413,23 @@ export class ConvexPlatformStore implements PlatformStore {
     });
   }
 
+  async submitProcessResponse(args: {
+    processId: string;
+    clientRequestId: string;
+    message: string;
+  }): Promise<ProcessResponseStoreResult> {
+    return this.client.mutation(submitProcessResponseMutation, args, {
+      skipQueue: true,
+    });
+  }
+
+  async getSubmittedProcessResponse(args: {
+    processId: string;
+    clientRequestId: string;
+  }): Promise<ProcessResponseStoreResult | null> {
+    return this.client.query(getSubmittedProcessResponseQuery, args);
+  }
+
   async listProjectProcesses(args: { projectId: string }): Promise<ProcessSummary[]> {
     return this.client.query(listProjectProcessesQuery, args);
   }
@@ -395,6 +482,15 @@ export class InMemoryPlatformStore implements PlatformStore {
   private readonly processSideWorkItemsByProcessId = new Map<string, SideWorkItem[]>();
   private readonly startProcessResultsByProcessId = new Map<string, ProcessActionStoreResult>();
   private readonly resumeProcessResultsByProcessId = new Map<string, ProcessActionStoreResult>();
+  private readonly submitProcessResponseResultsByProcessId = new Map<
+    string,
+    ProcessResponseStoreResult
+  >();
+  private readonly submitProcessResponseFailuresByProcessId = new Map<string, Error>();
+  private readonly responseResultsByProcessId = new Map<
+    string,
+    Map<string, ProcessResponseStoreResult>
+  >();
 
   constructor(
     args: {
@@ -410,6 +506,8 @@ export class InMemoryPlatformStore implements PlatformStore {
       processSideWorkItemsByProcessId?: Record<string, SideWorkItem[]>;
       startProcessResultsByProcessId?: Record<string, ProcessActionStoreResult>;
       resumeProcessResultsByProcessId?: Record<string, ProcessActionStoreResult>;
+      submitProcessResponseResultsByProcessId?: Record<string, ProcessResponseStoreResult>;
+      submitProcessResponseFailuresByProcessId?: Record<string, Error>;
     } = {},
   ) {
     for (const user of args.users ?? []) {
@@ -458,6 +556,18 @@ export class InMemoryPlatformStore implements PlatformStore {
 
     for (const [processId, result] of Object.entries(args.resumeProcessResultsByProcessId ?? {})) {
       this.resumeProcessResultsByProcessId.set(processId, result);
+    }
+
+    for (const [processId, result] of Object.entries(
+      args.submitProcessResponseResultsByProcessId ?? {},
+    )) {
+      this.submitProcessResponseResultsByProcessId.set(processId, result);
+    }
+
+    for (const [processId, error] of Object.entries(
+      args.submitProcessResponseFailuresByProcessId ?? {},
+    )) {
+      this.submitProcessResponseFailuresByProcessId.set(processId, error);
     }
   }
 
@@ -610,6 +720,55 @@ export class InMemoryPlatformStore implements PlatformStore {
     return this.transitionProcessToRunning(args.processId);
   }
 
+  async submitProcessResponse(args: {
+    processId: string;
+    clientRequestId: string;
+    message: string;
+  }): Promise<ProcessResponseStoreResult> {
+    const trimmedMessage = args.message.trim();
+    const trimmedClientRequestId = args.clientRequestId.trim();
+    const existing = this.responseResultsByProcessId
+      .get(args.processId)
+      ?.get(trimmedClientRequestId);
+
+    if (existing !== undefined) {
+      return existing;
+    }
+
+    const failure = this.submitProcessResponseFailuresByProcessId.get(args.processId);
+
+    if (failure !== undefined) {
+      throw failure;
+    }
+
+    const override = this.submitProcessResponseResultsByProcessId.get(args.processId);
+    const response =
+      override ?? this.buildDefaultSubmitProcessResponseResult(args.processId, trimmedMessage);
+
+    this.storeSubmitProcessResponseResult(
+      args.processId,
+      trimmedClientRequestId,
+      this.applyStoredSubmitProcessResponseResult(args.processId, response),
+    );
+
+    const stored = this.responseResultsByProcessId.get(args.processId)?.get(trimmedClientRequestId);
+
+    if (stored === undefined) {
+      throw new Error('Process response result was not recorded.');
+    }
+
+    return stored;
+  }
+
+  async getSubmittedProcessResponse(args: {
+    processId: string;
+    clientRequestId: string;
+  }): Promise<ProcessResponseStoreResult | null> {
+    return (
+      this.responseResultsByProcessId.get(args.processId)?.get(args.clientRequestId.trim()) ?? null
+    );
+  }
+
   async getProcessRecord(args: {
     processId: string;
   }): Promise<(ProcessSummary & { projectId: string }) | null> {
@@ -703,6 +862,93 @@ export class InMemoryPlatformStore implements PlatformStore {
     }
 
     return result;
+  }
+
+  private applyStoredSubmitProcessResponseResult(
+    processId: string,
+    result: ProcessResponseStoreResult,
+  ): ProcessResponseStoreResult {
+    const updated = this.applyStoredProcessActionResult(processId, result);
+    const existingHistory = this.processHistoryItemsByProcessId.get(processId) ?? [];
+    const nextHistory = existingHistory.filter(
+      (item) => item.historyItemId !== result.historyItem.historyItemId,
+    );
+    nextHistory.push(result.historyItem);
+    nextHistory.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+    this.processHistoryItemsByProcessId.set(processId, nextHistory);
+
+    return {
+      ...result,
+      process: updated.process,
+      currentRequest: updated.currentRequest,
+    };
+  }
+
+  private buildDefaultSubmitProcessResponseResult(
+    processId: string,
+    message: string,
+  ): ProcessResponseStoreResult {
+    const existingHistory = this.processHistoryItemsByProcessId.get(processId) ?? [];
+    const now = new Date().toISOString();
+    const historyItem: ProcessHistoryItem = {
+      historyItemId: `${processId}:history-response-${existingHistory.length + 1}`,
+      kind: 'user_message',
+      lifecycleState: 'finalized',
+      text: message,
+      createdAt: now,
+      relatedSideWorkId: null,
+      relatedArtifactId: null,
+    };
+
+    for (const [, processes] of this.processesByProjectId.entries()) {
+      const existing = processes.find((process) => process.processId === processId);
+
+      if (existing === undefined) {
+        continue;
+      }
+
+      return {
+        accepted: true,
+        historyItem,
+        process: processSummarySchema.parse({
+          ...existing,
+          status: 'running',
+          nextActionLabel: 'Monitor progress in the work surface',
+          availableActions: ['open', 'review'],
+          updatedAt: now,
+        }),
+        currentRequest: null,
+      };
+    }
+
+    return {
+      accepted: true,
+      historyItem,
+      process: processSummarySchema.parse({
+        processId,
+        displayLabel: 'Unavailable process',
+        processType: 'FeatureSpecification',
+        status: 'running',
+        phaseLabel: 'Working',
+        nextActionLabel: 'Monitor progress in the work surface',
+        availableActions: ['open', 'review'],
+        hasEnvironment: false,
+        updatedAt: now,
+      }),
+      currentRequest: null,
+    };
+  }
+
+  private storeSubmitProcessResponseResult(
+    processId: string,
+    clientRequestId: string,
+    result: ProcessResponseStoreResult,
+  ): void {
+    const responsesByClientRequestId =
+      this.responseResultsByProcessId.get(processId) ??
+      new Map<string, ProcessResponseStoreResult>();
+    responsesByClientRequestId.set(clientRequestId, result);
+    this.responseResultsByProcessId.set(processId, responsesByClientRequestId);
   }
 
   private transitionProcessToRunning(processId: string): ProcessActionStoreResult {

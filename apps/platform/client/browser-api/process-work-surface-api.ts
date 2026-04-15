@@ -3,8 +3,11 @@ import type {
   RequestError,
   ResumeProcessResponse,
   StartProcessResponse,
+  SubmitProcessResponseRequest,
+  SubmitProcessResponseResponse,
 } from '../../shared/contracts/index.js';
 import {
+  buildProcessResponseApiPath,
   buildProcessResumeApiPath,
   buildProcessStartApiPath,
   buildProcessWorkSurfaceApiPath,
@@ -12,6 +15,8 @@ import {
   requestErrorSchema,
   resumeProcessResponseSchema,
   startProcessResponseSchema,
+  submitProcessResponseRequestSchema,
+  submitProcessResponseResponseSchema,
 } from '../../shared/contracts/index.js';
 import { ApiRequestError } from './auth-api.js';
 
@@ -40,6 +45,12 @@ function buildFallbackRequestError(response: Response): RequestError {
         code: 'PROCESS_ACTION_NOT_AVAILABLE',
         message: 'This process action is not available right now.',
         status: 409,
+      };
+    case 422:
+      return {
+        code: 'INVALID_PROCESS_RESPONSE',
+        message: 'Submitted response must include a non-empty clientRequestId and message.',
+        status: 422,
       };
     default:
       return {
@@ -125,4 +136,36 @@ export async function resumeProcess(args: {
   }
 
   return resumeProcessResponseSchema.parse(await response.json());
+}
+
+export async function submitProcessResponse(args: {
+  projectId: string;
+  processId: string;
+  clientRequestId: string;
+  message: string;
+}): Promise<SubmitProcessResponseResponse> {
+  const body = submitProcessResponseRequestSchema.parse({
+    clientRequestId: args.clientRequestId,
+    message: args.message,
+  } satisfies SubmitProcessResponseRequest);
+  const response = await fetch(
+    buildProcessResponseApiPath({
+      projectId: args.projectId,
+      processId: args.processId,
+    }),
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    },
+  );
+
+  if (!response.ok) {
+    throw new ApiRequestError(await parseRequestError(response));
+  }
+
+  return submitProcessResponseResponseSchema.parse(await response.json());
 }

@@ -8,6 +8,7 @@ import { AuthUserSyncService } from '../../../apps/platform/server/services/auth
 import { InMemoryPlatformStore } from '../../../apps/platform/server/services/projects/platform-store.js';
 import {
   currentProcessRequestSchema,
+  processHistoryItemSchema,
   processSummarySchema,
   projectSummarySchema,
 } from '../../../apps/platform/shared/contracts/index.js';
@@ -103,6 +104,30 @@ const failedAfterResumeProcessSummary = processSummarySchema.parse({
   nextActionLabel: 'Investigate failure',
   availableActions: ['review', 'restart'],
   updatedAt: '2026-04-13T12:12:00.000Z',
+});
+
+const followUpWaitingProcessSummary = processSummarySchema.parse({
+  ...waitingProcessSummary,
+  nextActionLabel: 'Clarify the target user before proceeding.',
+  updatedAt: '2026-04-13T12:13:00.000Z',
+});
+
+const followUpCurrentRequest = currentProcessRequestSchema.parse({
+  requestId: 'request-story3-actions-002',
+  requestKind: 'clarification',
+  promptText: 'Clarify the target user before the process can continue.',
+  requiredActionLabel: 'Clarify target user',
+  createdAt: '2026-04-13T12:13:00.000Z',
+});
+
+const submittedResponseHistoryItem = processHistoryItemSchema.parse({
+  historyItemId: 'history-story3-actions-001',
+  kind: 'user_message',
+  lifecycleState: 'finalized',
+  text: 'Let us focus on technical founders first.',
+  createdAt: '2026-04-13T12:13:00.000Z',
+  relatedSideWorkId: null,
+  relatedArtifactId: null,
 });
 
 function buildStore(overrides: ConstructorParameters<typeof InMemoryPlatformStore>[0] = {}) {
@@ -462,6 +487,271 @@ describe('process actions api', () => {
       message: 'Resume is not available for this process right now.',
       status: 409,
     });
+
+    await app.close();
+  });
+
+  it('returns PROCESS_ACTION_NOT_AVAILABLE when respond is attempted outside a waiting state', async () => {
+    const { app } = await buildAuthenticatedApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${draftProcessSummary.processId}/responses`,
+      payload: {
+        clientRequestId: 'client-request-story3-001',
+        message: 'Please continue.',
+      },
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({
+      code: 'PROCESS_ACTION_NOT_AVAILABLE',
+      message: 'Respond is not available for this process right now.',
+      status: 409,
+    });
+
+    await app.close();
+  });
+
+  it('TC-3.2b, TC-3.3a, TC-3.6a, and TC-5.2b accept a valid response, persist history, and clear the current request', async () => {
+    const { app } = await buildAuthenticatedApp({
+      currentRequestsByProcessId: {
+        [waitingProcessSummary.processId]: waitingCurrentRequest,
+      },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}/responses`,
+      payload: {
+        clientRequestId: 'client-request-story3-002',
+        message: 'Let us focus on technical founders first.',
+      },
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      accepted: true,
+      process: {
+        processId: waitingProcessSummary.processId,
+        status: 'running',
+        availableActions: ['review'],
+      },
+      currentRequest: null,
+    });
+    expect(response.json().historyItemId).toEqual(expect.any(String));
+
+    const bootstrap = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(bootstrap.statusCode).toBe(200);
+    expect(bootstrap.json()).toMatchObject({
+      process: {
+        processId: waitingProcessSummary.processId,
+        status: 'running',
+        availableActions: ['review'],
+      },
+      currentRequest: null,
+      history: {
+        status: 'ready',
+      },
+    });
+    expect(
+      bootstrap
+        .json()
+        .history.items.find(
+          (item: { historyItemId: string }) => item.historyItemId === response.json().historyItemId,
+        ),
+    ).toMatchObject({
+      kind: 'user_message',
+      text: 'Let us focus on technical founders first.',
+    });
+
+    await app.close();
+  });
+
+  it('TC-3.6b can keep the process waiting when a follow-up request is returned', async () => {
+    const { app } = await buildAuthenticatedApp({
+      currentRequestsByProcessId: {
+        [waitingProcessSummary.processId]: waitingCurrentRequest,
+      },
+      submitProcessResponseResultsByProcessId: {
+        [waitingProcessSummary.processId]: {
+          accepted: true,
+          historyItem: submittedResponseHistoryItem,
+          process: followUpWaitingProcessSummary,
+          currentRequest: followUpCurrentRequest,
+        },
+      },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}/responses`,
+      payload: {
+        clientRequestId: 'client-request-story3-003',
+        message: submittedResponseHistoryItem.text,
+      },
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      accepted: true,
+      historyItemId: submittedResponseHistoryItem.historyItemId,
+      process: {
+        processId: waitingProcessSummary.processId,
+        displayLabel: followUpWaitingProcessSummary.displayLabel,
+        processType: followUpWaitingProcessSummary.processType,
+        status: 'waiting',
+        phaseLabel: followUpWaitingProcessSummary.phaseLabel,
+        nextActionLabel: followUpWaitingProcessSummary.nextActionLabel,
+        availableActions: ['respond'],
+        updatedAt: followUpWaitingProcessSummary.updatedAt,
+      },
+      currentRequest: followUpCurrentRequest,
+    });
+
+    await app.close();
+  });
+
+  it('TC-3.5a rejects an empty response without creating history', async () => {
+    const { app } = await buildAuthenticatedApp({
+      currentRequestsByProcessId: {
+        [waitingProcessSummary.processId]: waitingCurrentRequest,
+      },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}/responses`,
+      payload: {
+        clientRequestId: 'client-request-story3-004',
+        message: '   ',
+      },
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toEqual({
+      code: 'INVALID_PROCESS_RESPONSE',
+      message: 'Submitted response must include a non-empty clientRequestId and message.',
+      status: 422,
+    });
+
+    const bootstrap = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(bootstrap.json().history.items).toEqual([]);
+
+    await app.close();
+  });
+
+  it('TC-3.5b does not create partial visible history when response submission fails downstream', async () => {
+    const { app } = await buildAuthenticatedApp({
+      currentRequestsByProcessId: {
+        [waitingProcessSummary.processId]: waitingCurrentRequest,
+      },
+      submitProcessResponseFailuresByProcessId: {
+        [waitingProcessSummary.processId]: new Error('downstream rejected response'),
+      },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}/responses`,
+      payload: {
+        clientRequestId: 'client-request-story3-005',
+        message: 'Please continue with the focused scope.',
+      },
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      code: 'PROCESS_ACTION_FAILED',
+      message:
+        'The process response could not be completed right now. Try again or reload the page.',
+      status: 500,
+    });
+
+    const bootstrap = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(bootstrap.json().history.items).toEqual([]);
+    expect(bootstrap.json().currentRequest).toEqual(waitingCurrentRequest);
+
+    await app.close();
+  });
+
+  it('response deduplicates repeated clientRequestId within one process', async () => {
+    const { app } = await buildAuthenticatedApp({
+      currentRequestsByProcessId: {
+        [waitingProcessSummary.processId]: waitingCurrentRequest,
+      },
+    });
+    const firstResponse = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}/responses`,
+      payload: {
+        clientRequestId: 'client-request-story3-006',
+        message: 'Keep the focused scope.',
+      },
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+    const secondResponse = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}/responses`,
+      payload: {
+        clientRequestId: 'client-request-story3-006',
+        message: 'Keep the focused scope.',
+      },
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(firstResponse.statusCode).toBe(200);
+    expect(secondResponse.statusCode).toBe(200);
+    expect(secondResponse.json().historyItemId).toBe(firstResponse.json().historyItemId);
+
+    const bootstrap = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(
+      bootstrap
+        .json()
+        .history.items.filter((item: { kind: string }) => item.kind === 'user_message'),
+    ).toHaveLength(1);
 
     await app.close();
   });

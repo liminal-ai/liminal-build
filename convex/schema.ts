@@ -25,6 +25,7 @@ export default defineSchema({
     .index('by_projectId_and_updatedAt', ['projectId', 'updatedAt']),
   processHistoryItems: defineTable(processHistoryItemsTableFields)
     .index('by_processId_and_createdAt', ['processId', 'createdAt'])
+    .index('by_processId_and_clientRequestId', ['processId', 'clientRequestId'])
     .index('by_processId_and_requestState_and_createdAt', [
       'processId',
       'requestState',

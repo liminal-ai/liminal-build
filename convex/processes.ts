@@ -1,11 +1,12 @@
 import type {
   CurrentProcessRequest,
   ProcessAvailableAction,
+  ProcessHistoryItem,
   ProcessStatus,
   ProcessSummary,
 } from '../apps/platform/shared/contracts/index.js';
 import type { Doc, Id } from './_generated/dataModel.js';
-import { mutation, query, type MutationCtx } from './_generated/server.js';
+import { mutation, query, type MutationCtx, type QueryCtx } from './_generated/server.js';
 import { v } from 'convex/values';
 
 export const supportedProcessTypeValidator = v.union(
@@ -114,6 +115,58 @@ export const getCurrentProcessRequest = query({
   },
 });
 
+export const getSubmittedProcessResponse = query({
+  args: {
+    processId: v.string(),
+    clientRequestId: v.string(),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    accepted: true;
+    historyItem: ProcessHistoryItem;
+    process: ProcessSummary;
+    currentRequest: CurrentProcessRequest | null;
+  } | null> => {
+    let processRecord: Doc<'processes'> | null = null;
+
+    try {
+      processRecord = await ctx.db.get(args.processId as Id<'processes'>);
+    } catch {
+      return null;
+    }
+
+    if (processRecord === null) {
+      return null;
+    }
+
+    const trimmedClientRequestId = args.clientRequestId.trim();
+
+    if (trimmedClientRequestId.length === 0) {
+      return null;
+    }
+
+    const historyItem = await ctx.db
+      .query('processHistoryItems')
+      .withIndex('by_processId_and_clientRequestId', (indexQuery) =>
+        indexQuery.eq('processId', processRecord._id).eq('clientRequestId', trimmedClientRequestId),
+      )
+      .unique();
+
+    if (historyItem === null) {
+      return null;
+    }
+
+    return {
+      accepted: true,
+      historyItem: buildProcessHistoryItem(historyItem),
+      process: buildProcessSummary(processRecord),
+      currentRequest: await resolveCurrentProcessRequest(ctx, processRecord),
+    };
+  },
+});
+
 export const createProcess = mutation({
   args: {
     projectId: v.string(),
@@ -203,6 +256,119 @@ export const resumeProcess = mutation({
   },
 });
 
+export const submitProcessResponse = mutation({
+  args: {
+    processId: v.string(),
+    clientRequestId: v.string(),
+    message: v.string(),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    accepted: true;
+    historyItem: ProcessHistoryItem;
+    process: ProcessSummary;
+    currentRequest: CurrentProcessRequest | null;
+  }> => {
+    let processRecord: Doc<'processes'> | null = null;
+
+    try {
+      processRecord = await ctx.db.get(args.processId as Id<'processes'>);
+    } catch {
+      throw new Error('Process not found.');
+    }
+
+    if (processRecord === null) {
+      throw new Error('Process not found.');
+    }
+
+    const trimmedClientRequestId = args.clientRequestId.trim();
+    const trimmedMessage = args.message.trim();
+
+    if (trimmedClientRequestId.length === 0 || trimmedMessage.length === 0) {
+      throw new Error('Invalid process response.');
+    }
+
+    const existingHistoryItem = await ctx.db
+      .query('processHistoryItems')
+      .withIndex('by_processId_and_clientRequestId', (indexQuery) =>
+        indexQuery.eq('processId', processRecord._id).eq('clientRequestId', trimmedClientRequestId),
+      )
+      .unique();
+
+    if (existingHistoryItem !== null) {
+      return {
+        accepted: true,
+        historyItem: buildProcessHistoryItem(existingHistoryItem),
+        process: buildProcessSummary(processRecord),
+        currentRequest: await resolveCurrentProcessRequest(ctx, processRecord),
+      };
+    }
+
+    const now = new Date().toISOString();
+
+    if (processRecord.currentRequestHistoryItemId !== null) {
+      const currentRequestHistoryItem = await ctx.db.get(processRecord.currentRequestHistoryItemId);
+
+      if (currentRequestHistoryItem !== null) {
+        await ctx.db.patch(currentRequestHistoryItem._id, {
+          lifecycleState: 'finalized',
+          requestState: 'resolved',
+          finalizedAt: now,
+        });
+      }
+    }
+
+    const historyItemId = await ctx.db.insert('processHistoryItems', {
+      processId: processRecord._id,
+      kind: 'user_message',
+      lifecycleState: 'finalized',
+      requestState: 'none',
+      text: trimmedMessage,
+      relatedSideWorkId: null,
+      relatedArtifactId: null,
+      clientRequestId: trimmedClientRequestId,
+      createdAt: now,
+      finalizedAt: now,
+    });
+
+    const nextProcessFields = {
+      status: 'running' as const,
+      nextActionLabel: 'Monitor progress in the work surface',
+      currentRequestHistoryItemId: null,
+      updatedAt: now,
+    };
+
+    await ctx.db.patch(processRecord._id, nextProcessFields);
+
+    try {
+      await ctx.db.patch(processRecord.projectId as Id<'projects'>, {
+        lastUpdatedAt: now,
+        updatedAt: now,
+      });
+    } catch {
+      // Keep the accepted response durable even if the project lookup is stale.
+    }
+
+    const historyItem = await ctx.db.get(historyItemId);
+
+    if (historyItem === null) {
+      throw new Error('Accepted process response history item was not found.');
+    }
+
+    return {
+      accepted: true,
+      historyItem: buildProcessHistoryItem(historyItem),
+      process: buildProcessSummary({
+        ...processRecord,
+        ...nextProcessFields,
+      }),
+      currentRequest: null,
+    };
+  },
+});
+
 function buildProcessSummary(process: Doc<'processes'>): ProcessSummary {
   return {
     processId: process._id,
@@ -214,6 +380,46 @@ function buildProcessSummary(process: Doc<'processes'>): ProcessSummary {
     availableActions: deriveAvailableActions(process.status),
     hasEnvironment: process.hasEnvironment,
     updatedAt: process.updatedAt,
+  };
+}
+
+function buildProcessHistoryItem(historyItem: Doc<'processHistoryItems'>): ProcessHistoryItem {
+  return {
+    historyItemId: historyItem._id,
+    kind: historyItem.kind,
+    lifecycleState: historyItem.lifecycleState,
+    text: historyItem.text,
+    createdAt: historyItem.createdAt,
+    relatedSideWorkId: historyItem.relatedSideWorkId,
+    relatedArtifactId: historyItem.relatedArtifactId,
+  };
+}
+
+async function resolveCurrentProcessRequest(
+  ctx: MutationCtx | QueryCtx,
+  processRecord: Doc<'processes'>,
+): Promise<CurrentProcessRequest | null> {
+  if (processRecord.currentRequestHistoryItemId === null) {
+    return null;
+  }
+
+  const historyItem = await ctx.db.get(processRecord.currentRequestHistoryItemId);
+
+  if (
+    historyItem === null ||
+    historyItem.processId !== processRecord._id ||
+    historyItem.kind !== 'attention_request' ||
+    historyItem.requestState !== 'unresolved'
+  ) {
+    return null;
+  }
+
+  return {
+    requestId: historyItem._id,
+    requestKind: 'other',
+    promptText: historyItem.text,
+    requiredActionLabel: processRecord.nextActionLabel,
+    createdAt: historyItem.createdAt,
   };
 }
 

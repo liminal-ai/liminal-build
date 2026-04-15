@@ -8,6 +8,7 @@ import {
 import { renderCurrentRequestPanel } from './current-request-panel.js';
 import { renderProcessHistorySection } from './process-history-section.js';
 import { renderProcessMaterialsSection } from './process-materials-section.js';
+import { renderProcessResponseComposer } from './process-response-composer.js';
 import { renderSideWorkSection } from './side-work-section.js';
 
 function formatProcessTypeLabel(processType: string): string {
@@ -25,6 +26,7 @@ export function renderProcessWorkSurfacePage(args: {
   onOpenProject: (projectId: string) => void;
   onStartProcess?: (projectId: string, processId: string) => void;
   onResumeProcess?: (projectId: string, processId: string) => void;
+  onSubmitProcessResponse?: (projectId: string, processId: string, message: string) => void;
 }): HTMLElement {
   const container = args.targetDocument.createElement('section');
   const state = args.store.get();
@@ -145,6 +147,23 @@ export function renderProcessWorkSurfacePage(args: {
       currentRequest: processSurface.currentRequest,
       targetDocument: args.targetDocument,
     }),
+  );
+
+  if (
+    activeProcess.availableActions.includes('respond') &&
+    args.onSubmitProcessResponse !== undefined
+  ) {
+    container.append(
+      renderProcessResponseComposer({
+        targetDocument: args.targetDocument,
+        onSubmitResponse: async (message: string) => {
+          args.onSubmitProcessResponse?.(activeProject.projectId, activeProcess.processId, message);
+        },
+      }),
+    );
+  }
+
+  container.append(
     renderProcessHistorySection({
       envelope: processSurface.history,
       targetDocument: args.targetDocument,

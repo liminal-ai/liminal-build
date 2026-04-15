@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapApp } from '../../../apps/platform/client/app/bootstrap.js';
 import { createAppStore } from '../../../apps/platform/client/app/store.js';
 import { renderProcessWorkSurfacePage } from '../../../apps/platform/client/features/processes/process-work-surface-page.js';
+import type { ProcessWorkSurfaceResponse } from '../../../apps/platform/shared/contracts/index.js';
 import { shellBootstrapPayloadSchema } from '../../../apps/platform/shared/contracts/index.js';
 import {
   currentProcessRequestFixture,
@@ -21,6 +22,7 @@ import {
   readyProcessWorkSurfaceFixture,
   startedProcessResponseFixture,
   startedWaitingProcessResponseFixture,
+  submittedProcessResponseWithFollowUpFixture,
   unauthenticatedRequestErrorFixture,
   unexpectedProcessActionErrorFixture,
 } from '../../fixtures/process-surface.js';
@@ -97,14 +99,12 @@ async function captureUnhandledRejections(action: () => void | Promise<void>): P
 }
 
 function installInteractiveFetchMock(args: {
-  surface:
-    | typeof earlyProcessWorkSurfaceFixture
-    | typeof pausedProcessWorkSurfaceFixture
-    | typeof interruptedProcessWorkSurfaceFixture;
+  surface: ProcessWorkSurfaceResponse;
   actionPayload: unknown;
   actionStatus?: number;
   actionFailure?: Error;
-  action: 'start' | 'resume';
+  actionBodyAsserter?: (body: unknown) => void;
+  action: 'start' | 'resume' | 'respond';
 }) {
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const rawUrl =
@@ -133,10 +133,16 @@ function installInteractiveFetchMock(args: {
     if (
       method === 'POST' &&
       url.pathname ===
-        `/api/projects/${args.surface.project.projectId}/processes/${args.surface.process.processId}/${args.action}`
+        `/api/projects/${args.surface.project.projectId}/processes/${args.surface.process.processId}/${args.action === 'respond' ? 'responses' : args.action}`
     ) {
       if (args.actionFailure !== undefined) {
         throw args.actionFailure;
+      }
+
+      if (args.actionBodyAsserter !== undefined) {
+        const requestBody =
+          typeof init?.body === 'string' && init.body.length > 0 ? JSON.parse(init.body) : null;
+        args.actionBodyAsserter(requestBody);
       }
 
       return buildJsonResponse(args.actionPayload, args.actionStatus ?? 200);
@@ -725,5 +731,94 @@ describe('process work surface page', () => {
       resumedInterruptedToFailedProcessResponseFixture.process.nextActionLabel ?? '',
     );
     expect(dom.window.document.body.textContent).not.toContain('Resume process');
+  });
+
+  it('TC-3.1a, TC-3.6a, and TC-3.6b keep response submission in the same process surface and update history plus follow-up state in-session', async () => {
+    const fetchMock = installInteractiveFetchMock({
+      surface: readyProcessWorkSurfaceFixture,
+      actionPayload: submittedProcessResponseWithFollowUpFixture,
+      action: 'respond',
+      actionBodyAsserter: (body) => {
+        expect(body).toMatchObject({
+          clientRequestId: expect.any(String),
+          message: 'We should focus on technical founders first.',
+        });
+      },
+    });
+    const dom = await renderInteractiveProcessSurface(
+      `http://localhost:5001/projects/${readyProcessWorkSurfaceFixture.project.projectId}/processes/${readyProcessWorkSurfaceFixture.process.processId}`,
+    );
+    const textarea = dom.window.document.querySelector('[data-process-response-input="true"]');
+    const form = dom.window.document.querySelector('[data-process-response-form="true"]');
+
+    if (!(textarea instanceof dom.window.HTMLTextAreaElement)) {
+      throw new Error('Expected the process work surface to render a response textarea.');
+    }
+
+    if (!(form instanceof dom.window.HTMLFormElement)) {
+      throw new Error('Expected the process work surface to render a response form.');
+    }
+
+    textarea.value = 'We should focus on technical founders first.';
+    form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+    await flush();
+    await flush();
+
+    expect(dom.window.document.body.textContent).toContain(
+      readyProcessWorkSurfaceFixture.project.name,
+    );
+    expect(dom.window.document.body.textContent).toContain(
+      readyProcessWorkSurfaceFixture.history.items[0]?.text ?? '',
+    );
+    expect(dom.window.document.body.textContent).toContain(
+      'We should focus on technical founders first.',
+    );
+    expect(dom.window.document.body.textContent).toContain(
+      submittedProcessResponseWithFollowUpFixture.currentRequest?.promptText ?? '',
+    );
+    expect(
+      countSurfaceBootstrapRequests(fetchMock, {
+        projectId: readyProcessWorkSurfaceFixture.project.projectId,
+        processId: readyProcessWorkSurfaceFixture.process.processId,
+      }),
+    ).toBe(1);
+  });
+
+  it('TC-3.5b shows a bounded error and does not create partial visible history when response submission fails', async () => {
+    installInteractiveFetchMock({
+      surface: readyProcessWorkSurfaceFixture,
+      actionPayload: unexpectedProcessActionErrorFixture,
+      actionStatus: 500,
+      action: 'respond',
+    });
+    const dom = await renderInteractiveProcessSurface(
+      `http://localhost:5001/projects/${readyProcessWorkSurfaceFixture.project.projectId}/processes/${readyProcessWorkSurfaceFixture.process.processId}`,
+    );
+    const textarea = dom.window.document.querySelector('[data-process-response-input="true"]');
+    const form = dom.window.document.querySelector('[data-process-response-form="true"]');
+
+    if (!(textarea instanceof dom.window.HTMLTextAreaElement)) {
+      throw new Error('Expected the process work surface to render a response textarea.');
+    }
+
+    if (!(form instanceof dom.window.HTMLFormElement)) {
+      throw new Error('Expected the process work surface to render a response form.');
+    }
+
+    textarea.value = '   ';
+    form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+    await flush();
+
+    expect(dom.window.document.body.textContent).not.toContain('   ');
+
+    textarea.value = 'Please use the narrow scope.';
+    form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+    await flush();
+    await flush();
+
+    const actionError = dom.window.document.querySelector('[data-process-action-error="true"]');
+
+    expect(actionError?.textContent).toContain(unexpectedProcessActionErrorFixture.message);
+    expect(dom.window.document.body.textContent).not.toContain('Please use the narrow scope.');
   });
 });

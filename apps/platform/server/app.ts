@@ -17,6 +17,7 @@ import { AuthUserSyncService } from './services/auth/auth-user-sync.service.js';
 import type { ProcessLiveHub } from './services/processes/live/process-live-hub.js';
 import { ProcessModuleRegistry } from './services/processes/process-module-registry.js';
 import { ProcessAccessService } from './services/processes/process-access.service.js';
+import { ProcessResponseService } from './services/processes/process-response.service.js';
 import { ProcessResumeService } from './services/processes/process-resume.service.js';
 import { ProcessStartService } from './services/processes/process-start.service.js';
 import {
@@ -48,6 +49,7 @@ export interface CreateAppOptions {
   processLiveHub?: ProcessLiveHub;
   processAccessService?: ProcessAccessService;
   processModuleRegistry?: ProcessModuleRegistry;
+  processResponseService?: ProcessResponseService;
   processRegistrationService?: ProcessRegistrationService;
   processResumeService?: ProcessResumeService;
   processStartService?: ProcessStartService;
@@ -62,6 +64,7 @@ declare module 'fastify' {
     projectShellService: ProjectShellService;
     processAccessService: ProcessAccessService;
     processModuleRegistry: ProcessModuleRegistry;
+    processResponseService: ProcessResponseService;
     processRegistrationService: ProcessRegistrationService;
     processResumeService: ProcessResumeService;
     processStartService: ProcessStartService;
@@ -101,6 +104,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   const processRegistrationService =
     options.processRegistrationService ??
     new ProcessRegistrationService(platformStore, processDisplayLabelService, projectAccessService);
+  const processResponseService =
+    options.processResponseService ??
+    new ProcessResponseService(platformStore, processAccessService);
   const processStartService =
     options.processStartService ?? new ProcessStartService(platformStore, processAccessService);
   const processResumeService =
@@ -120,6 +126,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.decorate('projectShellService', projectShellService);
   app.decorate('processAccessService', processAccessService);
   app.decorate('processModuleRegistry', processModuleRegistry);
+  app.decorate('processResponseService', processResponseService);
   app.decorate('processRegistrationService', processRegistrationService);
   app.decorate('processResumeService', processResumeService);
   app.decorate('processStartService', processStartService);

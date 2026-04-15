@@ -6,6 +6,7 @@ import {
   resumeProcessResponseSchema,
   requestErrorSchema,
   startProcessResponseSchema,
+  submitProcessResponseResponseSchema,
 } from '../../apps/platform/shared/contracts/index.js';
 import {
   emptyProcessHistoryFixture,
@@ -94,6 +95,14 @@ export const currentProcessRequestFixture = currentProcessRequestSchema.parse({
   promptText: 'Approve the current scope before moving into review.',
   requiredActionLabel: 'Approve scope',
   createdAt: '2026-04-13T12:06:00.000Z',
+});
+
+export const followUpCurrentProcessRequestFixture = currentProcessRequestSchema.parse({
+  requestId: 'request-002',
+  requestKind: 'clarification',
+  promptText: 'Clarify the target user before the process continues.',
+  requiredActionLabel: 'Clarify target user',
+  createdAt: '2026-04-13T12:22:00.000Z',
 });
 
 export const readyProcessWorkSurfaceFixture = processWorkSurfaceResponseSchema.parse({
@@ -201,6 +210,32 @@ export const resumedInterruptedToFailedProcessResponseFixture = resumeProcessRes
   currentRequest: null,
 });
 
+export const submittedProcessResponseFixture = submitProcessResponseResponseSchema.parse({
+  accepted: true,
+  historyItemId: 'history-response-accepted-001',
+  process: processSurfaceSummarySchema.parse({
+    ...runningProcessSurfaceFixture,
+    processId: waitingProcessSurfaceFixture.processId,
+    phaseLabel: waitingProcessSurfaceFixture.phaseLabel,
+    updatedAt: '2026-04-13T12:29:00.000Z',
+  }),
+  currentRequest: null,
+});
+
+export const submittedProcessResponseWithFollowUpFixture =
+  submitProcessResponseResponseSchema.parse({
+    accepted: true,
+    historyItemId: 'history-response-follow-up-001',
+    process: processSurfaceSummarySchema.parse({
+      ...waitingProcessSurfaceFixture,
+      processId: waitingProcessSurfaceFixture.processId,
+      phaseLabel: waitingProcessSurfaceFixture.phaseLabel,
+      nextActionLabel: 'Clarify the target user before continuing',
+      updatedAt: '2026-04-13T12:30:00.000Z',
+    }),
+    currentRequest: followUpCurrentProcessRequestFixture,
+  });
+
 export const processUnavailableErrorFixture = requestErrorSchema.parse({
   code: 'PROCESS_NOT_FOUND',
   message: 'The requested process could not be found.',
@@ -235,6 +270,18 @@ export const processResumeNotAvailableErrorFixture = requestErrorSchema.parse({
   code: 'PROCESS_ACTION_NOT_AVAILABLE',
   message: 'Resume is not available for this process right now.',
   status: 409,
+});
+
+export const processResponseNotAvailableErrorFixture = requestErrorSchema.parse({
+  code: 'PROCESS_ACTION_NOT_AVAILABLE',
+  message: 'Respond is not available for this process right now.',
+  status: 409,
+});
+
+export const invalidProcessResponseErrorFixture = requestErrorSchema.parse({
+  code: 'INVALID_PROCESS_RESPONSE',
+  message: 'Submitted response must include a non-empty clientRequestId and message.',
+  status: 422,
 });
 
 export const unexpectedProcessActionErrorFixture = requestErrorSchema.parse({

@@ -1,18 +1,22 @@
 import type {
   AppState,
   ParsedRoute,
+  ProcessHistoryItem,
+  ProcessHistorySectionEnvelope,
   RequestError,
   ResumeProcessResponse,
   ProcessSummary,
   ProjectShellResponse,
   ProjectSummary,
   StartProcessResponse,
+  SubmitProcessResponseResponse,
 } from '../../shared/contracts/index.js';
 import { ApiRequestError, getAuthenticatedUser } from '../browser-api/auth-api.js';
 import {
   getProcessWorkSurface,
   resumeProcess,
   startProcess,
+  submitProcessResponse,
 } from '../browser-api/process-work-surface-api.js';
 import {
   createProcess,
@@ -106,6 +110,23 @@ export async function bootstrapApp(
   const sortProcesses = (processes: ProcessSummary[]): ProcessSummary[] =>
     [...processes].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 
+  const appendHistoryItem = (
+    currentHistory: ProcessHistorySectionEnvelope | null,
+    nextHistoryItem: ProcessHistoryItem,
+  ): ProcessHistorySectionEnvelope => {
+    const existingItems = currentHistory?.status === 'ready' ? currentHistory.items : [];
+    const nextItems = existingItems.filter(
+      (item) => item.historyItemId !== nextHistoryItem.historyItemId,
+    );
+    nextItems.push(nextHistoryItem);
+    nextItems.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+
+    return {
+      status: 'ready',
+      items: nextItems,
+    };
+  };
+
   const applyProcessActionResponse = (
     projectId: string,
     processId: string,
@@ -126,6 +147,41 @@ export async function bootstrapApp(
       ...currentSurface,
       process: response.process,
       currentRequest: response.currentRequest,
+      error: null,
+      actionError: null,
+    });
+  };
+
+  const applySubmittedProcessResponse = (
+    projectId: string,
+    processId: string,
+    message: string,
+    response: SubmitProcessResponseResponse,
+  ): void => {
+    const currentSurface = store.get().processSurface;
+
+    if (
+      currentSurface.projectId === null ||
+      currentSurface.projectId !== projectId ||
+      currentSurface.processId === null ||
+      currentSurface.processId !== processId
+    ) {
+      return;
+    }
+
+    store.patch('processSurface', {
+      ...currentSurface,
+      process: response.process,
+      currentRequest: response.currentRequest,
+      history: appendHistoryItem(currentSurface.history, {
+        historyItemId: response.historyItemId,
+        kind: 'user_message',
+        lifecycleState: 'finalized',
+        text: message.trim(),
+        createdAt: new Date().toISOString(),
+        relatedSideWorkId: null,
+        relatedArtifactId: null,
+      }),
       error: null,
       actionError: null,
     });
@@ -480,6 +536,32 @@ export async function bootstrapApp(
     }
   };
 
+  const submitCurrentProcessResponse = async (
+    projectId: string,
+    processId: string,
+    message: string,
+  ): Promise<void> => {
+    clearProcessActionError(projectId, processId);
+
+    try {
+      const response = await submitProcessResponse({
+        projectId,
+        processId,
+        clientRequestId: `${processId}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`,
+        message,
+      });
+
+      applySubmittedProcessResponse(projectId, processId, message, response);
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        handleProcessActionRequestError(projectId, processId, error);
+        return;
+      }
+
+      handleUnexpectedProcessActionFailure(projectId, processId);
+    }
+  };
+
   const root = getRequiredRootElement(targetWindow.document);
   const shellApp = createShellApp({
     root,
@@ -607,6 +689,7 @@ export async function bootstrapApp(
     },
     onStartProcess: startCurrentProcess,
     onResumeProcess: resumeCurrentProcess,
+    onSubmitProcessResponse: submitCurrentProcessResponse,
   });
   shellApp.render();
   targetWindow.addEventListener('popstate', () => {

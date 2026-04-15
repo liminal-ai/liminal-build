@@ -4,7 +4,7 @@
 
 - `state`: `STORY_ACTIVE`
 - `phase`: `acceptance`
-- `updatedAtUtc`: `2026-04-15T04:04:45Z`
+- `updatedAtUtc`: `2026-04-15T08:34:32Z`
 - `orchestrator`: `gpt-5.4 xhigh`
 - `implementation default lane`: `Codex gpt-5.4 high`
 - `implementation escalation lane`: `Codex gpt-5.4 xhigh`
@@ -798,6 +798,87 @@ This does not change the fact that long-running work may require polling, but it
   - empty-body `404` fallback can only infer `PROCESS_NOT_FOUND`, not `PROJECT_NOT_FOUND`
 - `acceptance decision`: accept Story 2 as implemented
 - `next action`: stage and commit Story 2, then advance orchestration to Story 3
+
+## Story 2 Acceptance And Commit
+
+- `acceptance`: complete
+- `commit`: `3d3f344d5aeb84c0d1257239fbc09db92f656b5d`
+- `message`: `feat: Story 2 - Start and Resume`
+- `tree status after commit`: clean
+- `story boundary note`: Story 2 is now sealed with its verification artifacts and implementation log included in the commit history
+
+## Story 3 Preflight
+
+- `story`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/stories/03-conversation-and-current-request.md`
+- `lane`: `Codex gpt-5.4 xhigh via CLI subagent`
+- `why xhigh`:
+  - Story 3 is the first slice that makes `currentRequest` and visible history semantics truly durable
+  - it spans client rendering, response submission, validation, and persistence behavior
+  - it is the first story where false waiting state and partial-history bugs become high-risk user-facing regressions
+- `focus areas`:
+  - response submission endpoint and request validation
+  - accepted user responses becoming durable visible history
+  - unresolved current-request projection staying pinned until resolved or superseded
+  - same-session updates after successful response submission
+  - rejection paths that avoid partial visible history on invalid or failed submissions
+- `next action`: launch the Story 3 implementer through the CLI shell-session pattern and keep the orchestrator blocked on that session until a real implementation report is available
+
+## Story 3 CLI Session Stall
+
+- `issue type`: CLI session completion handling / orchestrator continuation failure
+- `timestamp`: `2026-04-15T08:34:32Z`
+- `session`: `38181`
+- `artifact`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/03-conversation-and-current-request/codex-impl-round-1.jsonl`
+- `symptom`: the Story 3 implementer completed cleanly and the gate had already passed, but the orchestrator had not yet harvested the report or advanced the story into verification
+- `root cause diagnosis`: replacing built-in subagents with CLI shell sessions did not remove the asynchronous control problem; a long-running `exec_command` still yields a `session_id`, and the orchestrator must keep polling until completion and then immediately consume the result
+- `specific failure`: the orchestrator performed health checks on the session, then stopped before the mandatory `completion -> report ingestion -> bundle creation -> verification dispatch` transition
+- `skill lesson`:
+  - a critical-path CLI session is still an unresolved blocker until its result has been harvested and routed
+  - `session exited` is not a stopping point; it is the trigger to consume output immediately
+  - the skill should state this explicitly so the CLI path is not mistaken for a truly synchronous tool call
+- `recovery action`: log the failure, ingest the Story 3 implementer report immediately, create the verification bundle, and dispatch fresh verification lanes without any pause between those phases
+
+## Story 3 Implementation Round 1
+
+- `implementer`: `Codex gpt-5.4 xhigh via CLI shell session`
+- `artifact`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/03-conversation-and-current-request/codex-impl-round-1.jsonl`
+- `materialized report`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/03-conversation-and-current-request/codex-impl-round-1.md`
+- `verification bundle`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/03-conversation-and-current-request/verification-bundle.md`
+- `claimed implementation outcome`:
+  - added `POST /api/projects/:projectId/processes/:processId/responses`
+  - accepted responses persist durable visible `user_message` history and return updated process/current-request state
+  - invalid or failed submissions do not create partial history
+  - unresolved `currentRequest` stays pinned until cleared or replaced
+  - same-session UI applies successful response payloads immediately
+  - response handling deduplicates successful retries by `clientRequestId`
+- `claimed gate result`:
+  - `corepack pnpm run red-verify && corepack pnpm run test:service && corepack pnpm run test:client` -> `PASS`
+  - extra: `corepack pnpm run test:integration` -> `PASS`
+- `claimed residual risks`:
+  - production Convex response semantics remain generic compared with process-specific follow-up generation
+  - no Story 3-specific live publish/reconnect path was introduced
+- `next action`: fresh dual verification through CLI-managed lanes only
+
+## Story 3 Final Verification Summary
+
+- `primary codex verifier`: `PASS`
+  - `artifact`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/03-conversation-and-current-request/codex-review.jsonl`
+  - `materialized report`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/03-conversation-and-current-request/codex-review.md`
+  - `gate`: `corepack pnpm run red-verify && corepack pnpm run test:service && corepack pnpm run test:client` -> `PASS`
+- `second-lane cursor verifier`: `BLOCK`
+  - `session`: `d5fb6893-633a-44aa-9ec8-ae56c1431e30`
+  - `materialized report`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/03-conversation-and-current-request/cursor-review.md`
+  - `meaning`: no blocking code findings, but the lane could not execute the requested gate because Cursor's shell runner rejected the command
+- `convergence`:
+  - primary verification executed the full gate and found no blocking Story 3 issue
+  - second-lane code review found no blocking semantic issue in durable history, invalid-submit handling, current-request pinning, or same-session updates
+  - the only blocker in the second lane was verifier-lane execution capability, not a discovered product defect
+- `nonblocking residual risks`:
+  - accepted history append uses client-side timestamping in-session rather than a returned server timestamp
+  - `requestKind` projection is still coarse (`other`) in the default Convex path
+  - default Convex response semantics remain generic and do not generate a new follow-up request in production by default
+- `acceptance decision`: accept Story 3 as implemented
+- `next action`: stage and commit Story 3
 
 ## Prompt Map
 

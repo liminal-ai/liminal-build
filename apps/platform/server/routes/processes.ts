@@ -7,6 +7,7 @@ import {
   processHtmlRouteSchema,
   resumeProcessRouteSchema,
   startProcessRouteSchema,
+  submitProcessResponseRouteSchema,
 } from '../schemas/processes.js';
 import { sessionCookieName } from '../services/auth/auth-session.service.js';
 import {
@@ -203,6 +204,56 @@ export async function registerProcessRoutes(app: FastifyInstance): Promise<void>
             | 'PROJECT_NOT_FOUND'
             | 'PROCESS_NOT_FOUND'
             | 'PROCESS_ACTION_NOT_AVAILABLE';
+
+          return reply.code(statusCode).send({
+            code,
+            message: error.message,
+            status: statusCode,
+          });
+        }
+
+        throw error;
+      }
+    },
+  );
+
+  typedApp.post(
+    '/api/projects/:projectId/processes/:processId/responses',
+    {
+      schema: submitProcessResponseRouteSchema,
+    },
+    async (request, reply) => {
+      if (request.actor === null) {
+        if (request.authFailureReason === 'invalid_session') {
+          reply.clearCookie(sessionCookieName, { path: '/' });
+        }
+
+        return reply.code(401).send({
+          code: 'UNAUTHENTICATED',
+          message: 'Authenticated access is required.',
+          status: 401,
+        });
+      }
+
+      try {
+        const response = await app.processResponseService.respond({
+          actor: request.actor,
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+          body: request.body,
+        });
+
+        return reply.code(200).send(response);
+      } catch (error) {
+        if (error instanceof AppError) {
+          const statusCode = error.statusCode as 403 | 404 | 409 | 422 | 500;
+          const code = error.code as
+            | 'PROJECT_FORBIDDEN'
+            | 'PROJECT_NOT_FOUND'
+            | 'PROCESS_NOT_FOUND'
+            | 'PROCESS_ACTION_NOT_AVAILABLE'
+            | 'INVALID_PROCESS_RESPONSE'
+            | 'PROCESS_ACTION_FAILED';
 
           return reply.code(statusCode).send({
             code,

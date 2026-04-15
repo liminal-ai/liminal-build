@@ -1,6 +1,10 @@
 import type { ProcessHistorySectionEnvelope } from '../../../shared/contracts/index.js';
 
 function formatHistoryKindLabel(kind: string): string {
+  if (kind === 'attention_request') {
+    return 'Attention required';
+  }
+
   return kind.replaceAll('_', ' ');
 }
 
@@ -43,6 +47,7 @@ export function renderProcessHistorySection(args: {
     const body = args.targetDocument.createElement('p');
     const meta = args.targetDocument.createElement('p');
 
+    entry.setAttribute('data-process-history-kind', item.kind);
     kind.textContent = formatHistoryKindLabel(item.kind);
     body.textContent = item.text;
     meta.textContent = `Created: ${item.createdAt}`;

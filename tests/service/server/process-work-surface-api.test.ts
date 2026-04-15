@@ -23,6 +23,7 @@ import {
 } from '../../fixtures/process-surface.js';
 import { readyProcessHistoryFixture } from '../../fixtures/process-history.js';
 import { readyProcessMaterialsFixture } from '../../fixtures/materials.js';
+import { completedProcessFixture, runningProcessFixture } from '../../fixtures/processes.js';
 import { readySideWorkFixture } from '../../fixtures/side-work.js';
 import { buildApp } from '../../utils/build-app.js';
 
@@ -280,6 +281,166 @@ describe('process work surface api', () => {
       code: 'PROJECT_FORBIDDEN',
       message: 'You do not have access to this process.',
       status: 403,
+    });
+
+    await app.close();
+  });
+
+  it('TC-3.2a, TC-5.1a, and TC-5.2a keep the outstanding attention request visible beside routine progress', async () => {
+    const platformStore = buildPopulatedStore();
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      currentRequest: currentProcessRequestFixture,
+    });
+    expect(response.json().history.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'progress_update' }),
+        expect.objectContaining({ kind: 'attention_request' }),
+      ]),
+    );
+
+    await app.close();
+  });
+
+  it('TC-3.4a does not invent a waiting reply state when the process is running without a current request', async () => {
+    const runningProcessSummary = processSummarySchema.parse({
+      ...runningProcessFixture,
+      processId: 'process-running-surface-001',
+      updatedAt: '2026-04-13T12:15:00.000Z',
+    });
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectSummary.projectId]: [runningProcessSummary],
+      },
+      processHistoryItemsByProcessId: {
+        [runningProcessSummary.processId]: readyProcessHistoryFixture.items,
+      },
+      currentRequestsByProcessId: {
+        [runningProcessSummary.processId]: null,
+      },
+      processOutputsByProcessId: {
+        [runningProcessSummary.processId]: readyProcessMaterialsFixture.currentOutputs,
+      },
+      processSideWorkItemsByProcessId: {
+        [runningProcessSummary.processId]: readySideWorkFixture.items,
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${runningProcessSummary.processId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      process: {
+        processId: runningProcessSummary.processId,
+        status: 'running',
+        availableActions: ['review'],
+      },
+      currentRequest: null,
+    });
+
+    await app.close();
+  });
+
+  it('TC-3.4b completed processes omit an active respond action from bootstrap', async () => {
+    const completedProcessSummary = processSummarySchema.parse({
+      ...completedProcessFixture,
+      processId: 'process-completed-surface-001',
+      updatedAt: '2026-04-13T12:16:00.000Z',
+    });
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectSummary.projectId]: [completedProcessSummary],
+      },
+      currentRequestsByProcessId: {
+        [completedProcessSummary.processId]: null,
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${completedProcessSummary.processId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      process: {
+        processId: completedProcessSummary.processId,
+        status: 'completed',
+        availableActions: ['review'],
+      },
+      currentRequest: null,
     });
 
     await app.close();

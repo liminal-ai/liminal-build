@@ -401,6 +401,35 @@ describe('auth routes', () => {
           currentRequest: null,
         };
       },
+      async getSubmittedProcessResponse() {
+        return null;
+      },
+      async submitProcessResponse(args) {
+        return {
+          accepted: true,
+          historyItem: {
+            historyItemId: `history:${args.processId}:${args.clientRequestId}`,
+            kind: 'user_message',
+            lifecycleState: 'finalized',
+            text: args.message,
+            createdAt: '2026-04-13T12:06:00.000Z',
+            relatedSideWorkId: null,
+            relatedArtifactId: null,
+          },
+          process: {
+            processId: args.processId,
+            displayLabel: 'Feature Specification #1',
+            processType: 'FeatureSpecification',
+            status: 'running',
+            phaseLabel: 'Working',
+            nextActionLabel: 'Monitor progress in the work surface',
+            availableActions: ['open', 'review'],
+            hasEnvironment: false,
+            updatedAt: '2026-04-13T12:06:00.000Z',
+          },
+          currentRequest: null,
+        };
+      },
       async listProjectProcesses() {
         return [];
       },

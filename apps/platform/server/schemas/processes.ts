@@ -5,6 +5,7 @@ import {
   processWorkSurfaceRouteParamsSchema,
   requestErrorSchema,
   startProcessResponseSchema,
+  submitProcessResponseResponseSchema,
 } from '../../shared/contracts/index.js';
 
 export const processHtmlRouteSchema = {
@@ -45,5 +46,19 @@ export const resumeProcessRouteSchema = {
     403: requestErrorSchema,
     404: requestErrorSchema,
     409: requestErrorSchema,
+  },
+} as const;
+
+export const submitProcessResponseRouteSchema = {
+  params: processWorkSurfaceRouteParamsSchema,
+  body: z.unknown(),
+  response: {
+    200: submitProcessResponseResponseSchema,
+    401: requestErrorSchema,
+    403: requestErrorSchema,
+    404: requestErrorSchema,
+    409: requestErrorSchema,
+    422: requestErrorSchema,
+    500: requestErrorSchema,
   },
 } as const;
