@@ -1,3 +1,4 @@
+import { renderProcessWorkSurfacePage } from '../features/processes/process-work-surface-page.js';
 import { renderProjectIndexPage } from '../features/projects/project-index-page.js';
 import { renderProjectShellPage } from '../features/projects/project-shell-page.js';
 import { clearElement } from './dom.js';
@@ -16,6 +17,7 @@ export interface ShellAppOptions {
   onOpenCreateProcess: () => void;
   onCancelCreateProcess: () => void;
   onOpenProject: (projectId: string) => void;
+  onOpenProcess: (projectId: string, processId: string) => void;
 }
 
 export function createShellApp(options: ShellAppOptions) {
@@ -23,6 +25,7 @@ export function createShellApp(options: ShellAppOptions) {
     clearElement(options.root);
 
     const state = options.store.get();
+    const isProcessWorkSurface = state.processSurface.processId !== null;
     const page =
       state.route.projectId === null
         ? renderProjectIndexPage({
@@ -34,14 +37,22 @@ export function createShellApp(options: ShellAppOptions) {
             onCancelCreateProject: options.onCancelCreateProject,
             onOpenProject: options.onOpenProject,
           })
-        : renderProjectShellPage({
-            store: options.store,
-            targetDocument: options.targetWindow.document,
-            targetWindow: options.targetWindow,
-            onCreateProcess: options.onCreateProcess,
-            onCancelCreateProcess: options.onCancelCreateProcess,
-            onOpenCreateProcess: options.onOpenCreateProcess,
-          });
+        : isProcessWorkSurface
+          ? renderProcessWorkSurfacePage({
+              store: options.store,
+              targetDocument: options.targetWindow.document,
+              targetWindow: options.targetWindow,
+              onOpenProject: options.onOpenProject,
+            })
+          : renderProjectShellPage({
+              store: options.store,
+              targetDocument: options.targetWindow.document,
+              targetWindow: options.targetWindow,
+              onOpenProcess: options.onOpenProcess,
+              onCreateProcess: options.onCreateProcess,
+              onCancelCreateProcess: options.onCancelCreateProcess,
+              onOpenCreateProcess: options.onOpenCreateProcess,
+            });
 
     options.root.append(page);
   };

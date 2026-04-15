@@ -3,7 +3,7 @@
 ## Run State
 
 - `state`: `STORY_ACTIVE`
-- `phase`: `verification`
+- `phase`: `implementing`
 - `updatedAtUtc`: `2026-04-15T01:26:39Z`
 - `orchestrator`: `gpt-5.4 xhigh`
 - `implementation default lane`: `Codex gpt-5.4 high`
@@ -400,6 +400,176 @@ The next dispatch target is `00-foundation.md`.
   - live foundation: scaffolded with one regression test
   - Convex Epic 2 tables: scaffolded
 - Next story target: `01-process-entry-and-bootstrap.md`
+
+## Story 0 Commit
+
+- `commit`: `f97509a75b051a4434cedf6e74f9e85ea333a5a0`
+- `message`: `feat: Story 0 - Foundation`
+
+## Story 1 Preflight
+
+- `story`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/stories/01-process-entry-and-bootstrap.md`
+- `next story skimmed`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/stories/02-start-and-resume.md`
+- `story kind`: `standard`
+- `story base commit`: `f97509a75b051a4434cedf6e74f9e85ea333a5a0`
+- `lane choice`: `Codex gpt-5.4 xhigh`
+- `lane rationale`: Story 1 is the first behavior-heavy vertical slice, introduces the dedicated route/bootstrap seam end to end, and touches both client and server boundaries plus unavailable handling.
+- `story gate`: `corepack pnpm run red-verify && corepack pnpm run test:service && corepack pnpm run test:client`
+- `expected Epic 2 cumulative test baseline after Story 1`: `about 18 executable tests total in this run`  
+  Story 0 ended at `1` added executable test. Story 1 should add about `17` more.
+- `story-specific warnings`:
+  - do not leave `process-work-surface` routes falling through to `getProjectShell()` without a dedicated bootstrap path
+  - keep section-envelope shapes stable across `ready`, `empty`, and `error`
+  - handle unavailable route/access cases without leaking process content
+
+## Story 1 Stall Note
+
+- `issue type`: worker stall / dispatch reliability
+- `phase`: `implementing`
+- `symptom`: the fresh Story 1 implementer appeared to be waiting for instruction instead of actively executing the initial handoff
+- `impact`: the orchestration run looked idle and required user intervention to surface the stall
+- `recovery action`: the orchestrator re-issued the Story 1 handoff with `interrupt=true` to force the worker back into an active execution state
+- `why this matters for skill work`:
+  - the orchestration skill should not assume a spawned worker is actually progressing just because a handoff was sent
+  - after story dispatch, the orchestrator should actively confirm the worker leaves the waiting state within a bounded time
+  - if the worker appears idle/awaiting-instruction, the orchestrator should auto-interrupt or replace it instead of passively waiting
+- `human correction captured`: the user explicitly called out that nothing appeared to be happening and asked that this stall be tracked for improving the skill
+
+## Story 1 Orchestration Wake-Up Note
+
+- `issue type`: async completion handling / orchestrator wake-up failure
+- `phase`: `implementing`
+- `symptom`: a Story 1 subagent completed and produced a full implementation report, but the orchestrator did not immediately consume that completion and continue into bundle-building / verification
+- `root cause diagnosis`: the subagent lane is asynchronous by design, but the orchestrator handled it too much like fire-and-forget work instead of maintaining an active completion checkpoint
+- `why this breaks autonomy`: if the orchestrator launches async workers and does not immediately react to completion notifications, story-by-story orchestration stalls even though the worker did its job
+- `skill improvement implication`:
+  - after every async dispatch, the orchestrator should either remain in an explicit wait loop or immediately re-check for completion on notification
+  - completion notifications must be treated as phase-transition triggers, not just informational events
+  - a finished worker should immediately cause one of:
+    - verification bundle construction
+    - fix-routing
+    - acceptance gating
+  - if that does not happen within a bounded interval, the orchestrator should treat it as its own failure state
+- `human correction captured`: the user explicitly pointed out that asynchronous launch without reliable wake-up undermines the whole value of autonomous orchestration
+
+## Skill Update Guidance From Story 1 Failure
+
+This section is written for future skill revision work and for immediate reuse after skill reload.
+
+### Exact Failure
+
+The orchestrator launched a story implementer asynchronously, called `wait_agent`, received a timeout, and failed to preserve an explicit blocked continuation state.
+
+Then, when the worker later completed and produced a real implementation report, the orchestrator did not immediately consume that completion as a mandatory phase transition.
+
+### What The Skill Needs To Say Explicitly
+
+1. After spawning any implementer or verifier, the orchestrator must enter an explicit blocked state:
+   - `WAITING_FOR_IMPLEMENTER_REPORT`
+   - `WAITING_FOR_CODEX_REVIEW`
+   - `WAITING_FOR_SONNET_REVIEW`
+2. A `wait_agent` timeout is not a neutral event.
+   The skill must require the orchestrator to take one immediate recovery action:
+   - wait again
+   - inspect lane health
+   - interrupt/resend
+   - replace the worker
+   - switch lanes
+   - escalate
+3. A completion notification is a mandatory phase-transition trigger.
+   The orchestrator must immediately do one of:
+   - build the verification bundle
+   - launch verification
+   - route fixes
+   - accept and transition
+4. Async delegation is allowed only with an active continuation loop.
+   The skill should explicitly forbid fire-and-forget worker launches.
+5. If a worker remains idle / awaiting instruction after dispatch, the orchestrator must auto-recover instead of waiting for the human to notice.
+
+### What I Must Do Differently In This Run
+
+- treat every launched subagent as an actively managed dependency on the critical path
+- keep explicit note of which agent and which phase is currently blocking progress
+- on completion, immediately consume the result and advance the state machine
+- if Sonnet helper output is complete but direct file-write fails, materialize the report artifact myself and continue without re-stalling
+
+### Operating Rule For The Rest Of This Session
+
+No launched subagent may remain in a finished or timed-out state without an immediate orchestrator action.
+
+If that happens again, it is an orchestrator failure, not a worker failure.
+
+## Story 1 Verification Artifacts
+
+- `verification bundle`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/01-process-entry-and-bootstrap/verification-bundle.md`
+- `codex review report`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/01-process-entry-and-bootstrap/codex-review.md`
+- `second-lane review report`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/01-process-entry-and-bootstrap/sonnet-review.md`
+- `second-lane structured result`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/02--process-work-surface/story-verification/01-process-entry-and-bootstrap/sonnet-review.json`
+
+## Story 1 Verification Summary
+
+- `codex verdict`: `REVISE` on first pass
+- `second-lane verdict`: `PASS` on first pass
+- `disagreement points`:
+  - conservative `currentRequest` projection in the real Convex path
+  - materials reader design alignment and future no-dup/material-ref semantics
+- `convergence round 1 outcome`:
+  - Codex verifier retracted blocker severity for both issues
+  - Codex still stands behind both as non-blocking concerns / future-risk checks
+  - second-lane still stands behind `PASS`
+- `orchestrator decision after convergence`: no remaining blocking issue proven against Story 1 acceptance scope
+- `second-lane file-write note`: helper again returned full structured output but failed direct markdown write; orchestrator materialized the markdown artifact from the captured result
+
+## Story 1 Pre-Acceptance Receipt
+
+1. `implementation lane used`: `Codex gpt-5.4 xhigh`
+2. `changed files summary`:
+   - dedicated process bootstrap API and HTML route
+   - dedicated client process bootstrap branch and process page
+   - process access and surface service/readers
+   - Story 1 process route open path from project shell
+   - Story 1 client and server tests
+3. `story base commit`: `f97509a75b051a4434cedf6e74f9e85ea333a5a0`
+4. `test diff summary against story base commit`:
+   - modified tracked tests:
+     - `tests/service/client/project-shell-page.test.ts`
+     - `tests/service/server/auth-routes.test.ts`
+     - `tests/service/server/processes-api.test.ts`
+   - added story tests:
+     - `tests/service/client/process-history-section.test.ts`
+     - `tests/service/client/process-router.test.ts`
+     - `tests/service/client/process-work-surface-page.test.ts`
+     - `tests/service/server/process-html-routes.test.ts`
+     - `tests/service/server/process-work-surface-api.test.ts`
+5. `codex verification summary`:
+   - first pass: `REVISE`
+   - after convergence: no proven blocker remained
+6. `second-lane verification summary`:
+   - first pass: `PASS`
+   - convergence maintained `PASS`
+7. `convergence rounds run`: `1`
+8. `fixes applied`: `none`
+   - convergence reduced the disagreement below blocking threshold on current evidence
+9. `exact story gate commands and results`:
+   - `corepack pnpm run red-verify` -> `PASS`
+   - `corepack pnpm run test:service` -> `PASS`
+   - `corepack pnpm run test:client` -> `PASS`
+   - exact chained acceptance gate:
+     - `corepack pnpm run red-verify && corepack pnpm run test:service && corepack pnpm run test:client` -> `PASS`
+10. `open risks`:
+   - conservative `currentRequest` projection is acceptable for Story 1 but should be revisited in Story 3
+   - materials reader currently uses a simpler project-list/filter approach rather than the full process-owned material projection model; acceptable for Story 1, but worth re-checking when Story 4 deepens materials/output behavior
+
+## Story 1 Transition Checkpoint
+
+- Story 1 is accepted.
+- The cumulative Epic 2 executable test baseline is now about `18` added executable tests in this run (`1` from Story 0 + about `17` from Story 1), matching the projected Story 1 cumulative target.
+- Boundary inventory advanced:
+  - dedicated process HTML route: `integrated`
+  - durable process-surface bootstrap API: `integrated`
+  - process access enforcement for process routes: `integrated`
+  - process-surface client bootstrap branch: `integrated`
+- Next story target: `02-start-and-resume.md`
 
 ## Prompt Map
 

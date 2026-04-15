@@ -372,10 +372,25 @@ describe('auth routes', () => {
       async listProjectProcesses() {
         return [];
       },
+      async getProcessRecord() {
+        return null;
+      },
       async listProjectArtifacts() {
         return [];
       },
       async listProjectSourceAttachments() {
+        return [];
+      },
+      async listProcessHistoryItems() {
+        return [];
+      },
+      async getCurrentProcessRequest() {
+        return null;
+      },
+      async listProcessOutputs() {
+        return [];
+      },
+      async listProcessSideWorkItems() {
         return [];
       },
     };

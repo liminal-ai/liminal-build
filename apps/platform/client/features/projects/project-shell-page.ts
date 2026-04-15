@@ -14,6 +14,7 @@ export function renderProjectShellPage(args: {
   store: AppStore;
   targetDocument: Document;
   targetWindow: Window & typeof globalThis;
+  onOpenProcess: (projectId: string, processId: string) => void;
   onCreateProcess: (
     processType: 'ProductDefinition' | 'FeatureSpecification' | 'FeatureImplementation',
   ) => Promise<void>;
@@ -81,7 +82,11 @@ export function renderProjectShellPage(args: {
     renderProcessSection({
       envelope: state.shell.processes,
       selectedProcessId: state.route.selectedProcessId,
+      projectId: state.shell.project.projectId,
       targetDocument: args.targetDocument,
+      onOpenProcess: (processId) => {
+        args.onOpenProcess(state.shell.project?.projectId ?? '', processId);
+      },
     }),
     renderArtifactSection({
       envelope: state.shell.artifacts,

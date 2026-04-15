@@ -1,5 +1,8 @@
 import fp from 'fastify-plugin';
-import { NoopProcessLiveHub, type ProcessLiveHub } from '../services/processes/live/process-live-hub.js';
+import {
+  NoopProcessLiveHub,
+  type ProcessLiveHub,
+} from '../services/processes/live/process-live-hub.js';
 
 export interface WebsocketPluginOptions {
   processLiveHub?: ProcessLiveHub;

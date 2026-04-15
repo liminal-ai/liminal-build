@@ -33,27 +33,29 @@ export const liveProcessMessageBaseSchema = z.object({
 });
 export type LiveProcessMessageBase = z.infer<typeof liveProcessMessageBaseSchema>;
 
-const processLiveDataMessageSchema = liveProcessMessageBaseSchema.extend({
-  messageType: liveProcessDataMessageTypeSchema,
-  entityType: z.literal('process'),
-  payload: processSurfaceSummarySchema,
-}).superRefine((value, context) => {
-  if (value.entityId !== value.processId) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'Process live messages must use the process id as the entity id.',
-      path: ['entityId'],
-    });
-  }
+const processLiveDataMessageSchema = liveProcessMessageBaseSchema
+  .extend({
+    messageType: liveProcessDataMessageTypeSchema,
+    entityType: z.literal('process'),
+    payload: processSurfaceSummarySchema,
+  })
+  .superRefine((value, context) => {
+    if (value.entityId !== value.processId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Process live messages must use the process id as the entity id.',
+        path: ['entityId'],
+      });
+    }
 
-  if (value.payload.processId !== value.processId) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'Process live messages must match the top-level processId and payload.processId.',
-      path: ['payload', 'processId'],
-    });
-  }
-});
+    if (value.payload.processId !== value.processId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Process live messages must match the top-level processId and payload.processId.',
+        path: ['payload', 'processId'],
+      });
+    }
+  });
 
 const historyLiveDataMessageSchema = liveProcessMessageBaseSchema.extend({
   messageType: liveProcessDataMessageTypeSchema,

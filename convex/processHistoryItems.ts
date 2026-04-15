@@ -1,3 +1,6 @@
+import type { ProcessHistoryItem } from '../apps/platform/shared/contracts/index.js';
+import type { Id } from './_generated/dataModel.js';
+import { query } from './_generated/server.js';
 import { v } from 'convex/values';
 
 export const processHistoryItemKindValidator = v.union(
@@ -33,3 +36,26 @@ export const processHistoryItemsTableFields = {
   createdAt: v.string(),
   finalizedAt: v.union(v.string(), v.null()),
 };
+
+export const listProcessHistoryItems = query({
+  args: {
+    processId: v.string(),
+  },
+  handler: async (ctx, args): Promise<ProcessHistoryItem[]> => {
+    const processId = args.processId as Id<'processes'>;
+    const items = await ctx.db
+      .query('processHistoryItems')
+      .withIndex('by_processId_and_createdAt', (query) => query.eq('processId', processId))
+      .take(200);
+
+    return items.map((item) => ({
+      historyItemId: item._id,
+      kind: item.kind,
+      lifecycleState: item.lifecycleState,
+      text: item.text,
+      createdAt: item.createdAt,
+      relatedSideWorkId: item.relatedSideWorkId,
+      relatedArtifactId: item.relatedArtifactId,
+    }));
+  },
+});

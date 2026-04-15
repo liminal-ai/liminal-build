@@ -14,10 +14,11 @@ import { registerProcessRoutes } from './routes/processes.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { AuthSessionService } from './services/auth/auth-session.service.js';
 import { AuthUserSyncService } from './services/auth/auth-user-sync.service.js';
-import { type ProcessLiveHub } from './services/processes/live/process-live-hub.js';
+import type { ProcessLiveHub } from './services/processes/live/process-live-hub.js';
 import { ProcessModuleRegistry } from './services/processes/process-module-registry.js';
+import { ProcessAccessService } from './services/processes/process-access.service.js';
 import {
-  NotImplementedProcessWorkSurfaceService,
+  DefaultProcessWorkSurfaceService,
   type ProcessWorkSurfaceService,
 } from './services/processes/process-work-surface.service.js';
 import {
@@ -43,6 +44,7 @@ export interface CreateAppOptions {
   projectIndexService?: ProjectIndexService;
   projectShellService?: ProjectShellService;
   processLiveHub?: ProcessLiveHub;
+  processAccessService?: ProcessAccessService;
   processModuleRegistry?: ProcessModuleRegistry;
   processRegistrationService?: ProcessRegistrationService;
   processWorkSurfaceService?: ProcessWorkSurfaceService;
@@ -54,6 +56,7 @@ declare module 'fastify' {
     projectCreateService: ProjectCreateService;
     projectIndexService: ProjectIndexService;
     projectShellService: ProjectShellService;
+    processAccessService: ProcessAccessService;
     processModuleRegistry: ProcessModuleRegistry;
     processRegistrationService: ProcessRegistrationService;
     processWorkSurfaceService: ProcessWorkSurfaceService;
@@ -85,13 +88,16 @@ export async function createApp(options: CreateAppOptions = {}) {
   const projectIndexService = options.projectIndexService ?? new ProjectIndexService(platformStore);
   const projectShellService = options.projectShellService ?? new ProjectShellService(platformStore);
   const processLiveHub = options.processLiveHub;
+  const processAccessService =
+    options.processAccessService ?? new ProcessAccessService(platformStore, projectAccessService);
   const processModuleRegistry = options.processModuleRegistry ?? new ProcessModuleRegistry();
   const processDisplayLabelService = new ProcessDisplayLabelService(platformStore);
   const processRegistrationService =
     options.processRegistrationService ??
     new ProcessRegistrationService(platformStore, processDisplayLabelService, projectAccessService);
   const processWorkSurfaceService =
-    options.processWorkSurfaceService ?? new NotImplementedProcessWorkSurfaceService();
+    options.processWorkSurfaceService ??
+    new DefaultProcessWorkSurfaceService(platformStore, processAccessService);
   const app = Fastify({
     logger: options.logger ?? false,
   });
@@ -102,6 +108,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.decorate('projectCreateService', projectCreateService);
   app.decorate('projectIndexService', projectIndexService);
   app.decorate('projectShellService', projectShellService);
+  app.decorate('processAccessService', processAccessService);
   app.decorate('processModuleRegistry', processModuleRegistry);
   app.decorate('processRegistrationService', processRegistrationService);
   app.decorate('processWorkSurfaceService', processWorkSurfaceService);

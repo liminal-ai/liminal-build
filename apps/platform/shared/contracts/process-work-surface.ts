@@ -8,7 +8,8 @@ import {
   supportedProcessTypeSchema,
 } from './schemas.js';
 
-export const processWorkSurfaceRouteTemplate = '/projects/{projectId}/processes/{processId}' as const;
+export const processWorkSurfaceRouteTemplate =
+  '/projects/{projectId}/processes/{processId}' as const;
 export const processWorkSurfaceRoutePathnamePattern =
   '/projects/:projectId/processes/:processId' as const;
 export const processWorkSurfaceApiPathnamePattern =

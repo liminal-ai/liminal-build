@@ -9,10 +9,7 @@ import type {
   SideWorkSectionEnvelope,
 } from '../../shared/contracts/index.js';
 
-function isStaleMessage(
-  state: ProcessSurfaceState,
-  message: LiveProcessUpdateMessage,
-): boolean {
+function isStaleMessage(state: ProcessSurfaceState, message: LiveProcessUpdateMessage): boolean {
   if (state.live.subscriptionId !== message.subscriptionId) {
     return false;
   }
@@ -73,9 +70,7 @@ function buildSectionErrorEnvelope(
   };
 }
 
-function applyCurrentRequest(
-  next: CurrentProcessRequest | null,
-): CurrentProcessRequest | null {
+function applyCurrentRequest(next: CurrentProcessRequest | null): CurrentProcessRequest | null {
   return next;
 }
 

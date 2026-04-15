@@ -8,7 +8,10 @@ import type {
 } from '../../../shared/contracts/index.js';
 import { AppError } from '../../errors/app-error.js';
 import { story0NotImplementedErrorCode } from '../../errors/codes.js';
-import type { ProcessActionResult, ProcessSurfaceProjection } from './process-work-surface.service.js';
+import type {
+  ProcessActionResult,
+  ProcessSurfaceProjection,
+} from './process-work-surface.service.js';
 
 export interface ProcessWorkSurfaceModule<TState = unknown> {
   processType: SupportedProcessType;

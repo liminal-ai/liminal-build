@@ -6,6 +6,7 @@ import type {
   ProjectSummary,
 } from '../../shared/contracts/index.js';
 import { ApiRequestError, getAuthenticatedUser } from '../browser-api/auth-api.js';
+import { getProcessWorkSurface } from '../browser-api/process-work-surface-api.js';
 import {
   createProcess,
   createProject,
@@ -199,6 +200,63 @@ export async function bootstrapApp(
       isLoading: true,
     });
 
+    if (parsedRoute.kind === 'process-work-surface') {
+      store.patch('shell', {
+        ...defaultAppState.shell,
+      });
+      store.patch('processSurface', {
+        ...defaultAppState.processSurface,
+        projectId: parsedRoute.projectId,
+        processId: parsedRoute.processId,
+        isLoading: true,
+        error: null,
+      });
+
+      try {
+        const surface = await getProcessWorkSurface({
+          projectId: parsedRoute.projectId ?? '',
+          processId: parsedRoute.processId ?? '',
+        });
+
+        if (requestId !== routeLoadId) {
+          return;
+        }
+
+        store.patch('processSurface', {
+          ...defaultAppState.processSurface,
+          projectId: parsedRoute.projectId,
+          processId: parsedRoute.processId,
+          project: surface.project,
+          process: surface.process,
+          history: surface.history,
+          materials: surface.materials,
+          currentRequest: surface.currentRequest,
+          sideWork: surface.sideWork,
+          isLoading: false,
+          error: null,
+        });
+      } catch (error) {
+        if (requestId !== routeLoadId) {
+          return;
+        }
+
+        if (error instanceof ApiRequestError) {
+          store.patch('processSurface', {
+            ...defaultAppState.processSurface,
+            projectId: parsedRoute.projectId,
+            processId: parsedRoute.processId,
+            isLoading: false,
+            error: error.payload,
+          });
+          return;
+        }
+
+        throw error;
+      }
+
+      return;
+    }
+
     try {
       const shell = await getProjectShell({
         projectId: parsedRoute.projectId ?? '',
@@ -243,6 +301,17 @@ export async function bootstrapApp(
       projectId,
       selectedProcessId: null,
       processId: null,
+    };
+    navigateTo(route, {}, targetWindow);
+    await loadParsedRoute(route);
+  };
+
+  const openProcess = async (projectId: string, processId: string): Promise<void> => {
+    const route: ParsedRoute = {
+      kind: 'process-work-surface',
+      projectId,
+      selectedProcessId: null,
+      processId,
     };
     navigateTo(route, {}, targetWindow);
     await loadParsedRoute(route);
@@ -368,6 +437,9 @@ export async function bootstrapApp(
     },
     onOpenProject: (projectId: string) => {
       void openProject(projectId);
+    },
+    onOpenProcess: (projectId: string, processId: string) => {
+      void openProcess(projectId, processId);
     },
   });
   shellApp.render();

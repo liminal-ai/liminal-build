@@ -1,4 +1,9 @@
-import type { ProcessAvailableAction, ProcessStatus, ProcessSummary } from '../apps/platform/shared/contracts/index.js';
+import type {
+  CurrentProcessRequest,
+  ProcessAvailableAction,
+  ProcessStatus,
+  ProcessSummary,
+} from '../apps/platform/shared/contracts/index.js';
 import type { Doc, Id } from './_generated/dataModel.js';
 import { mutation, query } from './_generated/server.js';
 import { v } from 'convex/values';
@@ -44,6 +49,68 @@ export const listProjectProcessSummaries = query({
       .take(200);
 
     return processes.map((process) => buildProcessSummary(process));
+  },
+});
+
+export const getProcessRecord = query({
+  args: {
+    processId: v.string(),
+  },
+  handler: async (ctx, args): Promise<(ProcessSummary & { projectId: string }) | null> => {
+    let processRecord: Doc<'processes'> | null = null;
+
+    try {
+      processRecord = await ctx.db.get(args.processId as Id<'processes'>);
+    } catch {
+      return null;
+    }
+
+    if (processRecord === null) {
+      return null;
+    }
+
+    return {
+      projectId: processRecord.projectId,
+      ...buildProcessSummary(processRecord),
+    };
+  },
+});
+
+export const getCurrentProcessRequest = query({
+  args: {
+    processId: v.string(),
+  },
+  handler: async (ctx, args): Promise<CurrentProcessRequest | null> => {
+    let processRecord: Doc<'processes'> | null = null;
+
+    try {
+      processRecord = await ctx.db.get(args.processId as Id<'processes'>);
+    } catch {
+      return null;
+    }
+
+    if (processRecord === null || processRecord.currentRequestHistoryItemId === null) {
+      return null;
+    }
+
+    const historyItem = await ctx.db.get(processRecord.currentRequestHistoryItemId);
+
+    if (
+      historyItem === null ||
+      historyItem.processId !== processRecord._id ||
+      historyItem.kind !== 'attention_request' ||
+      historyItem.requestState !== 'unresolved'
+    ) {
+      return null;
+    }
+
+    return {
+      requestId: historyItem._id,
+      requestKind: 'other',
+      promptText: historyItem.text,
+      requiredActionLabel: processRecord.nextActionLabel,
+      createdAt: historyItem.createdAt,
+    };
   },
 });
 

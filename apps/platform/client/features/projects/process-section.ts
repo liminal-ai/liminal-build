@@ -33,7 +33,9 @@ function formatProcessStatusLabel(status: string): string {
 export function renderProcessSection(args: {
   envelope: ProcessSectionEnvelope | null;
   selectedProcessId: string | null;
+  projectId?: string;
   targetDocument: Document;
+  onOpenProcess?: (processId: string) => void;
 }): HTMLElement {
   if (args.envelope === null || args.envelope.status !== 'ready') {
     return renderSectionEnvelopeState({
@@ -84,6 +86,16 @@ export function renderProcessSection(args: {
       const actions = args.targetDocument.createElement('p');
       actions.textContent = `Available actions: ${process.availableActions.join(', ')}`;
       item.append(actions);
+    }
+
+    if (args.projectId !== undefined && args.onOpenProcess !== undefined) {
+      const openButton = args.targetDocument.createElement('button');
+      openButton.type = 'button';
+      openButton.textContent = 'Open process';
+      openButton.addEventListener('click', () => {
+        args.onOpenProcess?.(process.processId);
+      });
+      item.append(openButton);
     }
 
     const environment = args.targetDocument.createElement('p');

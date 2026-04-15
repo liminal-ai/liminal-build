@@ -2,9 +2,13 @@ import { ConvexHttpClient } from 'convex/browser';
 import { makeFunctionReference } from 'convex/server';
 import type {
   ArtifactSummary,
+  CurrentProcessRequest,
+  ProcessHistoryItem,
+  ProcessOutputReference,
   ProcessSummary,
   ProjectShellResponse,
   ProjectSummary,
+  SideWorkItem,
   SourceAttachmentSummary,
 } from '../../../shared/contracts/index.js';
 
@@ -55,9 +59,16 @@ export interface PlatformStore {
     processType: ProcessSummary['processType'];
     displayLabel: string;
   }): Promise<ProcessCreateResult>;
+  getProcessRecord(args: {
+    processId: string;
+  }): Promise<(ProcessSummary & { projectId: string }) | null>;
   listProjectProcesses(args: { projectId: string }): Promise<ProcessSummary[]>;
   listProjectArtifacts(args: { projectId: string }): Promise<ArtifactSummary[]>;
   listProjectSourceAttachments(args: { projectId: string }): Promise<SourceAttachmentSummary[]>;
+  listProcessHistoryItems(args: { processId: string }): Promise<ProcessHistoryItem[]>;
+  getCurrentProcessRequest(args: { processId: string }): Promise<CurrentProcessRequest | null>;
+  listProcessOutputs(args: { processId: string }): Promise<ProcessOutputReference[]>;
+  listProcessSideWorkItems(args: { processId: string }): Promise<SideWorkItem[]>;
 }
 
 const upsertUserMutation = makeFunctionReference<
@@ -104,6 +115,12 @@ const listProjectProcessesQuery = makeFunctionReference<
   ProcessSummary[]
 >('processes:listProjectProcessSummaries');
 
+const getProcessRecordQuery = makeFunctionReference<
+  'query',
+  { processId: string },
+  (ProcessSummary & { projectId: string }) | null
+>('processes:getProcessRecord');
+
 const listProjectArtifactsQuery = makeFunctionReference<
   'query',
   { projectId: string },
@@ -115,6 +132,30 @@ const listProjectSourceAttachmentsQuery = makeFunctionReference<
   { projectId: string },
   SourceAttachmentSummary[]
 >('sourceAttachments:listProjectSourceAttachmentSummaries');
+
+const listProcessHistoryItemsQuery = makeFunctionReference<
+  'query',
+  { processId: string },
+  ProcessHistoryItem[]
+>('processHistoryItems:listProcessHistoryItems');
+
+const getCurrentProcessRequestQuery = makeFunctionReference<
+  'query',
+  { processId: string },
+  CurrentProcessRequest | null
+>('processes:getCurrentProcessRequest');
+
+const listProcessOutputsQuery = makeFunctionReference<
+  'query',
+  { processId: string },
+  ProcessOutputReference[]
+>('processOutputs:listProcessOutputs');
+
+const listProcessSideWorkItemsQuery = makeFunctionReference<
+  'query',
+  { processId: string },
+  SideWorkItem[]
+>('processSideWorkItems:listProcessSideWorkItems');
 
 export class NullPlatformStore implements PlatformStore {
   async upsertUserFromWorkOS(args: {
@@ -170,6 +211,10 @@ export class NullPlatformStore implements PlatformStore {
     };
   }
 
+  async getProcessRecord(): Promise<(ProcessSummary & { projectId: string }) | null> {
+    return null;
+  }
+
   async listProjectProcesses(): Promise<ProcessSummary[]> {
     return [];
   }
@@ -179,6 +224,22 @@ export class NullPlatformStore implements PlatformStore {
   }
 
   async listProjectSourceAttachments(): Promise<SourceAttachmentSummary[]> {
+    return [];
+  }
+
+  async listProcessHistoryItems(): Promise<ProcessHistoryItem[]> {
+    return [];
+  }
+
+  async getCurrentProcessRequest(): Promise<CurrentProcessRequest | null> {
+    return null;
+  }
+
+  async listProcessOutputs(): Promise<ProcessOutputReference[]> {
+    return [];
+  }
+
+  async listProcessSideWorkItems(): Promise<SideWorkItem[]> {
     return [];
   }
 }
@@ -231,6 +292,12 @@ export class ConvexPlatformStore implements PlatformStore {
     return this.client.query(listProjectProcessesQuery, args);
   }
 
+  async getProcessRecord(args: {
+    processId: string;
+  }): Promise<(ProcessSummary & { projectId: string }) | null> {
+    return this.client.query(getProcessRecordQuery, args);
+  }
+
   async listProjectArtifacts(args: { projectId: string }): Promise<ArtifactSummary[]> {
     return this.client.query(listProjectArtifactsQuery, args);
   }
@@ -239,6 +306,24 @@ export class ConvexPlatformStore implements PlatformStore {
     projectId: string;
   }): Promise<SourceAttachmentSummary[]> {
     return this.client.query(listProjectSourceAttachmentsQuery, args);
+  }
+
+  async listProcessHistoryItems(args: { processId: string }): Promise<ProcessHistoryItem[]> {
+    return this.client.query(listProcessHistoryItemsQuery, args);
+  }
+
+  async getCurrentProcessRequest(args: {
+    processId: string;
+  }): Promise<CurrentProcessRequest | null> {
+    return this.client.query(getCurrentProcessRequestQuery, args);
+  }
+
+  async listProcessOutputs(args: { processId: string }): Promise<ProcessOutputReference[]> {
+    return this.client.query(listProcessOutputsQuery, args);
+  }
+
+  async listProcessSideWorkItems(args: { processId: string }): Promise<SideWorkItem[]> {
+    return this.client.query(listProcessSideWorkItemsQuery, args);
   }
 }
 
@@ -249,6 +334,10 @@ export class InMemoryPlatformStore implements PlatformStore {
   private readonly processesByProjectId = new Map<string, ProcessSummary[]>();
   private readonly artifactsByProjectId = new Map<string, ArtifactSummary[]>();
   private readonly sourceAttachmentsByProjectId = new Map<string, SourceAttachmentSummary[]>();
+  private readonly processHistoryItemsByProcessId = new Map<string, ProcessHistoryItem[]>();
+  private readonly currentRequestsByProcessId = new Map<string, CurrentProcessRequest | null>();
+  private readonly processOutputsByProcessId = new Map<string, ProcessOutputReference[]>();
+  private readonly processSideWorkItemsByProcessId = new Map<string, SideWorkItem[]>();
 
   constructor(
     args: {
@@ -258,6 +347,10 @@ export class InMemoryPlatformStore implements PlatformStore {
       processesByProjectId?: Record<string, ProcessSummary[]>;
       artifactsByProjectId?: Record<string, ArtifactSummary[]>;
       sourceAttachmentsByProjectId?: Record<string, SourceAttachmentSummary[]>;
+      processHistoryItemsByProcessId?: Record<string, ProcessHistoryItem[]>;
+      currentRequestsByProcessId?: Record<string, CurrentProcessRequest | null>;
+      processOutputsByProcessId?: Record<string, ProcessOutputReference[]>;
+      processSideWorkItemsByProcessId?: Record<string, SideWorkItem[]>;
     } = {},
   ) {
     for (const user of args.users ?? []) {
@@ -282,6 +375,22 @@ export class InMemoryPlatformStore implements PlatformStore {
 
     for (const [projectId, summaries] of Object.entries(args.sourceAttachmentsByProjectId ?? {})) {
       this.sourceAttachmentsByProjectId.set(projectId, summaries);
+    }
+
+    for (const [processId, items] of Object.entries(args.processHistoryItemsByProcessId ?? {})) {
+      this.processHistoryItemsByProcessId.set(processId, items);
+    }
+
+    for (const [processId, request] of Object.entries(args.currentRequestsByProcessId ?? {})) {
+      this.currentRequestsByProcessId.set(processId, request);
+    }
+
+    for (const [processId, outputs] of Object.entries(args.processOutputsByProcessId ?? {})) {
+      this.processOutputsByProcessId.set(processId, outputs);
+    }
+
+    for (const [processId, items] of Object.entries(args.processSideWorkItemsByProcessId ?? {})) {
+      this.processSideWorkItemsByProcessId.set(processId, items);
     }
   }
 
@@ -414,6 +523,23 @@ export class InMemoryPlatformStore implements PlatformStore {
     };
   }
 
+  async getProcessRecord(args: {
+    processId: string;
+  }): Promise<(ProcessSummary & { projectId: string }) | null> {
+    for (const [projectId, processes] of this.processesByProjectId.entries()) {
+      const match = processes.find((process) => process.processId === args.processId);
+
+      if (match !== undefined) {
+        return {
+          ...match,
+          projectId,
+        };
+      }
+    }
+
+    return null;
+  }
+
   async listProjectProcesses(args: { projectId: string }): Promise<ProcessSummary[]> {
     return this.processesByProjectId.get(args.projectId) ?? [];
   }
@@ -426,6 +552,24 @@ export class InMemoryPlatformStore implements PlatformStore {
     projectId: string;
   }): Promise<SourceAttachmentSummary[]> {
     return this.sourceAttachmentsByProjectId.get(args.projectId) ?? [];
+  }
+
+  async listProcessHistoryItems(args: { processId: string }): Promise<ProcessHistoryItem[]> {
+    return this.processHistoryItemsByProcessId.get(args.processId) ?? [];
+  }
+
+  async getCurrentProcessRequest(args: {
+    processId: string;
+  }): Promise<CurrentProcessRequest | null> {
+    return this.currentRequestsByProcessId.get(args.processId) ?? null;
+  }
+
+  async listProcessOutputs(args: { processId: string }): Promise<ProcessOutputReference[]> {
+    return this.processOutputsByProcessId.get(args.processId) ?? [];
+  }
+
+  async listProcessSideWorkItems(args: { processId: string }): Promise<SideWorkItem[]> {
+    return this.processSideWorkItemsByProcessId.get(args.processId) ?? [];
   }
 
   private updateProjectSummary(

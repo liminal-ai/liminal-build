@@ -14,8 +14,12 @@ import type {
 } from '../../../apps/platform/server/services/projects/platform-store.js';
 import type {
   ArtifactSummary,
+  CurrentProcessRequest,
+  ProcessHistoryItem,
+  ProcessOutputReference,
   ProcessSummary,
   ProjectSummary,
+  SideWorkItem,
   SourceAttachmentSummary,
 } from '../../../apps/platform/shared/contracts/index.js';
 import { memberProjectSummary, ownerProjectSummary } from '../../fixtures/projects.js';
@@ -141,6 +145,23 @@ class RecordingPlatformStore implements PlatformStore {
     return this.processesByProjectId.get(args.projectId) ?? [];
   }
 
+  async getProcessRecord(args: {
+    processId: string;
+  }): Promise<(ProcessSummary & { projectId: string }) | null> {
+    for (const [projectId, processes] of this.processesByProjectId.entries()) {
+      const match = processes.find((process) => process.processId === args.processId);
+
+      if (match !== undefined) {
+        return {
+          ...match,
+          projectId,
+        };
+      }
+    }
+
+    return null;
+  }
+
   async listProjectArtifacts(args: { projectId: string }): Promise<ArtifactSummary[]> {
     return this.artifactsByProjectId.get(args.projectId) ?? [];
   }
@@ -149,6 +170,22 @@ class RecordingPlatformStore implements PlatformStore {
     projectId: string;
   }): Promise<SourceAttachmentSummary[]> {
     return this.sourcesByProjectId.get(args.projectId) ?? [];
+  }
+
+  async listProcessHistoryItems(): Promise<ProcessHistoryItem[]> {
+    return [];
+  }
+
+  async getCurrentProcessRequest(): Promise<CurrentProcessRequest | null> {
+    return null;
+  }
+
+  async listProcessOutputs(): Promise<ProcessOutputReference[]> {
+    return [];
+  }
+
+  async listProcessSideWorkItems(): Promise<SideWorkItem[]> {
+    return [];
   }
 
   private updateProjectSummary(
