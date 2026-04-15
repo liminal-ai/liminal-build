@@ -44,10 +44,14 @@ export class ProcessResponseService {
     });
 
     if (existing !== null) {
+      const environment = await this.platformStore.getProcessEnvironmentSummary({
+        processId: access.process.processId,
+      });
+
       return submitProcessResponseResponseSchema.parse({
         accepted: true,
         historyItemId: existing.historyItem.historyItemId,
-        process: buildProcessSurfaceSummary(existing.process),
+        process: buildProcessSurfaceSummary(existing.process, environment),
         currentRequest: existing.currentRequest,
       });
     }
@@ -65,7 +69,10 @@ export class ProcessResponseService {
         processId: access.process.processId,
         ...normalizedRequest,
       });
-      const process = buildProcessSurfaceSummary(result.process);
+      const environment = await this.platformStore.getProcessEnvironmentSummary({
+        processId: access.process.processId,
+      });
+      const process = buildProcessSurfaceSummary(result.process, environment);
 
       this.processLiveHub.publish({
         projectId: access.project.projectId,
@@ -76,6 +83,7 @@ export class ProcessResponseService {
           process,
           historyItems: [result.historyItem],
           currentRequest: result.currentRequest,
+          environment,
         },
       });
 

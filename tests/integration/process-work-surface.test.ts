@@ -9,6 +9,10 @@ import {
   processSummarySchema,
   projectSummarySchema,
 } from '../../apps/platform/shared/contracts/index.js';
+import {
+  readyEnvironmentFixture,
+  staleEnvironmentFixture,
+} from '../fixtures/process-environment.js';
 import { waitingProcessFixture } from '../fixtures/processes.js';
 import { currentProcessRequestFixture } from '../fixtures/process-surface.js';
 import { buildApp } from '../utils/build-app.js';
@@ -75,6 +79,103 @@ afterEach(() => {
 });
 
 describe('process work surface integration', () => {
+  it('TC-1.4a reload preserves environment truth from durable state', async () => {
+    const projectSummary = projectSummarySchema.parse({
+      projectId: 'project-story1-integration-001',
+      name: 'Liminal Build Platform',
+      ownerDisplayName: 'Lee Moore',
+      role: 'owner',
+      processCount: 1,
+      artifactCount: 0,
+      sourceAttachmentCount: 0,
+      lastUpdatedAt: '2026-04-13T12:00:00.000Z',
+    });
+    const waitingProcessSummary = processSummarySchema.parse({
+      ...waitingProcessFixture,
+      processId: 'process-story1-integration-001',
+      displayLabel: 'Feature Specification #1',
+      updatedAt: '2026-04-13T12:02:00.000Z',
+    });
+    const firstStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectSummary.projectId]: [waitingProcessSummary],
+      },
+      currentRequestsByProcessId: {
+        [waitingProcessSummary.processId]: currentProcessRequestFixture,
+      },
+      processEnvironmentSummariesByProcessId: {
+        [waitingProcessSummary.processId]: readyEnvironmentFixture,
+      },
+    });
+    const firstServer = await startApp(firstStore);
+    const firstBootstrapResponse = await fetch(
+      `${firstServer.baseUrl}/api/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}`,
+      {
+        headers: {
+          cookie: 'lb_session=integration-story1-a',
+        },
+      },
+    );
+    const firstBootstrap = await firstBootstrapResponse.json();
+
+    expect(firstBootstrapResponse.status).toBe(200);
+    expect(firstBootstrap.environment).toMatchObject({
+      state: 'ready',
+      statusLabel: 'Ready for work',
+    });
+
+    await firstServer.app.close();
+
+    const secondStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectSummary.projectId]: [waitingProcessSummary],
+      },
+      currentRequestsByProcessId: {
+        [waitingProcessSummary.processId]: currentProcessRequestFixture,
+      },
+      processEnvironmentSummariesByProcessId: {
+        [waitingProcessSummary.processId]: staleEnvironmentFixture,
+      },
+    });
+    const secondServer = await startApp(secondStore);
+    const secondBootstrapResponse = await fetch(
+      `${secondServer.baseUrl}/api/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}`,
+      {
+        headers: {
+          cookie: 'lb_session=integration-story1-b',
+        },
+      },
+    );
+    const secondBootstrap = await secondBootstrapResponse.json();
+
+    expect(secondBootstrapResponse.status).toBe(200);
+    expect(secondBootstrap.environment).toMatchObject({
+      state: 'stale',
+      statusLabel: 'Environment is stale',
+      blockedReason: staleEnvironmentFixture.blockedReason,
+    });
+
+    await secondServer.app.close();
+  });
+
   it('TC-3.3b submitted responses remain visible after reload and return', async () => {
     const projectSummary = projectSummarySchema.parse({
       projectId: 'project-story3-integration-001',

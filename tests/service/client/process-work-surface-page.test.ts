@@ -15,15 +15,18 @@ import {
   standaloneOutputReferenceFixture,
 } from '../../fixtures/materials.js';
 import {
+  checkpointedAbsentEnvironmentProcessWorkSurfaceFixture,
   currentProcessRequestFixture,
   earlyProcessWorkSurfaceFixture,
   interruptedProcessWorkSurfaceFixture,
+  lostEnvironmentProcessWorkSurfaceFixture,
   pausedProcessWorkSurfaceFixture,
   processAccessDeniedErrorFixture,
   processProjectNotFoundErrorFixture,
   processResumeNotAvailableErrorFixture,
   processStartNotAvailableErrorFixture,
   processUnavailableErrorFixture,
+  readyEnvironmentProcessWorkSurfaceFixture,
   readyProcessWorkSurfaceFixture,
   runningProcessSurfaceFixture,
   resumedInterruptedProcessResponseFixture,
@@ -34,6 +37,7 @@ import {
   startedWaitingProcessResponseFixture,
   submittedProcessResponseWithFollowUpFixture,
   unauthenticatedRequestErrorFixture,
+  unavailableEnvironmentProcessWorkSurfaceFixture,
   unexpectedProcessActionErrorFixture,
 } from '../../fixtures/process-surface.js';
 import { completedSideWorkFixture } from '../../fixtures/side-work.js';
@@ -297,7 +301,91 @@ afterEach(() => {
 });
 
 describe('process work surface page', () => {
-  it('TC-1.2a renders active project and process identity', () => {
+  it('TC-1.1a environment state is visible on first load', () => {
+    const store = buildStore({
+      processSurface: {
+        ...buildStore().get().processSurface,
+        project: readyEnvironmentProcessWorkSurfaceFixture.project,
+        process: readyEnvironmentProcessWorkSurfaceFixture.process,
+        history: readyEnvironmentProcessWorkSurfaceFixture.history,
+        materials: readyEnvironmentProcessWorkSurfaceFixture.materials,
+        currentRequest: readyEnvironmentProcessWorkSurfaceFixture.currentRequest,
+        sideWork: readyEnvironmentProcessWorkSurfaceFixture.sideWork,
+        environment: readyEnvironmentProcessWorkSurfaceFixture.environment,
+      },
+    });
+    const view = renderProcessWorkSurfacePage({
+      store,
+      targetDocument: document,
+      targetWindow: window,
+      onOpenProject: () => {},
+    });
+
+    expect(view.querySelector('[data-process-environment-panel="true"]')?.textContent).toContain(
+      'State: Ready for work',
+    );
+    expect(view.textContent).toContain(readyEnvironmentProcessWorkSurfaceFixture.project.name);
+    expect(view.textContent).toContain(
+      readyEnvironmentProcessWorkSurfaceFixture.process.displayLabel,
+    );
+  });
+
+  it('TC-1.1b absent environment still renders a legible state', () => {
+    const store = buildStore({
+      processSurface: {
+        ...buildStore().get().processSurface,
+        project: earlyProcessWorkSurfaceFixture.project,
+        process: earlyProcessWorkSurfaceFixture.process,
+        history: earlyProcessWorkSurfaceFixture.history,
+        materials: earlyProcessWorkSurfaceFixture.materials,
+        currentRequest: earlyProcessWorkSurfaceFixture.currentRequest,
+        sideWork: earlyProcessWorkSurfaceFixture.sideWork,
+        environment: earlyProcessWorkSurfaceFixture.environment,
+      },
+    });
+    const view = renderProcessWorkSurfacePage({
+      store,
+      targetDocument: document,
+      targetWindow: window,
+      onOpenProject: () => {},
+    });
+
+    expect(view.querySelector('[data-process-environment-panel="true"]')?.textContent).toContain(
+      'State: Not prepared',
+    );
+    expect(view.textContent).toContain(earlyProcessWorkSurfaceFixture.process.displayLabel);
+  });
+
+  it('TC-1.5a process remains visible without environment', () => {
+    const store = buildStore({
+      processSurface: {
+        ...buildStore().get().processSurface,
+        project: lostEnvironmentProcessWorkSurfaceFixture.project,
+        process: lostEnvironmentProcessWorkSurfaceFixture.process,
+        history: lostEnvironmentProcessWorkSurfaceFixture.history,
+        materials: lostEnvironmentProcessWorkSurfaceFixture.materials,
+        currentRequest: lostEnvironmentProcessWorkSurfaceFixture.currentRequest,
+        sideWork: lostEnvironmentProcessWorkSurfaceFixture.sideWork,
+        environment: lostEnvironmentProcessWorkSurfaceFixture.environment,
+      },
+    });
+    const view = renderProcessWorkSurfacePage({
+      store,
+      targetDocument: document,
+      targetWindow: window,
+      onOpenProject: () => {},
+    });
+
+    expect(view.textContent).toContain(
+      lostEnvironmentProcessWorkSurfaceFixture.process.displayLabel,
+    );
+    expect(view.textContent).toContain('State: Environment lost');
+    expect(view.textContent).toContain(
+      lostEnvironmentProcessWorkSurfaceFixture.materials.currentArtifacts[0]?.displayName ?? '',
+    );
+  });
+
+  it('renders the stable control area from process.controls rather than hiding disabled actions', () => {
     const store = buildStore();
     const view = renderProcessWorkSurfacePage({
       store,
@@ -306,17 +394,53 @@ describe('process work surface page', () => {
       onOpenProject: () => {},
     });
 
-    expect(view.textContent).toContain(readyProcessWorkSurfaceFixture.project.name);
-    expect(view.textContent).toContain(readyProcessWorkSurfaceFixture.process.displayLabel);
-    expect(view.textContent).toContain('Feature Specification');
-    expect(view.textContent).toContain(
-      `Phase: ${readyProcessWorkSurfaceFixture.process.phaseLabel}`,
+    expect(view.querySelector('[data-process-controls="true"]')).not.toBeNull();
+    expect(view.querySelector('[data-process-control="start"] button')).not.toBeNull();
+    expect(view.querySelector('[data-process-control="resume"] button')).not.toBeNull();
+    expect(view.querySelector('[data-process-control-disabled-reason="start"]')?.textContent).toBe(
+      'Start is only available while the process is in Draft.',
     );
-    expect(view.textContent).toContain('Waiting');
   });
 
-  it('TC-1.3a and TC-1.3b render the next action and current blocker on load', () => {
-    const store = buildStore();
+  it('renders latest durable checkpoint context inside the environment panel', () => {
+    const store = buildStore({
+      processSurface: {
+        ...buildStore().get().processSurface,
+        project: checkpointedAbsentEnvironmentProcessWorkSurfaceFixture.project,
+        process: checkpointedAbsentEnvironmentProcessWorkSurfaceFixture.process,
+        history: checkpointedAbsentEnvironmentProcessWorkSurfaceFixture.history,
+        materials: checkpointedAbsentEnvironmentProcessWorkSurfaceFixture.materials,
+        currentRequest: checkpointedAbsentEnvironmentProcessWorkSurfaceFixture.currentRequest,
+        sideWork: checkpointedAbsentEnvironmentProcessWorkSurfaceFixture.sideWork,
+        environment: checkpointedAbsentEnvironmentProcessWorkSurfaceFixture.environment,
+      },
+    });
+    const view = renderProcessWorkSurfacePage({
+      store,
+      targetDocument: document,
+      targetWindow: window,
+      onOpenProject: () => {},
+    });
+
+    expect(view.querySelector('[data-process-checkpoint-result="true"]')?.textContent).toContain(
+      checkpointedAbsentEnvironmentProcessWorkSurfaceFixture.environment.lastCheckpointResult
+        ?.targetLabel ?? '',
+    );
+  });
+
+  it('renders unavailable environment state without hiding the durable process surface', () => {
+    const store = buildStore({
+      processSurface: {
+        ...buildStore().get().processSurface,
+        project: unavailableEnvironmentProcessWorkSurfaceFixture.project,
+        process: unavailableEnvironmentProcessWorkSurfaceFixture.process,
+        history: unavailableEnvironmentProcessWorkSurfaceFixture.history,
+        materials: unavailableEnvironmentProcessWorkSurfaceFixture.materials,
+        currentRequest: unavailableEnvironmentProcessWorkSurfaceFixture.currentRequest,
+        sideWork: unavailableEnvironmentProcessWorkSurfaceFixture.sideWork,
+        environment: unavailableEnvironmentProcessWorkSurfaceFixture.environment,
+      },
+    });
     const view = renderProcessWorkSurfacePage({
       store,
       targetDocument: document,
@@ -325,14 +449,13 @@ describe('process work surface page', () => {
     });
 
     expect(view.textContent).toContain(
-      `Next action: ${readyProcessWorkSurfaceFixture.process.nextActionLabel}`,
+      unavailableEnvironmentProcessWorkSurfaceFixture.process.displayLabel,
     );
-    expect(view.textContent).toContain(
-      readyProcessWorkSurfaceFixture.currentRequest?.promptText ?? '',
-    );
+    expect(view.textContent).toContain('State: Environment unavailable');
+    expect(view.textContent).toContain('Current materials');
   });
 
-  it('TC-1.4a renders history, materials, and side-work sections together', () => {
+  it('renders history, materials, and side-work sections together', () => {
     const store = buildStore();
     const view = renderProcessWorkSurfacePage({
       store,
@@ -748,7 +871,7 @@ describe('process work surface page', () => {
     expect(view.textContent).not.toContain(readyProcessWorkSurfaceFixture.process.displayLabel);
   });
 
-  it('does not render start or resume controls when neither action is available', () => {
+  it('keeps start and resume visible but disabled when neither action is available', () => {
     const store = buildStore();
     const view = renderProcessWorkSurfacePage({
       store,
@@ -761,7 +884,10 @@ describe('process work surface page', () => {
       (button) => button.textContent === 'Start process' || button.textContent === 'Resume process',
     );
 
-    expect(actionButtons).toHaveLength(0);
+    expect(actionButtons).toHaveLength(2);
+    expect(
+      actionButtons.every((button) => button instanceof HTMLButtonElement && button.disabled),
+    ).toBe(true);
   });
 
   it('TC-2.1a and TC-2.5a clicking Start applies the returned process state without a manual refresh', async () => {
@@ -1133,7 +1259,8 @@ describe('process work surface page', () => {
     expect(dom.window.document.body.textContent).toContain('Completed');
     expect(dom.window.document.body.textContent).not.toContain('Next action:');
     expect(dom.window.document.body.textContent).toContain('No unresolved request right now.');
-    expect(actionButtons).toHaveLength(0);
+    expect(actionButtons).toHaveLength(2);
+    expect(actionButtons.every((button) => button.disabled)).toBe(true);
   });
 
   it('TC-2.4c shows a returned failed state and next path at the Story 2 action boundary', async () => {
@@ -1160,7 +1287,12 @@ describe('process work surface page', () => {
     expect(dom.window.document.body.textContent).toContain(
       resumedInterruptedToFailedProcessResponseFixture.process.nextActionLabel ?? '',
     );
-    expect(dom.window.document.body.textContent).not.toContain('Resume process');
+    const disabledResumeButton = [...dom.window.document.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Resume process',
+    );
+
+    expect(disabledResumeButton).toBeInstanceOf(dom.window.HTMLButtonElement);
+    expect((disabledResumeButton as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('TC-3.1a, TC-3.6a, and TC-3.6b keep response submission in the same process surface and update history plus follow-up state in-session', async () => {

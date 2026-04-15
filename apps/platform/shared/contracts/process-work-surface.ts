@@ -94,6 +94,23 @@ export const environmentStateSchema = z.enum([
 ]);
 export type EnvironmentState = z.infer<typeof environmentStateSchema>;
 
+export const defaultEnvironmentStatusLabels = {
+  absent: 'Not prepared',
+  preparing: 'Preparing environment',
+  ready: 'Ready for work',
+  running: 'Running in environment',
+  checkpointing: 'Checkpointing work',
+  stale: 'Environment is stale',
+  failed: 'Environment failed',
+  lost: 'Environment lost',
+  rebuilding: 'Rebuilding environment',
+  unavailable: 'Environment unavailable',
+} as const satisfies Record<EnvironmentState, string>;
+
+export function deriveEnvironmentStatusLabel(state: EnvironmentState): string {
+  return defaultEnvironmentStatusLabels[state];
+}
+
 export const checkpointKindSchema = z.enum(['artifact', 'code', 'mixed']);
 export type CheckpointKind = z.infer<typeof checkpointKindSchema>;
 
@@ -204,7 +221,7 @@ export type LastCheckpointResult = z.infer<typeof lastCheckpointResultSchema>;
 export const defaultEnvironmentSummary = {
   environmentId: null,
   state: 'absent',
-  statusLabel: 'Not prepared',
+  statusLabel: deriveEnvironmentStatusLabel('absent'),
   blockedReason: null,
   lastHydratedAt: null,
   lastCheckpointAt: null,

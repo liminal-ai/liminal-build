@@ -1,5 +1,12 @@
 import {
   currentProcessRequestSchema,
+  type CurrentProcessRequest,
+  type EnvironmentSummary,
+  type ProcessHistorySectionEnvelope,
+  type ProcessMaterialsSectionEnvelope,
+  type ProcessSurfaceSummary,
+  type ProcessWorkSurfaceResponse,
+  type SideWorkSectionEnvelope,
   processSurfaceProjectSchema,
   processSurfaceSummarySchema,
   processWorkSurfaceResponseSchema,
@@ -19,15 +26,30 @@ import {
   readyProcessMaterialsFixture,
 } from './materials.js';
 import {
+  checkpointingEnvironmentProcessControlsFixture,
   completedProcessControlsFixture,
   draftProcessControlsFixture,
   failedProcessControlsFixture,
   interruptedProcessControlsFixture,
+  lostEnvironmentProcessControlsFixture,
   pausedProcessControlsFixture,
+  preparingEnvironmentProcessControlsFixture,
+  readyEnvironmentProcessControlsFixture,
+  rebuildingEnvironmentProcessControlsFixture,
   runningProcessControlsFixture,
+  staleEnvironmentProcessControlsFixture,
+  unavailableEnvironmentProcessControlsFixture,
   waitingProcessControlsFixture,
 } from './process-controls.js';
-import { absentEnvironmentFixture } from './process-environment.js';
+import {
+  absentEnvironmentFixture,
+  checkpointSucceededEnvironmentFixture,
+  lostEnvironmentFixture,
+  preparingEnvironmentFixture,
+  readyEnvironmentFixture,
+  staleEnvironmentFixture,
+  unavailableEnvironmentFixture,
+} from './process-environment.js';
 import { emptySideWorkFixture, errorSideWorkFixture, readySideWorkFixture } from './side-work.js';
 
 export const processSurfaceProjectFixture = processSurfaceProjectSchema.parse({
@@ -44,6 +66,42 @@ const baseProcessSurfaceSummary = {
   nextActionLabel: 'Review the current direction',
   updatedAt: '2026-04-13T12:18:00.000Z',
 };
+
+export function buildProcessSurfaceSummaryFixture(
+  overrides: Partial<ProcessSurfaceSummary>,
+): ProcessSurfaceSummary {
+  return processSurfaceSummarySchema.parse({
+    ...baseProcessSurfaceSummary,
+    status: 'draft',
+    availableActions: ['start'],
+    controls: draftProcessControlsFixture,
+    hasEnvironment: false,
+    ...overrides,
+  });
+}
+
+export function buildProcessWorkSurfaceFixture(
+  overrides: Partial<{
+    project: typeof processSurfaceProjectFixture;
+    process: ProcessSurfaceSummary;
+    history: ProcessHistorySectionEnvelope;
+    materials: ProcessMaterialsSectionEnvelope;
+    currentRequest: CurrentProcessRequest | null;
+    sideWork: SideWorkSectionEnvelope;
+    environment: EnvironmentSummary;
+  }>,
+): ProcessWorkSurfaceResponse {
+  return processWorkSurfaceResponseSchema.parse({
+    project: processSurfaceProjectFixture,
+    process: waitingProcessSurfaceFixture,
+    history: readyProcessHistoryFixture,
+    materials: readyProcessMaterialsFixture,
+    currentRequest: currentProcessRequestFixture,
+    sideWork: readySideWorkFixture,
+    environment: absentEnvironmentFixture,
+    ...overrides,
+  });
+}
 
 export const draftProcessSurfaceFixture = processSurfaceSummarySchema.parse({
   ...baseProcessSurfaceSummary,
@@ -108,8 +166,64 @@ export const failedProcessSurfaceFixture = processSurfaceSummarySchema.parse({
   processId: 'process-surface-failed-001',
   status: 'failed',
   nextActionLabel: 'Investigate the failure before retrying',
-  availableActions: ['review', 'restart'],
+  availableActions: ['review', 'restart', 'rehydrate', 'rebuild'],
   controls: failedProcessControlsFixture,
+  hasEnvironment: false,
+});
+
+export const preparingEnvironmentProcessSurfaceFixture = buildProcessSurfaceSummaryFixture({
+  processId: 'process-surface-preparing-001',
+  status: 'running',
+  availableActions: ['review'],
+  controls: preparingEnvironmentProcessControlsFixture,
+  hasEnvironment: true,
+});
+
+export const readyEnvironmentProcessSurfaceFixture = buildProcessSurfaceSummaryFixture({
+  processId: 'process-surface-ready-environment-001',
+  status: 'draft',
+  availableActions: ['start'],
+  controls: readyEnvironmentProcessControlsFixture,
+  hasEnvironment: true,
+});
+
+export const checkpointingEnvironmentProcessSurfaceFixture = buildProcessSurfaceSummaryFixture({
+  processId: 'process-surface-checkpointing-001',
+  status: 'running',
+  availableActions: ['review'],
+  controls: checkpointingEnvironmentProcessControlsFixture,
+  hasEnvironment: true,
+});
+
+export const staleEnvironmentProcessSurfaceFixture = buildProcessSurfaceSummaryFixture({
+  processId: 'process-surface-stale-environment-001',
+  status: 'paused',
+  availableActions: ['rehydrate'],
+  controls: staleEnvironmentProcessControlsFixture,
+  hasEnvironment: true,
+});
+
+export const lostEnvironmentProcessSurfaceFixture = buildProcessSurfaceSummaryFixture({
+  processId: 'process-surface-lost-environment-001',
+  status: 'interrupted',
+  availableActions: ['rebuild'],
+  controls: lostEnvironmentProcessControlsFixture,
+  hasEnvironment: false,
+});
+
+export const rebuildingEnvironmentProcessSurfaceFixture = buildProcessSurfaceSummaryFixture({
+  processId: 'process-surface-rebuilding-001',
+  status: 'running',
+  availableActions: ['review'],
+  controls: rebuildingEnvironmentProcessControlsFixture,
+  hasEnvironment: true,
+});
+
+export const unavailableEnvironmentProcessSurfaceFixture = buildProcessSurfaceSummaryFixture({
+  processId: 'process-surface-unavailable-environment-001',
+  status: 'running',
+  availableActions: ['review'],
+  controls: unavailableEnvironmentProcessControlsFixture,
   hasEnvironment: false,
 });
 
@@ -177,6 +291,47 @@ export const degradedProcessWorkSurfaceFixture = processWorkSurfaceResponseSchem
   currentRequest: null,
   sideWork: errorSideWorkFixture,
   environment: absentEnvironmentFixture,
+});
+
+export const readyEnvironmentProcessWorkSurfaceFixture = buildProcessWorkSurfaceFixture({
+  process: readyEnvironmentProcessSurfaceFixture,
+  currentRequest: null,
+  environment: readyEnvironmentFixture,
+});
+
+export const preparingEnvironmentProcessWorkSurfaceFixture = buildProcessWorkSurfaceFixture({
+  process: preparingEnvironmentProcessSurfaceFixture,
+  currentRequest: null,
+  environment: preparingEnvironmentFixture,
+});
+
+export const staleEnvironmentProcessWorkSurfaceFixture = buildProcessWorkSurfaceFixture({
+  process: staleEnvironmentProcessSurfaceFixture,
+  currentRequest: null,
+  environment: staleEnvironmentFixture,
+});
+
+export const lostEnvironmentProcessWorkSurfaceFixture = buildProcessWorkSurfaceFixture({
+  process: lostEnvironmentProcessSurfaceFixture,
+  currentRequest: null,
+  environment: lostEnvironmentFixture,
+});
+
+export const checkpointedAbsentEnvironmentProcessWorkSurfaceFixture =
+  buildProcessWorkSurfaceFixture({
+    process: pausedProcessSurfaceFixture,
+    currentRequest: null,
+    environment: {
+      ...absentEnvironmentFixture,
+      lastCheckpointAt: checkpointSucceededEnvironmentFixture.lastCheckpointAt,
+      lastCheckpointResult: checkpointSucceededEnvironmentFixture.lastCheckpointResult,
+    },
+  });
+
+export const unavailableEnvironmentProcessWorkSurfaceFixture = buildProcessWorkSurfaceFixture({
+  process: unavailableEnvironmentProcessSurfaceFixture,
+  currentRequest: null,
+  environment: unavailableEnvironmentFixture,
 });
 
 export const startedProcessResponseFixture = startProcessResponseSchema.parse({

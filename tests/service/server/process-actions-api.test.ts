@@ -7,12 +7,13 @@ import {
 import { AuthUserSyncService } from '../../../apps/platform/server/services/auth/auth-user-sync.service.js';
 import { InMemoryPlatformStore } from '../../../apps/platform/server/services/projects/platform-store.js';
 import {
-  buildProcessSurfaceControls,
   currentProcessRequestSchema,
   processHistoryItemSchema,
   processSummarySchema,
   projectSummarySchema,
 } from '../../../apps/platform/shared/contracts/index.js';
+import { waitingProcessControlsFixture } from '../../fixtures/process-controls.js';
+import { readyEnvironmentFixture } from '../../fixtures/process-environment.js';
 import {
   draftProcessFixture,
   interruptedProcessFixture,
@@ -254,6 +255,48 @@ describe('process actions api', () => {
         processId: pausedProcessSummary.processId,
         status: 'running',
         availableActions: ['review'],
+      },
+      currentRequest: null,
+    });
+
+    await app.close();
+  });
+
+  it('keeps resume responses aligned with the current durable environment summary', async () => {
+    const { app } = await buildAuthenticatedApp({
+      processEnvironmentSummariesByProcessId: {
+        [pausedProcessSummary.processId]: readyEnvironmentFixture,
+      },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${pausedProcessSummary.processId}/resume`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      process: {
+        processId: pausedProcessSummary.processId,
+        status: 'running',
+        availableActions: ['review'],
+        hasEnvironment: true,
+        controls: expect.arrayContaining([
+          expect.objectContaining({
+            actionId: 'rehydrate',
+            enabled: false,
+            disabledReason:
+              'Rehydrate is only available when the environment is stale or recoverably failed.',
+          }),
+          expect.objectContaining({
+            actionId: 'rebuild',
+            enabled: false,
+            disabledReason:
+              'Rebuild is only available after the environment is lost or unrecoverable.',
+          }),
+        ]),
       },
       currentRequest: null,
     });
@@ -618,9 +661,7 @@ describe('process actions api', () => {
         phaseLabel: followUpWaitingProcessSummary.phaseLabel,
         nextActionLabel: followUpWaitingProcessSummary.nextActionLabel,
         availableActions: ['respond'],
-        controls: buildProcessSurfaceControls({
-          availableActions: ['respond'],
-        }),
+        controls: waitingProcessControlsFixture,
         hasEnvironment: followUpWaitingProcessSummary.hasEnvironment,
         updatedAt: followUpWaitingProcessSummary.updatedAt,
       },

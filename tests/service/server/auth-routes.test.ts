@@ -9,6 +9,7 @@ import {
   InMemoryPlatformStore,
   type PlatformStore,
 } from '../../../apps/platform/server/services/projects/platform-store.js';
+import { defaultEnvironmentSummary } from '../../../apps/platform/shared/contracts/index.js';
 import { buildApp } from '../../utils/build-app.js';
 
 function createTestAuthSessionService(args: {
@@ -447,6 +448,11 @@ describe('auth routes', () => {
       },
       async getCurrentProcessRequest() {
         return null;
+      },
+      async getProcessEnvironmentSummary() {
+        return {
+          ...defaultEnvironmentSummary,
+        };
       },
       async getCurrentProcessMaterialRefs() {
         return {

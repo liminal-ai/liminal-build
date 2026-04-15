@@ -3,11 +3,14 @@ import { makeFunctionReference } from 'convex/server';
 import {
   type ArtifactSummary,
   type CurrentProcessRequest,
+  type EnvironmentSummary,
   type ProcessHistoryItem,
   type ProcessOutputReference,
   type ProcessSummary,
   type ProjectShellResponse,
   type ProjectSummary,
+  defaultEnvironmentSummary,
+  environmentSummarySchema,
   processSummarySchema,
   type SideWorkItem,
   type SourceAttachmentSummary,
@@ -120,6 +123,7 @@ export interface PlatformStore {
   listProjectSourceAttachments(args: { projectId: string }): Promise<SourceAttachmentSummary[]>;
   listProcessHistoryItems(args: { processId: string }): Promise<ProcessHistoryItem[]>;
   getCurrentProcessRequest(args: { processId: string }): Promise<CurrentProcessRequest | null>;
+  getProcessEnvironmentSummary(args: { processId: string }): Promise<EnvironmentSummary>;
   getCurrentProcessMaterialRefs(args: { processId: string }): Promise<CurrentProcessMaterialRefs>;
   setCurrentProcessMaterialRefs(args: {
     processId: string;
@@ -136,6 +140,16 @@ export interface PlatformStore {
     processId: string;
     items: PlatformSideWorkWriteInput[];
   }): Promise<SideWorkItem[]>;
+}
+
+function buildDefaultEnvironmentSummary(): EnvironmentSummary {
+  return environmentSummarySchema.parse({
+    ...defaultEnvironmentSummary,
+  });
+}
+
+function cloneEnvironmentSummary(summary: EnvironmentSummary): EnvironmentSummary {
+  return environmentSummarySchema.parse(summary);
 }
 
 const upsertUserMutation = makeFunctionReference<
@@ -242,6 +256,12 @@ const getCurrentProcessRequestQuery = makeFunctionReference<
   { processId: string },
   CurrentProcessRequest | null
 >('processes:getCurrentProcessRequest');
+
+const getProcessEnvironmentSummaryQuery = makeFunctionReference<
+  'query',
+  { processId: string },
+  EnvironmentSummary
+>('processEnvironmentStates:getProcessEnvironmentSummary');
 
 const getCurrentProcessMaterialRefsQuery = makeFunctionReference<
   'query',
@@ -441,6 +461,10 @@ export class NullPlatformStore implements PlatformStore {
     return null;
   }
 
+  async getProcessEnvironmentSummary(): Promise<EnvironmentSummary> {
+    return buildDefaultEnvironmentSummary();
+  }
+
   async getCurrentProcessMaterialRefs(): Promise<CurrentProcessMaterialRefs> {
     return {
       artifactIds: [],
@@ -597,6 +621,10 @@ export class ConvexPlatformStore implements PlatformStore {
     return this.client.query(getCurrentProcessRequestQuery, args);
   }
 
+  async getProcessEnvironmentSummary(args: { processId: string }): Promise<EnvironmentSummary> {
+    return this.client.query(getProcessEnvironmentSummaryQuery, args);
+  }
+
   async getCurrentProcessMaterialRefs(args: {
     processId: string;
   }): Promise<CurrentProcessMaterialRefs> {
@@ -667,6 +695,7 @@ export class InMemoryPlatformStore implements PlatformStore {
   private readonly sourceAttachmentsByProjectId = new Map<string, SourceAttachmentSummary[]>();
   private readonly processHistoryItemsByProcessId = new Map<string, ProcessHistoryItem[]>();
   private readonly currentRequestsByProcessId = new Map<string, CurrentProcessRequest | null>();
+  private readonly processEnvironmentSummariesByProcessId = new Map<string, EnvironmentSummary>();
   private readonly currentMaterialRefsByProcessId = new Map<string, CurrentProcessMaterialRefs>();
   private readonly processOutputsByProcessId = new Map<string, PlatformProcessOutputSummary[]>();
   private readonly processSideWorkItemsByProcessId = new Map<string, SideWorkItem[]>();
@@ -692,6 +721,7 @@ export class InMemoryPlatformStore implements PlatformStore {
       sourceAttachmentsByProjectId?: Record<string, SourceAttachmentSummary[]>;
       processHistoryItemsByProcessId?: Record<string, ProcessHistoryItem[]>;
       currentRequestsByProcessId?: Record<string, CurrentProcessRequest | null>;
+      processEnvironmentSummariesByProcessId?: Record<string, EnvironmentSummary>;
       currentMaterialRefsByProcessId?: Record<string, CurrentProcessMaterialRefs>;
       processOutputsByProcessId?: Record<string, PlatformProcessOutputSeed[]>;
       processSideWorkItemsByProcessId?: Record<string, SideWorkItem[]>;
@@ -731,6 +761,12 @@ export class InMemoryPlatformStore implements PlatformStore {
 
     for (const [processId, request] of Object.entries(args.currentRequestsByProcessId ?? {})) {
       this.currentRequestsByProcessId.set(processId, request);
+    }
+
+    for (const [processId, summary] of Object.entries(
+      args.processEnvironmentSummariesByProcessId ?? {},
+    )) {
+      this.processEnvironmentSummariesByProcessId.set(processId, cloneEnvironmentSummary(summary));
     }
 
     for (const [processId, refs] of Object.entries(args.currentMaterialRefsByProcessId ?? {})) {
@@ -889,6 +925,10 @@ export class InMemoryPlatformStore implements PlatformStore {
     };
 
     this.processesByProjectId.set(args.projectId, [process, ...existingProcesses]);
+    this.processEnvironmentSummariesByProcessId.set(
+      process.processId,
+      buildDefaultEnvironmentSummary(),
+    );
     this.updateProjectSummary(args.projectId, (project) => ({
       ...project,
       processCount: project.processCount + 1,
@@ -1009,6 +1049,13 @@ export class InMemoryPlatformStore implements PlatformStore {
     processId: string;
   }): Promise<CurrentProcessRequest | null> {
     return this.currentRequestsByProcessId.get(args.processId) ?? null;
+  }
+
+  async getProcessEnvironmentSummary(args: { processId: string }): Promise<EnvironmentSummary> {
+    return cloneEnvironmentSummary(
+      this.processEnvironmentSummariesByProcessId.get(args.processId) ??
+        buildDefaultEnvironmentSummary(),
+    );
   }
 
   async getCurrentProcessMaterialRefs(args: {

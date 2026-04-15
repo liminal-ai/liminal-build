@@ -13,24 +13,54 @@ import {
   stableProcessControlOrderFixture,
   staleEnvironmentProcessControlsFixture,
 } from '../../fixtures/process-controls.js';
+import {
+  readyEnvironmentFixture,
+  staleEnvironmentFixture,
+  unavailableEnvironmentFixture,
+} from '../../fixtures/process-environment.js';
 import { readyProcessWorkSurfaceFixture } from '../../fixtures/process-surface.js';
-import { waitingProcessFixture } from '../../fixtures/processes.js';
+import { draftProcessFixture, waitingProcessFixture } from '../../fixtures/processes.js';
 import { mixedAccessProcessMaterialsFixture } from '../../fixtures/materials.js';
 
 describe('Epic 03 Story 0 foundation contracts', () => {
-  it('builds a stable visible control set from currently enabled process actions', () => {
-    const summary = buildProcessSurfaceSummary(waitingProcessFixture);
+  it('builds a stable visible control set from durable process and environment truth', () => {
+    const summary = buildProcessSurfaceSummary(draftProcessFixture, readyEnvironmentFixture);
 
     expect(processSurfaceControlOrder).toEqual(stableProcessControlOrderFixture);
     expect(summary.controls.map((control) => control.actionId)).toEqual(
       stableProcessControlOrderFixture,
     );
-    expect(summary.controls.find((control) => control.actionId === 'respond')).toMatchObject({
+    expect(summary.availableActions).toEqual(['start']);
+    expect(summary.controls.find((control) => control.actionId === 'start')).toMatchObject({
       enabled: true,
-      label: 'Respond',
+      label: 'Start process',
     });
     expect(summary.controls.find((control) => control.actionId === 'rehydrate')).toMatchObject({
       enabled: false,
+    });
+  });
+
+  it('derives recovery controls from stale and unavailable environment states', () => {
+    const staleSummary = buildProcessSurfaceSummary(waitingProcessFixture, staleEnvironmentFixture);
+    const unavailableSummary = buildProcessSurfaceSummary(
+      waitingProcessFixture,
+      unavailableEnvironmentFixture,
+    );
+
+    expect(staleSummary.controls.find((control) => control.actionId === 'rehydrate')).toMatchObject(
+      {
+        enabled: true,
+      },
+    );
+    expect(staleSummary.controls.find((control) => control.actionId === 'rebuild')).toMatchObject({
+      enabled: false,
+      disabledReason: 'Rebuild is only available after the environment is lost or unrecoverable.',
+    });
+    expect(
+      unavailableSummary.controls.find((control) => control.actionId === 'rehydrate'),
+    ).toMatchObject({
+      enabled: false,
+      disabledReason: 'Environment lifecycle work is currently unavailable.',
     });
   });
 

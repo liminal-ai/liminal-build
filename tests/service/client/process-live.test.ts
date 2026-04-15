@@ -310,7 +310,7 @@ describe('process live foundation', () => {
       processId: runningProcessSurfaceFixture.processId,
       status: 'failed',
       nextActionLabel: failedProcessSurfaceFixture.nextActionLabel,
-      availableActions: ['review', 'restart'],
+      availableActions: ['review', 'restart', 'rehydrate', 'rebuild'],
     });
     expect(interruptedState.process).toMatchObject({
       processId: runningProcessSurfaceFixture.processId,

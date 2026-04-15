@@ -6,6 +6,8 @@ import {
   renderMissingProjectState,
 } from '../projects/unavailable-state.js';
 import { renderCurrentRequestPanel } from './current-request-panel.js';
+import { renderProcessControls } from './process-controls.js';
+import { renderProcessEnvironmentPanel } from './process-environment-panel.js';
 import { renderProcessHistorySection } from './process-history-section.js';
 import { renderProcessLiveStatus } from './process-live-status.js';
 import { renderProcessMaterialsSection } from './process-materials-section.js';
@@ -110,26 +112,6 @@ export function renderProcessWorkSurfacePage(args: {
     processPhase,
   );
 
-  if (activeProcess.availableActions.includes('start')) {
-    const startButton = args.targetDocument.createElement('button');
-    startButton.type = 'button';
-    startButton.textContent = 'Start process';
-    startButton.addEventListener('click', () => {
-      args.onStartProcess?.(activeProject.projectId, activeProcess.processId);
-    });
-    container.append(startButton);
-  }
-
-  if (activeProcess.availableActions.includes('resume')) {
-    const resumeButton = args.targetDocument.createElement('button');
-    resumeButton.type = 'button';
-    resumeButton.textContent = 'Resume process';
-    resumeButton.addEventListener('click', () => {
-      args.onResumeProcess?.(activeProject.projectId, activeProcess.processId);
-    });
-    container.append(resumeButton);
-  }
-
   if (processSurface.actionError !== null) {
     const actionError = args.targetDocument.createElement('p');
     actionError.setAttribute('data-process-action-error', 'true');
@@ -143,6 +125,33 @@ export function renderProcessWorkSurfacePage(args: {
     nextAction.textContent = `Next action: ${activeProcess.nextActionLabel}`;
     container.append(nextAction);
   }
+
+  container.append(
+    renderProcessControls({
+      controls: activeProcess.controls,
+      targetDocument: args.targetDocument,
+      onAction: (actionId) => {
+        switch (actionId) {
+          case 'start':
+            args.onStartProcess?.(activeProject.projectId, activeProcess.processId);
+            return;
+          case 'resume':
+            args.onResumeProcess?.(activeProject.projectId, activeProcess.processId);
+            return;
+          case 'respond': {
+            const responseInput = container.querySelector('[data-process-response-input="true"]');
+
+            if (responseInput instanceof args.targetWindow.HTMLTextAreaElement) {
+              responseInput.focus();
+            }
+            return;
+          }
+          default:
+            return;
+        }
+      },
+    }),
+  );
 
   const liveStatus = renderProcessLiveStatus({
     liveState: processSurface.live,
@@ -160,6 +169,10 @@ export function renderProcessWorkSurfacePage(args: {
   }
 
   container.append(
+    renderProcessEnvironmentPanel({
+      environment: processSurface.environment,
+      targetDocument: args.targetDocument,
+    }),
     renderCurrentRequestPanel({
       currentRequest: processSurface.currentRequest,
       targetDocument: args.targetDocument,

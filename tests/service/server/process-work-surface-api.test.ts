@@ -10,6 +10,7 @@ import { DefaultProcessWorkSurfaceService } from '../../../apps/platform/server/
 import { HistorySectionReader } from '../../../apps/platform/server/services/processes/readers/history-section.reader.js';
 import { MaterialsSectionReader } from '../../../apps/platform/server/services/processes/readers/materials-section.reader.js';
 import { SideWorkSectionReader } from '../../../apps/platform/server/services/processes/readers/side-work-section.reader.js';
+import { EnvironmentSectionReader } from '../../../apps/platform/server/services/processes/readers/environment-section.reader.js';
 import { InMemoryPlatformStore } from '../../../apps/platform/server/services/projects/platform-store.js';
 import { ProjectAccessService } from '../../../apps/platform/server/services/projects/project-access.service.js';
 import {
@@ -19,11 +20,21 @@ import {
 import { readyProcessMaterialsFixture } from '../../fixtures/materials.js';
 import { readyProcessHistoryFixture } from '../../fixtures/process-history.js';
 import {
+  checkpointSucceededEnvironmentFixture,
+  readyEnvironmentFixture,
+  staleEnvironmentFixture,
+  unavailableEnvironmentFixture,
+} from '../../fixtures/process-environment.js';
+import {
   currentProcessRequestFixture,
   earlyProcessWorkSurfaceFixture,
   readyProcessWorkSurfaceFixture,
 } from '../../fixtures/process-surface.js';
-import { completedProcessFixture, runningProcessFixture } from '../../fixtures/processes.js';
+import {
+  completedProcessFixture,
+  pausedProcessFixture,
+  runningProcessFixture,
+} from '../../fixtures/processes.js';
 import { readySideWorkFixture } from '../../fixtures/side-work.js';
 import { buildApp } from '../../utils/build-app.js';
 
@@ -62,6 +73,12 @@ class ThrowingMaterialsSectionReader extends MaterialsSectionReader {
 class ThrowingSideWorkSectionReader extends SideWorkSectionReader {
   override async read(): Promise<Awaited<ReturnType<SideWorkSectionReader['read']>>> {
     throw new Error('Side-work summaries could not be loaded.');
+  }
+}
+
+class ThrowingEnvironmentSectionReader extends EnvironmentSectionReader {
+  override async read(): Promise<Awaited<ReturnType<EnvironmentSectionReader['read']>>> {
+    throw new Error('Environment lifecycle work is currently unavailable.');
   }
 }
 
@@ -157,6 +174,10 @@ function buildPopulatedStore() {
       [waitingProcessSummary.processId]: currentProcessRequestFixture,
       [draftProcessSummary.processId]: null,
     },
+    processEnvironmentSummariesByProcessId: {
+      [waitingProcessSummary.processId]: readyEnvironmentFixture,
+      [draftProcessSummary.processId]: earlyProcessWorkSurfaceFixture.environment,
+    },
     currentMaterialRefsByProcessId: {
       [waitingProcessSummary.processId]: {
         artifactIds: [
@@ -189,7 +210,7 @@ function buildPopulatedStore() {
 }
 
 describe('process work surface api', () => {
-  it('TC-1.2a, TC-1.3a, TC-1.3b, and TC-1.4a return the populated process bootstrap', async () => {
+  it('TC-1.1a bootstrap returns environment state on first load', async () => {
     const platformStore = buildPopulatedStore();
     const app = await buildApp({
       authSessionService: createTestAuthSessionService({
@@ -215,18 +236,43 @@ describe('process work surface api', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       project: readyProcessWorkSurfaceFixture.project,
-      process: readyProcessWorkSurfaceFixture.process,
+      process: {
+        processId: readyProcessWorkSurfaceFixture.process.processId,
+        displayLabel: readyProcessWorkSurfaceFixture.process.displayLabel,
+        processType: readyProcessWorkSurfaceFixture.process.processType,
+        status: readyProcessWorkSurfaceFixture.process.status,
+        phaseLabel: readyProcessWorkSurfaceFixture.process.phaseLabel,
+        nextActionLabel: readyProcessWorkSurfaceFixture.process.nextActionLabel,
+        availableActions: ['respond'],
+        hasEnvironment: true,
+      },
       history: readyProcessWorkSurfaceFixture.history,
       materials: readyProcessWorkSurfaceFixture.materials,
       currentRequest: readyProcessWorkSurfaceFixture.currentRequest,
       sideWork: readyProcessWorkSurfaceFixture.sideWork,
-      environment: readyProcessWorkSurfaceFixture.environment,
+      environment: readyEnvironmentFixture,
     });
+    expect(response.json().process.controls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actionId: 'respond',
+          enabled: true,
+        }),
+        expect.objectContaining({
+          actionId: 'rehydrate',
+          enabled: false,
+        }),
+        expect.objectContaining({
+          actionId: 'rebuild',
+          enabled: false,
+        }),
+      ]),
+    );
 
     await app.close();
   });
 
-  it('TC-1.4b returns stable empty section envelopes for an early process', async () => {
+  it('TC-1.1b bootstrap returns explicit absent environment state for an early process', async () => {
     const platformStore = buildPopulatedStore();
     const app = await buildApp({
       authSessionService: createTestAuthSessionService({
@@ -267,6 +313,124 @@ describe('process work surface api', () => {
       },
       currentRequest: null,
       environment: earlyProcessWorkSurfaceFixture.environment,
+    });
+
+    await app.close();
+  });
+
+  it('TC-1.1g bootstrap returns stale environment truth from durable state', async () => {
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectSummary.projectId]: [waitingProcessSummary],
+      },
+      currentRequestsByProcessId: {
+        [waitingProcessSummary.processId]: currentProcessRequestFixture,
+      },
+      processEnvironmentSummariesByProcessId: {
+        [waitingProcessSummary.processId]: staleEnvironmentFixture,
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().environment).toMatchObject({
+      state: 'stale',
+      blockedReason: staleEnvironmentFixture.blockedReason,
+    });
+    expect(response.json().process.controls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actionId: 'rehydrate',
+          enabled: true,
+        }),
+        expect.objectContaining({
+          actionId: 'rebuild',
+          enabled: false,
+        }),
+      ]),
+    );
+
+    await app.close();
+  });
+
+  it('bootstrap returns latest checkpoint visibility when one exists', async () => {
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectSummary.projectId]: [pausedProcessFixture],
+      },
+      currentRequestsByProcessId: {
+        [pausedProcessFixture.processId]: null,
+      },
+      processEnvironmentSummariesByProcessId: {
+        [pausedProcessFixture.processId]: {
+          ...unavailableEnvironmentFixture,
+          lastCheckpointAt: checkpointSucceededEnvironmentFixture.lastCheckpointAt,
+          lastCheckpointResult: checkpointSucceededEnvironmentFixture.lastCheckpointResult,
+        },
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${pausedProcessFixture.processId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().environment).toMatchObject({
+      state: 'unavailable',
+      lastCheckpointResult: checkpointSucceededEnvironmentFixture.lastCheckpointResult,
     });
 
     await app.close();
@@ -857,6 +1021,58 @@ describe('process work surface api', () => {
         code: 'PROCESS_SURFACE_SIDE_WORK_LOAD_FAILED',
         message: 'Side-work summaries could not be loaded.',
       },
+    });
+
+    await app.close();
+  });
+
+  it('returns environment unavailable instead of collapsing the whole surface when the environment read fails', async () => {
+    const platformStore = buildPopulatedStore();
+    const processAccessService = new ProcessAccessService(
+      platformStore,
+      new ProjectAccessService(platformStore),
+    );
+    const processWorkSurfaceService = new DefaultProcessWorkSurfaceService(
+      platformStore,
+      processAccessService,
+      {
+        environmentSectionReader: new ThrowingEnvironmentSectionReader(platformStore),
+      },
+    );
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+      processAccessService,
+      processWorkSurfaceService,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().project.name).toBe(projectSummary.name);
+    expect(response.json().process.displayLabel).toBe(waitingProcessSummary.displayLabel);
+    expect(response.json().environment).toEqual({
+      environmentId: null,
+      state: 'unavailable',
+      statusLabel: 'Environment unavailable',
+      blockedReason: 'Environment lifecycle work is currently unavailable.',
+      lastHydratedAt: null,
+      lastCheckpointAt: null,
+      lastCheckpointResult: null,
     });
 
     await app.close();

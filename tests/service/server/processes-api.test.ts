@@ -17,6 +17,7 @@ import type {
   StoredPlatformUser,
 } from '../../../apps/platform/server/services/projects/platform-store.js';
 import {
+  defaultEnvironmentSummary,
   type ArtifactSummary,
   type CurrentProcessRequest,
   type ProcessHistoryItem,
@@ -217,6 +218,12 @@ class RecordingPlatformStore implements PlatformStore {
 
   async getCurrentProcessRequest(): Promise<CurrentProcessRequest | null> {
     return null;
+  }
+
+  async getProcessEnvironmentSummary() {
+    return {
+      ...defaultEnvironmentSummary,
+    };
   }
 
   async getCurrentProcessMaterialRefs(): Promise<CurrentProcessMaterialRefs> {

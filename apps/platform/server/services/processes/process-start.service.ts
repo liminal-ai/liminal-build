@@ -32,7 +32,10 @@ export class ProcessStartService {
     const result = await this.platformStore.startProcess({
       processId: access.process.processId,
     });
-    const process = buildProcessSurfaceSummary(result.process);
+    const environment = await this.platformStore.getProcessEnvironmentSummary({
+      processId: access.process.processId,
+    });
+    const process = buildProcessSurfaceSummary(result.process, environment);
 
     this.processLiveHub.publish({
       projectId: access.project.projectId,
@@ -42,6 +45,7 @@ export class ProcessStartService {
         completedAt: isTerminalProcessStatus(process.status) ? process.updatedAt : null,
         process,
         currentRequest: result.currentRequest,
+        environment,
       },
     });
 

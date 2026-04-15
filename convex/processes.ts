@@ -259,6 +259,21 @@ export const createProcess = mutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    await ctx.db.insert('processEnvironmentStates', {
+      processId,
+      providerKind: null,
+      environmentId: null,
+      state: 'absent',
+      blockedReason: null,
+      lastHydratedAt: null,
+      lastCheckpointAt: null,
+      lastCheckpointResult: null,
+      workingSetFingerprint: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
     const projectId = args.projectId as Id<'projects'>;
 
     if (args.processType === 'ProductDefinition') {

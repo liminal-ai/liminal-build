@@ -3,6 +3,7 @@ import { artifactsTableFields } from './artifacts.js';
 import { processHistoryItemsTableFields } from './processHistoryItems.js';
 import { processesTableFields } from './processes.js';
 import { processFeatureImplementationStateTableFields } from './processFeatureImplementationStates.js';
+import { processEnvironmentStatesTableFields } from './processEnvironmentStates.js';
 import { processFeatureSpecificationStateTableFields } from './processFeatureSpecificationStates.js';
 import { processOutputsTableFields } from './processOutputs.js';
 import { processProductDefinitionStateTableFields } from './processProductDefinitionStates.js';
@@ -39,6 +40,9 @@ export default defineSchema({
     'processId',
     'updatedAt',
   ]),
+  processEnvironmentStates: defineTable(processEnvironmentStatesTableFields)
+    .index('by_processId', ['processId'])
+    .index('by_environmentId', ['environmentId']),
   processProductDefinitionStates: defineTable(processProductDefinitionStateTableFields).index(
     'by_processId',
     ['processId'],
