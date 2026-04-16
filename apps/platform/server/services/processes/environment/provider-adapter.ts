@@ -6,6 +6,11 @@ export interface HydrationResult {
   lastHydratedAt: string;
 }
 
+export interface EnsuredEnvironment {
+  environmentId: string;
+  workspaceHandle: string;
+}
+
 export interface ExecutionResult {
   outcome: 'succeeded' | 'failed';
   completedAt: string;
@@ -19,6 +24,15 @@ export interface ProviderAdapter {
     processId: string;
     environmentId: string;
   }): Promise<CheckpointCandidate>;
+  rehydrateEnvironment(args: {
+    processId: string;
+    environmentId: string;
+    plan: WorkingSetPlan;
+  }): Promise<HydrationResult>;
+  rebuildEnvironment(args: {
+    processId: string;
+    plan: WorkingSetPlan;
+  }): Promise<EnsuredEnvironment>;
 }
 
 /**
@@ -69,6 +83,27 @@ export class InMemoryProviderAdapter implements ProviderAdapter {
       ],
     };
   }
+
+  async rehydrateEnvironment(args: {
+    processId: string;
+    environmentId: string;
+    plan: WorkingSetPlan;
+  }): Promise<HydrationResult> {
+    return {
+      environmentId: args.environmentId,
+      lastHydratedAt: new Date().toISOString(),
+    };
+  }
+
+  async rebuildEnvironment(args: {
+    processId: string;
+    plan: WorkingSetPlan;
+  }): Promise<EnsuredEnvironment> {
+    return {
+      environmentId: `env-mem-${args.processId}-rebuild`,
+      workspaceHandle: `workspace-mem-${args.processId}-rebuild`,
+    };
+  }
 }
 
 /**
@@ -90,6 +125,18 @@ export class FailingProviderAdapter implements ProviderAdapter {
     processId: string;
     environmentId: string;
   }): Promise<never> {
+    throw new Error(this.reason);
+  }
+
+  async rehydrateEnvironment(_args: {
+    processId: string;
+    environmentId: string;
+    plan: WorkingSetPlan;
+  }): Promise<never> {
+    throw new Error(this.reason);
+  }
+
+  async rebuildEnvironment(_args: { processId: string; plan: WorkingSetPlan }): Promise<never> {
     throw new Error(this.reason);
   }
 }

@@ -1,5 +1,7 @@
 import type {
   ProcessWorkSurfaceResponse,
+  RebuildProcessResponse,
+  RehydrateProcessResponse,
   RequestError,
   ResumeProcessResponse,
   StartProcessResponse,
@@ -8,11 +10,15 @@ import type {
 } from '../../shared/contracts/index.js';
 import {
   buildProcessResponseApiPath,
+  buildProcessRebuildApiPath,
+  buildProcessRehydrateApiPath,
   buildProcessResumeApiPath,
   buildProcessStartApiPath,
   buildProcessWorkSurfaceApiPath,
   processWorkSurfaceResponseSchema,
+  rebuildProcessResponseSchema,
   requestErrorSchema,
+  rehydrateProcessResponseSchema,
   resumeProcessResponseSchema,
   startProcessResponseSchema,
   submitProcessResponseRequestSchema,
@@ -51,6 +57,12 @@ function buildFallbackRequestError(response: Response): RequestError {
         code: 'INVALID_PROCESS_RESPONSE',
         message: 'Submitted response must include a non-empty clientRequestId and message.',
         status: 422,
+      };
+    case 501:
+      return {
+        code: 'NOT_IMPLEMENTED',
+        message: 'This process action is not implemented yet.',
+        status: 501,
       };
     default:
       return {
@@ -136,6 +148,50 @@ export async function resumeProcess(args: {
   }
 
   return resumeProcessResponseSchema.parse(await response.json());
+}
+
+export async function rehydrateEnvironment(args: {
+  projectId: string;
+  processId: string;
+}): Promise<RehydrateProcessResponse> {
+  const response = await fetch(
+    buildProcessRehydrateApiPath({
+      projectId: args.projectId,
+      processId: args.processId,
+    }),
+    {
+      method: 'POST',
+      credentials: 'include',
+    },
+  );
+
+  if (!response.ok) {
+    throw new ApiRequestError(await parseRequestError(response));
+  }
+
+  return rehydrateProcessResponseSchema.parse(await response.json());
+}
+
+export async function rebuildEnvironment(args: {
+  projectId: string;
+  processId: string;
+}): Promise<RebuildProcessResponse> {
+  const response = await fetch(
+    buildProcessRebuildApiPath({
+      projectId: args.projectId,
+      processId: args.processId,
+    }),
+    {
+      method: 'POST',
+      credentials: 'include',
+    },
+  );
+
+  if (!response.ok) {
+    throw new ApiRequestError(await parseRequestError(response));
+  }
+
+  return rebuildProcessResponseSchema.parse(await response.json());
 }
 
 export async function submitProcessResponse(args: {

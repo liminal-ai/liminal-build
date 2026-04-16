@@ -83,6 +83,7 @@ declare module 'fastify' {
     projectShellService: ProjectShellService;
     processAccessService: ProcessAccessService;
     processModuleRegistry: ProcessModuleRegistry;
+    processEnvironmentService: ProcessEnvironmentService;
     processResponseService: ProcessResponseService;
     processRegistrationService: ProcessRegistrationService;
     processResumeService: ProcessResumeService;
@@ -172,6 +173,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.decorate('projectShellService', projectShellService);
   app.decorate('processAccessService', processAccessService);
   app.decorate('processModuleRegistry', processModuleRegistry);
+  app.decorate('processEnvironmentService', processEnvironmentService);
   app.decorate('processResponseService', processResponseService);
   app.decorate('processRegistrationService', processRegistrationService);
   app.decorate('processResumeService', processResumeService);

@@ -83,6 +83,7 @@ export type ProcessSurfaceControlActionId = z.infer<typeof processSurfaceControl
 export const environmentStateSchema = z.enum([
   'absent',
   'preparing',
+  'rehydrating',
   'ready',
   'running',
   'checkpointing',
@@ -97,6 +98,7 @@ export type EnvironmentState = z.infer<typeof environmentStateSchema>;
 export const defaultEnvironmentStatusLabels = {
   absent: 'Not prepared',
   preparing: 'Preparing environment',
+  rehydrating: 'Rehydrating environment',
   ready: 'Ready for work',
   running: 'Running in environment',
   checkpointing: 'Checkpointing work',
@@ -401,6 +403,22 @@ export const resumeProcessResponseSchema = z.object({
   environment: environmentSummarySchema.default(defaultEnvironmentSummary),
 });
 export type ResumeProcessResponse = z.infer<typeof resumeProcessResponseSchema>;
+
+export const rehydrateProcessResponseSchema = z.object({
+  accepted: z.literal(true),
+  process: processSurfaceSummarySchema,
+  currentRequest: currentProcessRequestSchema.nullable().default(null),
+  environment: environmentSummarySchema.default(defaultEnvironmentSummary),
+});
+export type RehydrateProcessResponse = z.infer<typeof rehydrateProcessResponseSchema>;
+
+export const rebuildProcessResponseSchema = z.object({
+  accepted: z.literal(true),
+  process: processSurfaceSummarySchema,
+  currentRequest: currentProcessRequestSchema.nullable().default(null),
+  environment: environmentSummarySchema.default(defaultEnvironmentSummary),
+});
+export type RebuildProcessResponse = z.infer<typeof rebuildProcessResponseSchema>;
 
 export const submitProcessResponseRequestSchema = z.object({
   clientRequestId: z.string().trim().min(1),

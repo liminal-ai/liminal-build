@@ -29,6 +29,8 @@ export function renderProcessWorkSurfacePage(args: {
   onOpenProject: (projectId: string) => void;
   onStartProcess?: (projectId: string, processId: string) => void;
   onResumeProcess?: (projectId: string, processId: string) => void;
+  onRehydrateEnvironment?: (projectId: string, processId: string) => void;
+  onRebuildEnvironment?: (projectId: string, processId: string) => void;
   onSubmitProcessResponse?: (projectId: string, processId: string, message: string) => void;
   onRetryLiveSubscription?: (projectId: string, processId: string) => void;
 }): HTMLElement {
@@ -137,6 +139,12 @@ export function renderProcessWorkSurfacePage(args: {
             return;
           case 'resume':
             args.onResumeProcess?.(activeProject.projectId, activeProcess.processId);
+            return;
+          case 'rehydrate':
+            args.onRehydrateEnvironment?.(activeProject.projectId, activeProcess.processId);
+            return;
+          case 'rebuild':
+            args.onRebuildEnvironment?.(activeProject.projectId, activeProcess.processId);
             return;
           case 'respond': {
             const responseInput = container.querySelector('[data-process-response-input="true"]');

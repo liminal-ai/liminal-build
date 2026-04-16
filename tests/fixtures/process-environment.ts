@@ -36,6 +36,14 @@ export const preparingEnvironmentFixture = buildEnvironmentSummaryFixture({
   statusLabel: 'Preparing environment',
 });
 
+export const rehydratingEnvironmentFixture = buildEnvironmentSummaryFixture({
+  environmentId: 'environment-rehydrating-001',
+  state: 'rehydrating',
+  statusLabel: 'Rehydrating environment',
+  blockedReason: 'Rehydrate is in progress.',
+  lastHydratedAt: '2026-04-13T12:20:00.000Z',
+});
+
 export const readyEnvironmentFixture = buildEnvironmentSummaryFixture({
   environmentId: 'environment-ready-001',
   state: 'ready',

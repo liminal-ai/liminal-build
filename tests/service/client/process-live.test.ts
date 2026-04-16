@@ -15,6 +15,7 @@ import {
   connectedProcessSurfaceStateFixture,
   environmentFailedUpsertLiveFixture,
   environmentPreparingUpsertLiveFixture,
+  environmentRehydratingUpsertLiveFixture,
   environmentReadyUpsertLiveFixture,
   environmentRunningUpsertLiveFixture,
   historyUpsertLiveFixture,
@@ -33,7 +34,10 @@ import {
 } from '../../fixtures/materials.js';
 import {
   buildEnvironmentSummaryFixture,
+  checkpointSucceededEnvironmentFixture,
   failedEnvironmentFixture,
+  rehydratingEnvironmentFixture,
+  rebuildingEnvironmentFixture,
   runningEnvironmentFixture,
 } from '../../fixtures/process-environment.js';
 import {
@@ -395,6 +399,74 @@ describe('process live foundation', () => {
     });
 
     expect(nextState.materials).toEqual(state.materials);
+  });
+
+  it('TC-5.2b rehydrate keeps the latest checkpoint result visible while recovery is in progress', () => {
+    const state = processSurfaceStateSchema.parse({
+      ...connectedProcessSurfaceStateFixture,
+      environment: checkpointSucceededEnvironmentFixture,
+      live: {
+        connectionState: 'connected',
+        subscriptionId: 'subscription-001',
+        lastSequenceNumber: environmentRehydratingUpsertLiveFixture.sequenceNumber - 1,
+        error: null,
+      },
+    });
+    const nextState = applyLiveProcessMessage({
+      state,
+      message: buildLiveProcessMessageFixture({
+        messageType: 'upsert',
+        entityType: 'environment',
+        entityId: 'environment',
+        processId:
+          state.processId ?? connectedProcessSurfaceStateFixture.processId ?? 'process-001',
+        sequenceNumber: environmentRehydratingUpsertLiveFixture.sequenceNumber,
+        payload: buildEnvironmentSummaryFixture({
+          ...rehydratingEnvironmentFixture,
+          lastCheckpointAt: null,
+          lastCheckpointResult: null,
+        }),
+      }),
+    });
+
+    expect(nextState.environment).toMatchObject({
+      state: 'rehydrating',
+      lastCheckpointResult: checkpointSucceededEnvironmentFixture.lastCheckpointResult,
+    });
+  });
+
+  it('TC-5.4b rebuilding keeps the latest checkpoint result visible while recovery is in progress', () => {
+    const state = processSurfaceStateSchema.parse({
+      ...connectedProcessSurfaceStateFixture,
+      environment: checkpointSucceededEnvironmentFixture,
+      live: {
+        connectionState: 'connected',
+        subscriptionId: 'subscription-001',
+        lastSequenceNumber: 16,
+        error: null,
+      },
+    });
+    const nextState = applyLiveProcessMessage({
+      state,
+      message: buildLiveProcessMessageFixture({
+        messageType: 'upsert',
+        entityType: 'environment',
+        entityId: 'environment',
+        processId:
+          state.processId ?? connectedProcessSurfaceStateFixture.processId ?? 'process-001',
+        sequenceNumber: 17,
+        payload: buildEnvironmentSummaryFixture({
+          ...rebuildingEnvironmentFixture,
+          lastCheckpointAt: null,
+          lastCheckpointResult: null,
+        }),
+      }),
+    });
+
+    expect(nextState.environment).toMatchObject({
+      state: 'rebuilding',
+      lastCheckpointResult: checkpointSucceededEnvironmentFixture.lastCheckpointResult,
+    });
   });
 
   it('TC-2.2a running state becomes visible during active work', () => {

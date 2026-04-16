@@ -1,5 +1,7 @@
 import { z } from 'zod/v4';
 import {
+  rebuildProcessResponseSchema,
+  rehydrateProcessResponseSchema,
   resumeProcessResponseSchema,
   processWorkSurfaceResponseSchema,
   processWorkSurfaceRouteParamsSchema,
@@ -46,6 +48,34 @@ export const resumeProcessRouteSchema = {
     403: requestErrorSchema,
     404: requestErrorSchema,
     409: requestErrorSchema,
+  },
+} as const;
+
+export const rehydrateProcessRouteSchema = {
+  params: processWorkSurfaceRouteParamsSchema,
+  response: {
+    200: rehydrateProcessResponseSchema,
+    401: requestErrorSchema,
+    403: requestErrorSchema,
+    404: requestErrorSchema,
+    409: requestErrorSchema,
+    422: requestErrorSchema,
+    501: requestErrorSchema,
+    503: requestErrorSchema,
+  },
+} as const;
+
+export const rebuildProcessRouteSchema = {
+  params: processWorkSurfaceRouteParamsSchema,
+  response: {
+    200: rebuildProcessResponseSchema,
+    401: requestErrorSchema,
+    403: requestErrorSchema,
+    404: requestErrorSchema,
+    409: requestErrorSchema,
+    422: requestErrorSchema,
+    501: requestErrorSchema,
+    503: requestErrorSchema,
   },
 } as const;
 

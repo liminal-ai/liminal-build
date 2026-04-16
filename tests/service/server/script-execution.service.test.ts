@@ -16,6 +16,14 @@ function buildProvider(result: ExecutionResult): ProviderAdapter {
       artifacts: [],
       codeDiffs: [],
     })),
+    rehydrateEnvironment: vi.fn(async () => ({
+      environmentId: 'environment-hydrated-001',
+      lastHydratedAt: '2026-04-15T12:00:00.000Z',
+    })),
+    rebuildEnvironment: vi.fn(async () => ({
+      environmentId: 'environment-rebuilt-001',
+      workspaceHandle: 'workspace-rebuilt-001',
+    })),
   };
 }
 

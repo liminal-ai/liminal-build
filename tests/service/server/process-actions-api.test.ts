@@ -14,7 +14,13 @@ import {
   projectSummarySchema,
 } from '../../../apps/platform/shared/contracts/index.js';
 import { waitingProcessControlsFixture } from '../../fixtures/process-controls.js';
-import { readyEnvironmentFixture } from '../../fixtures/process-environment.js';
+import {
+  buildEnvironmentSummaryFixture,
+  lostEnvironmentFixture,
+  readyEnvironmentFixture,
+  staleEnvironmentFixture,
+  unavailableEnvironmentFixture,
+} from '../../fixtures/process-environment.js';
 import {
   draftProcessFixture,
   interruptedProcessFixture,
@@ -1222,5 +1228,165 @@ describe('checkpoint planner', () => {
         },
       ],
     });
+  });
+
+  it('TC-5.2a rehydrate refreshes stale working copy', async () => {
+    const { app } = await buildAuthenticatedApp({
+      processEnvironmentSummariesByProcessId: {
+        [pausedProcessSummary.processId]: staleEnvironmentFixture,
+      },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${pausedProcessSummary.processId}/rehydrate`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      accepted: true,
+      process: {
+        processId: pausedProcessSummary.processId,
+      },
+      environment: {
+        state: 'rehydrating',
+      },
+    });
+
+    await app.close();
+  });
+
+  it('TC-5.3a rebuild replaces lost environment', async () => {
+    const { app } = await buildAuthenticatedApp({
+      processEnvironmentSummariesByProcessId: {
+        [interruptedProcessSummary.processId]: lostEnvironmentFixture,
+      },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${interruptedProcessSummary.processId}/rebuild`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      accepted: true,
+      process: {
+        processId: interruptedProcessSummary.processId,
+      },
+      environment: {
+        state: 'rebuilding',
+      },
+    });
+
+    await app.close();
+  });
+
+  it('TC-5.3b rebuild does not depend on prior working copy survival', async () => {
+    const { app } = await buildAuthenticatedApp({
+      processEnvironmentSummariesByProcessId: {
+        [interruptedProcessSummary.processId]: buildEnvironmentSummaryFixture({
+          ...lostEnvironmentFixture,
+          environmentId: null,
+        }),
+      },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${interruptedProcessSummary.processId}/rebuild`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      accepted: true,
+      environment: {
+        state: 'rebuilding',
+        environmentId: expect.any(String),
+      },
+    });
+
+    await app.close();
+  });
+
+  it('rehydrate rejects immediately when environment is not recoverable', async () => {
+    const { app } = await buildAuthenticatedApp({
+      processEnvironmentSummariesByProcessId: {
+        [pausedProcessSummary.processId]: lostEnvironmentFixture,
+      },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${pausedProcessSummary.processId}/rehydrate`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      code: 'PROCESS_ENVIRONMENT_NOT_RECOVERABLE',
+    });
+
+    await app.close();
+  });
+
+  it('rebuild rejects immediately when canonical prerequisites are missing', async () => {
+    const { app } = await buildAuthenticatedApp({
+      processEnvironmentSummariesByProcessId: {
+        [interruptedProcessSummary.processId]: lostEnvironmentFixture,
+      },
+      currentMaterialRefsByProcessId: {
+        [interruptedProcessSummary.processId]: {
+          artifactIds: [],
+          sourceAttachmentIds: [],
+        },
+      },
+      processOutputsByProcessId: {
+        [interruptedProcessSummary.processId]: [],
+      },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${interruptedProcessSummary.processId}/rebuild`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({
+      code: 'PROCESS_ENVIRONMENT_PREREQUISITE_MISSING',
+    });
+
+    await app.close();
+  });
+
+  it('rehydrate rejects immediately when environment lifecycle is unavailable before acceptance', async () => {
+    const { app } = await buildAuthenticatedApp({
+      processEnvironmentSummariesByProcessId: {
+        [pausedProcessSummary.processId]: unavailableEnvironmentFixture,
+      },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${pausedProcessSummary.processId}/rehydrate`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({
+      code: 'PROCESS_ENVIRONMENT_UNAVAILABLE',
+    });
+
+    await app.close();
   });
 });

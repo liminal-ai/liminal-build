@@ -44,6 +44,7 @@ export const hydrationStateSchema = z.enum(['not_hydrated', 'hydrated', 'stale',
 export type HydrationState = z.infer<typeof hydrationStateSchema>;
 
 export const requestErrorCodeSchema = z.enum([
+  'NOT_IMPLEMENTED',
   'UNAUTHENTICATED',
   'PROJECT_FORBIDDEN',
   'PROJECT_NOT_FOUND',

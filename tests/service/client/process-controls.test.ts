@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { buildProcessSurfaceSummary } from '../../../apps/platform/server/services/processes/process-work-surface.service.js';
 import { renderProcessControls } from '../../../apps/platform/client/features/processes/process-controls.js';
+import { buildEnvironmentSummaryFixture } from '../../fixtures/process-environment.js';
+import { pausedProcessFixture } from '../../fixtures/processes.js';
 import {
   checkpointingEnvironmentProcessControlsFixture,
   failedProcessControlsFixture,
@@ -144,5 +147,28 @@ describe('process controls', () => {
     expect(
       view.querySelector('[data-process-control-disabled-reason="rehydrate"]')?.textContent,
     ).toBe('Environment lifecycle work is currently unavailable.');
+  });
+
+  it('recovery controls distinguish rehydrating from generic preparing state', () => {
+    const summary = buildProcessSurfaceSummary(
+      pausedProcessFixture,
+      buildEnvironmentSummaryFixture({
+        environmentId: 'environment-rehydrating-controls-001',
+        state: 'rehydrating',
+        statusLabel: 'Rehydrating environment',
+        blockedReason: 'Rehydrate is in progress.',
+      }),
+    );
+    const view = renderControls(summary.controls);
+
+    expect(view.querySelector('[data-process-control-disabled-reason="resume"]')?.textContent).toBe(
+      'Resume is unavailable while the environment is rehydrating.',
+    );
+    expect(
+      view.querySelector('[data-process-control-disabled-reason="rehydrate"]')?.textContent,
+    ).toBe('Rehydrate is already in progress.');
+    expect(
+      view.querySelector('[data-process-control-disabled-reason="rebuild"]')?.textContent,
+    ).toBe('Rebuild is unavailable while the environment is rehydrating.');
   });
 });

@@ -23,6 +23,8 @@ import {
   pausedProcessWorkSurfaceFixture,
   processAccessDeniedErrorFixture,
   processProjectNotFoundErrorFixture,
+  processRebuildPrerequisiteMissingErrorFixture,
+  processRehydrateNotRecoverableErrorFixture,
   processResumeNotAvailableErrorFixture,
   processStartNotAvailableErrorFixture,
   processUnavailableErrorFixture,
@@ -33,6 +35,7 @@ import {
   resumedInterruptedToFailedProcessResponseFixture,
   resumedPausedProcessResponseFixture,
   resumedPausedToCompletedProcessResponseFixture,
+  staleEnvironmentProcessWorkSurfaceFixture,
   startedProcessResponseFixture,
   startedWaitingProcessResponseFixture,
   submittedProcessResponseWithFollowUpFixture,
@@ -173,7 +176,7 @@ function installInteractiveFetchMock(args: {
   actionStatus?: number;
   actionFailure?: Error;
   actionBodyAsserter?: (body: unknown) => void;
-  action: 'start' | 'resume' | 'respond';
+  action: 'start' | 'resume' | 'rehydrate' | 'rebuild' | 'respond';
 }) {
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const rawUrl =
@@ -1045,6 +1048,73 @@ describe('process work surface page', () => {
         processId: pausedProcessWorkSurfaceFixture.process.processId,
       }),
     ).toBe(1);
+  });
+
+  it('TC-5.5a rebuild blocked by missing canonical prerequisite keeps the blocked recovery reason visible on the surface', async () => {
+    installInteractiveFetchMock({
+      surface: lostEnvironmentProcessWorkSurfaceFixture,
+      actionPayload: processRebuildPrerequisiteMissingErrorFixture,
+      actionStatus: 422,
+      action: 'rebuild',
+    });
+    const dom = await renderInteractiveProcessSurface(
+      `http://localhost:5001/projects/${lostEnvironmentProcessWorkSurfaceFixture.project.projectId}/processes/${lostEnvironmentProcessWorkSurfaceFixture.process.processId}`,
+    );
+    const rebuildButton = [...dom.window.document.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Rebuild environment',
+    );
+
+    if (!(rebuildButton instanceof dom.window.HTMLButtonElement)) {
+      throw new Error('Expected the process work surface to render a Rebuild environment button.');
+    }
+
+    rebuildButton.click();
+    await flush();
+
+    const actionError = dom.window.document.querySelector('[data-process-action-error="true"]');
+    const environmentPanel = dom.window.document.querySelector(
+      '[data-process-environment-panel="true"]',
+    );
+
+    expect(actionError?.textContent).toContain(
+      processRebuildPrerequisiteMissingErrorFixture.message,
+    );
+    expect(environmentPanel?.textContent).toContain(
+      processRebuildPrerequisiteMissingErrorFixture.message,
+    );
+  });
+
+  it('TC-5.5b rehydrate blocked when rebuild is required promotes rebuild guidance on the visible recovery controls', async () => {
+    installInteractiveFetchMock({
+      surface: staleEnvironmentProcessWorkSurfaceFixture,
+      actionPayload: processRehydrateNotRecoverableErrorFixture,
+      actionStatus: 409,
+      action: 'rehydrate',
+    });
+    const dom = await renderInteractiveProcessSurface(
+      `http://localhost:5001/projects/${staleEnvironmentProcessWorkSurfaceFixture.project.projectId}/processes/${staleEnvironmentProcessWorkSurfaceFixture.process.processId}`,
+    );
+    const rehydrateButton = [...dom.window.document.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Rehydrate environment',
+    );
+
+    if (!(rehydrateButton instanceof dom.window.HTMLButtonElement)) {
+      throw new Error(
+        'Expected the process work surface to render a Rehydrate environment button.',
+      );
+    }
+
+    rehydrateButton.click();
+    await flush();
+
+    const actionError = dom.window.document.querySelector('[data-process-action-error="true"]');
+    const rebuildButton = [...dom.window.document.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Rebuild environment',
+    );
+
+    expect(actionError?.textContent).toContain(processRehydrateNotRecoverableErrorFixture.message);
+    expect(rebuildButton).toBeInstanceOf(dom.window.HTMLButtonElement);
+    expect((rebuildButton as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('shows a process unavailable state when Start returns PROCESS_NOT_FOUND without dropping the rejection', async () => {

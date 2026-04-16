@@ -126,6 +126,7 @@ function resolveStartControlState(environment: EnvironmentSummary): {
     case 'ready':
       return enabledState();
     case 'preparing':
+    case 'rehydrating':
       return disabledState('Start is unavailable while the environment is preparing.');
     case 'running':
       return disabledState('Start is unavailable while the environment is already running.');
@@ -155,6 +156,7 @@ function resolveResumeControlState(environment: EnvironmentSummary): {
     case 'ready':
       return enabledState();
     case 'preparing':
+    case 'rehydrating':
       return disabledState('Resume is unavailable while the environment is preparing.');
     case 'running':
       return disabledState('Resume is unavailable while the environment is already running.');
@@ -185,6 +187,7 @@ function resolveRestartControlState(args: {
 
   switch (args.environment.state) {
     case 'preparing':
+    case 'rehydrating':
       return disabledState('Restart is unavailable while the environment is preparing.');
     case 'running':
       return disabledState('Restart is unavailable while the environment is actively running.');
@@ -213,6 +216,7 @@ function resolveRehydrateControlState(environment: EnvironmentSummary): {
     case 'absent':
       return disabledState('Rehydrate is unavailable because no working copy exists yet.');
     case 'preparing':
+    case 'rehydrating':
       return disabledState('Rehydrate is unavailable while the environment is preparing.');
     case 'ready':
       return disabledState(
@@ -244,6 +248,7 @@ function resolveRebuildControlState(environment: EnvironmentSummary): {
         'Rebuild is unavailable because no prior working copy has been created.',
       );
     case 'preparing':
+    case 'rehydrating':
       return disabledState('Rebuild is unavailable while the environment is preparing.');
     case 'ready':
       return disabledState(

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AuthSessionService,
   type SessionResolution,
@@ -23,7 +23,11 @@ import {
   projectSummarySchema,
 } from '../../../apps/platform/shared/contracts/index.js';
 import { readyProcessMaterialsFixture } from '../../fixtures/materials.js';
-import { readyEnvironmentFixture } from '../../fixtures/process-environment.js';
+import {
+  lostEnvironmentFixture,
+  readyEnvironmentFixture,
+  staleEnvironmentFixture,
+} from '../../fixtures/process-environment.js';
 import {
   progressUpdateHistoryFixture,
   readyProcessHistoryFixture,
@@ -32,7 +36,12 @@ import {
   currentProcessRequestFixture,
   readyProcessWorkSurfaceFixture,
 } from '../../fixtures/process-surface.js';
-import { draftProcessFixture, runningProcessFixture } from '../../fixtures/processes.js';
+import {
+  draftProcessFixture,
+  interruptedProcessFixture,
+  pausedProcessFixture,
+  runningProcessFixture,
+} from '../../fixtures/processes.js';
 import { readySideWorkFixture } from '../../fixtures/side-work.js';
 import { buildApp } from '../../utils/build-app.js';
 
@@ -626,6 +635,14 @@ describe('server-driven environment execution', () => {
         artifacts: [],
         codeDiffs: [],
       }),
+      rehydrateEnvironment: async ({ environmentId }) => ({
+        environmentId,
+        lastHydratedAt: '2026-04-15T10:33:00.000Z',
+      }),
+      rebuildEnvironment: async ({ processId }) => ({
+        environmentId: `env-rebuild-${processId}`,
+        workspaceHandle: `workspace-rebuild-${processId}`,
+      }),
     };
   }
 
@@ -1024,5 +1041,133 @@ describe('server-driven environment execution', () => {
         },
       },
     });
+  });
+
+  it('publishes a rehydrating environment transition with a recomputed process summary when rehydrate is accepted', async () => {
+    const processLiveHub = new InMemoryProcessLiveHub();
+    const publishSpy = vi.spyOn(processLiveHub, 'publish');
+    const pausedRecoveryProcess = processSummarySchema.parse({
+      ...pausedProcessFixture,
+      updatedAt: '2026-04-15T11:00:00.000Z',
+    });
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectSummary.projectId]: [pausedRecoveryProcess],
+      },
+      processEnvironmentSummariesByProcessId: {
+        [pausedRecoveryProcess.processId]: staleEnvironmentFixture,
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+      processLiveHub,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${pausedRecoveryProcess.processId}/rehydrate`,
+      cookies: { [sessionCookieName]: 'valid-session-cookie' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(publishSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: projectSummary.projectId,
+        processId: pausedRecoveryProcess.processId,
+        publication: expect.objectContaining({
+          process: expect.objectContaining({
+            processId: pausedRecoveryProcess.processId,
+          }),
+          environment: expect.objectContaining({
+            state: 'rehydrating',
+          }),
+        }),
+      }),
+    );
+
+    await app.close();
+  });
+
+  it('publishes a rebuilding environment transition with a recomputed process summary when rebuild is accepted', async () => {
+    const processLiveHub = new InMemoryProcessLiveHub();
+    const publishSpy = vi.spyOn(processLiveHub, 'publish');
+    const interruptedRecoveryProcess = processSummarySchema.parse({
+      ...interruptedProcessFixture,
+      updatedAt: '2026-04-15T11:05:00.000Z',
+    });
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectSummary.projectId]: [interruptedRecoveryProcess],
+      },
+      processEnvironmentSummariesByProcessId: {
+        [interruptedRecoveryProcess.processId]: lostEnvironmentFixture,
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+      processLiveHub,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${interruptedRecoveryProcess.processId}/rebuild`,
+      cookies: { [sessionCookieName]: 'valid-session-cookie' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(publishSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: projectSummary.projectId,
+        processId: interruptedRecoveryProcess.processId,
+        publication: expect.objectContaining({
+          process: expect.objectContaining({
+            processId: interruptedRecoveryProcess.processId,
+          }),
+          environment: expect.objectContaining({
+            state: 'rebuilding',
+          }),
+        }),
+      }),
+    );
+
+    await app.close();
   });
 });

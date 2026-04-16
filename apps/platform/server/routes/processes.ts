@@ -5,6 +5,8 @@ import { AppError } from '../errors/app-error.js';
 import {
   getProcessWorkSurfaceRouteSchema,
   processHtmlRouteSchema,
+  rebuildProcessRouteSchema,
+  rehydrateProcessRouteSchema,
   resumeProcessRouteSchema,
   startProcessRouteSchema,
   submitProcessResponseRouteSchema,
@@ -12,6 +14,8 @@ import {
 import { sessionCookieName } from '../services/auth/auth-session.service.js';
 import {
   processLiveUpdatesPathnamePattern,
+  processRebuildApiPathnamePattern,
+  processRehydrateApiPathnamePattern,
   processResponseApiPathnamePattern,
   processResumeApiPathnamePattern,
   processStartApiPathnamePattern,
@@ -50,6 +54,8 @@ export const processRoutePatterns = {
   bootstrap: processWorkSurfaceApiPathnamePattern,
   start: processStartApiPathnamePattern,
   resume: processResumeApiPathnamePattern,
+  rehydrate: processRehydrateApiPathnamePattern,
+  rebuild: processRebuildApiPathnamePattern,
   respond: processResponseApiPathnamePattern,
   live: processLiveUpdatesPathnamePattern,
 } as const;
@@ -422,6 +428,92 @@ export async function registerProcessRoutes(app: FastifyInstance): Promise<void>
             | 'PROJECT_NOT_FOUND'
             | 'PROCESS_NOT_FOUND'
             | 'PROCESS_ACTION_NOT_AVAILABLE';
+
+          return reply.code(statusCode).send({
+            code,
+            message: error.message,
+            status: statusCode,
+          });
+        }
+
+        throw error;
+      }
+    },
+  );
+
+  typedApp.post(
+    '/api/projects/:projectId/processes/:processId/rehydrate',
+    {
+      schema: rehydrateProcessRouteSchema,
+    },
+    async (request, reply) => {
+      if (request.actor === null) {
+        if (request.authFailureReason === 'invalid_session') {
+          reply.clearCookie(sessionCookieName, { path: '/' });
+        }
+
+        return reply.code(401).send({
+          code: 'UNAUTHENTICATED',
+          message: 'Authenticated access is required.',
+          status: 401,
+        });
+      }
+
+      try {
+        const response = await app.processEnvironmentService.rehydrate({
+          actor: request.actor,
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+        });
+
+        return reply.code(200).send(response);
+      } catch (error) {
+        if (error instanceof AppError) {
+          const statusCode = error.statusCode as 401 | 403 | 404 | 409 | 422 | 501 | 503;
+          const code = error.code as RequestError['code'];
+
+          return reply.code(statusCode).send({
+            code,
+            message: error.message,
+            status: statusCode,
+          });
+        }
+
+        throw error;
+      }
+    },
+  );
+
+  typedApp.post(
+    '/api/projects/:projectId/processes/:processId/rebuild',
+    {
+      schema: rebuildProcessRouteSchema,
+    },
+    async (request, reply) => {
+      if (request.actor === null) {
+        if (request.authFailureReason === 'invalid_session') {
+          reply.clearCookie(sessionCookieName, { path: '/' });
+        }
+
+        return reply.code(401).send({
+          code: 'UNAUTHENTICATED',
+          message: 'Authenticated access is required.',
+          status: 401,
+        });
+      }
+
+      try {
+        const response = await app.processEnvironmentService.rebuild({
+          actor: request.actor,
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+        });
+
+        return reply.code(200).send(response);
+      } catch (error) {
+        if (error instanceof AppError) {
+          const statusCode = error.statusCode as 401 | 403 | 404 | 409 | 422 | 501 | 503;
+          const code = error.code as RequestError['code'];
 
           return reply.code(statusCode).send({
             code,

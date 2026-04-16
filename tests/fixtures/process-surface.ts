@@ -10,6 +10,8 @@ import {
   processSurfaceProjectSchema,
   processSurfaceSummarySchema,
   processWorkSurfaceResponseSchema,
+  rebuildProcessResponseSchema,
+  rehydrateProcessResponseSchema,
   resumeProcessResponseSchema,
   requestErrorSchema,
   startProcessResponseSchema,
@@ -46,6 +48,7 @@ import {
   checkpointSucceededEnvironmentFixture,
   lostEnvironmentFixture,
   preparingEnvironmentFixture,
+  rehydratingEnvironmentFixture,
   readyEnvironmentFixture,
   staleEnvironmentFixture,
   unavailableEnvironmentFixture,
@@ -388,6 +391,31 @@ export const resumedInterruptedProcessResponseFixture = resumeProcessResponseSch
   environment: preparingEnvironmentFixture,
 });
 
+export const rehydratedProcessResponseFixture = rehydrateProcessResponseSchema.parse({
+  accepted: true,
+  process: processSurfaceSummarySchema.parse({
+    ...staleEnvironmentProcessSurfaceFixture,
+    updatedAt: '2026-04-13T12:31:00.000Z',
+  }),
+  currentRequest: null,
+  environment: rehydratingEnvironmentFixture,
+});
+
+export const rebuiltProcessResponseFixture = rebuildProcessResponseSchema.parse({
+  accepted: true,
+  process: processSurfaceSummarySchema.parse({
+    ...lostEnvironmentProcessSurfaceFixture,
+    updatedAt: '2026-04-13T12:32:00.000Z',
+  }),
+  currentRequest: null,
+  environment: {
+    ...readyEnvironmentFixture,
+    state: 'rebuilding',
+    statusLabel: 'Rebuilding environment',
+    blockedReason: 'Rebuild is in progress.',
+  },
+});
+
 export const resumedInterruptedToFailedProcessResponseFixture = resumeProcessResponseSchema.parse({
   process: processSurfaceSummarySchema.parse({
     ...failedProcessSurfaceFixture,
@@ -458,6 +486,18 @@ export const processResumeNotAvailableErrorFixture = requestErrorSchema.parse({
   code: 'PROCESS_ACTION_NOT_AVAILABLE',
   message: 'Resume is not available for this process right now.',
   status: 409,
+});
+
+export const processRehydrateNotRecoverableErrorFixture = requestErrorSchema.parse({
+  code: 'PROCESS_ENVIRONMENT_NOT_RECOVERABLE',
+  message: 'Rehydrate is blocked because rebuild is required first.',
+  status: 409,
+});
+
+export const processRebuildPrerequisiteMissingErrorFixture = requestErrorSchema.parse({
+  code: 'PROCESS_ENVIRONMENT_PREREQUISITE_MISSING',
+  message: 'Required canonical materials are missing for rebuild.',
+  status: 422,
 });
 
 export const processResponseNotAvailableErrorFixture = requestErrorSchema.parse({

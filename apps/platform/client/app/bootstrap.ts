@@ -4,6 +4,8 @@ import type {
   ParsedRoute,
   ProcessHistoryItem,
   ProcessHistorySectionEnvelope,
+  RebuildProcessResponse,
+  RehydrateProcessResponse,
   RequestError,
   ResumeProcessResponse,
   ProcessSummary,
@@ -18,7 +20,9 @@ import {
 } from '../../shared/contracts/index.js';
 import { ApiRequestError, getAuthenticatedUser } from '../browser-api/auth-api.js';
 import {
+  rebuildEnvironment,
   getProcessWorkSurface,
+  rehydrateEnvironment,
   resumeProcess,
   startProcess,
   submitProcessResponse,
@@ -331,7 +335,11 @@ export async function bootstrapApp(
   const applyProcessActionResponse = (
     projectId: string,
     processId: string,
-    response: StartProcessResponse | ResumeProcessResponse,
+    response:
+      | StartProcessResponse
+      | ResumeProcessResponse
+      | RehydrateProcessResponse
+      | RebuildProcessResponse,
   ): void => {
     const currentSurface = store.get().processSurface;
 
@@ -740,6 +748,49 @@ export async function bootstrapApp(
     }
   };
 
+  const rehydrateCurrentEnvironment = async (
+    projectId: string,
+    processId: string,
+  ): Promise<void> => {
+    clearProcessActionError(projectId, processId);
+
+    try {
+      const response = await rehydrateEnvironment({
+        projectId,
+        processId,
+      });
+
+      applyProcessActionResponse(projectId, processId, response);
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        handleProcessActionRequestError(projectId, processId, error);
+        return;
+      }
+
+      handleUnexpectedProcessActionFailure(projectId, processId);
+    }
+  };
+
+  const rebuildCurrentEnvironment = async (projectId: string, processId: string): Promise<void> => {
+    clearProcessActionError(projectId, processId);
+
+    try {
+      const response = await rebuildEnvironment({
+        projectId,
+        processId,
+      });
+
+      applyProcessActionResponse(projectId, processId, response);
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        handleProcessActionRequestError(projectId, processId, error);
+        return;
+      }
+
+      handleUnexpectedProcessActionFailure(projectId, processId);
+    }
+  };
+
   const submitCurrentProcessResponse = async (
     projectId: string,
     processId: string,
@@ -893,6 +944,8 @@ export async function bootstrapApp(
     },
     onStartProcess: startCurrentProcess,
     onResumeProcess: resumeCurrentProcess,
+    onRehydrateEnvironment: rehydrateCurrentEnvironment,
+    onRebuildEnvironment: rebuildCurrentEnvironment,
     onSubmitProcessResponse: submitCurrentProcessResponse,
     onRetryLiveSubscription: retryLiveSubscription,
   });

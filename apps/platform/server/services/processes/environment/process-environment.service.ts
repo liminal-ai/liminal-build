@@ -2,8 +2,12 @@ import type {
   EnvironmentSummary,
   LastCheckpointResult,
   ProcessSummary,
+  RebuildProcessResponse,
+  RehydrateProcessResponse,
   SourceAttachmentSummary,
 } from '../../../../shared/contracts/index.js';
+import { AppError } from '../../../errors/app-error.js';
+import { notImplementedErrorCode } from '../../../errors/codes.js';
 import type { PlatformStore } from '../../projects/platform-store.js';
 import type { ProcessLiveHub } from '../live/process-live-hub.js';
 import { buildProcessSurfaceSummary } from '../process-work-surface.service.js';
@@ -36,6 +40,34 @@ export class ProcessEnvironmentService {
    */
   runHydrationAsync(args: { projectId: string; processId: string }): void {
     void this.executeHydration(args);
+  }
+
+  async rehydrate(args: {
+    actor: { userId: string };
+    projectId: string;
+    processId: string;
+  }): Promise<RehydrateProcessResponse> {
+    void args;
+
+    throw new AppError({
+      code: notImplementedErrorCode,
+      message: 'Story 5 RED: rehydrate is not implemented yet.',
+      statusCode: 501,
+    });
+  }
+
+  async rebuild(args: {
+    actor: { userId: string };
+    projectId: string;
+    processId: string;
+  }): Promise<RebuildProcessResponse> {
+    void args;
+
+    throw new AppError({
+      code: notImplementedErrorCode,
+      message: 'Story 5 RED: rebuild is not implemented yet.',
+      statusCode: 501,
+    });
   }
 
   private async executeHydration(args: { projectId: string; processId: string }): Promise<void> {

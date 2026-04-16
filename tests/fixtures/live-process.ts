@@ -23,6 +23,7 @@ import {
   checkpointingEnvironmentFixture,
   failedEnvironmentFixture,
   preparingEnvironmentFixture,
+  rehydratingEnvironmentFixture,
   readyEnvironmentFixture,
   runningEnvironmentFixture,
 } from './process-environment.js';
@@ -178,6 +179,14 @@ export const environmentReadyUpsertLiveFixture = buildLiveProcessMessageFixture(
   entityId: 'environment',
   sequenceNumber: 14,
   payload: readyEnvironmentFixture,
+});
+
+export const environmentRehydratingUpsertLiveFixture = buildLiveProcessMessageFixture({
+  messageType: 'upsert',
+  entityType: 'environment',
+  entityId: 'environment',
+  sequenceNumber: 14,
+  payload: rehydratingEnvironmentFixture,
 });
 
 export const environmentRunningUpsertLiveFixture = buildLiveProcessMessageFixture({
