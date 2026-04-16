@@ -8,8 +8,13 @@ import { buildProcessSurfaceSummary } from '../../../apps/platform/server/servic
 import {
   liveProcessUpdateMessageSchema,
   processSummarySchema,
+  processWorkSurfaceResponseSchema,
+  rebuildProcessResponseSchema,
+  rehydrateProcessResponseSchema,
+  resumeProcessResponseSchema,
   processSurfaceStateSchema,
   processSurfaceSummarySchema,
+  startProcessResponseSchema,
 } from '../../../apps/platform/shared/contracts/index.js';
 import {
   buildLiveProcessMessageFixture,
@@ -47,7 +52,12 @@ import {
   failedProcessSurfaceFixture,
   interruptedProcessSurfaceFixture,
   pausedProcessSurfaceFixture,
+  readyEnvironmentProcessWorkSurfaceFixture,
+  rebuiltProcessResponseFixture,
+  rehydratedProcessResponseFixture,
+  resumedPausedProcessResponseFixture,
   runningProcessSurfaceFixture,
+  startedProcessResponseFixture,
   waitingProcessSurfaceFixture,
 } from '../../fixtures/process-surface.js';
 import {
@@ -318,7 +328,25 @@ describe('process live foundation', () => {
     });
   });
 
-  it('TC-3.3c malformed ready environment live messages missing statusLabel are rejected', () => {
+  it('TC-3.3c malformed ready environment live messages missing state are rejected', () => {
+    const { state: _state, ...payloadWithoutState } = readyEnvironmentFixture;
+    const result = liveProcessUpdateMessageSchema.safeParse({
+      subscriptionId: 'subscription-001',
+      processId: runningProcessSurfaceFixture.processId,
+      sequenceNumber: 2,
+      entityId: 'environment',
+      correlationId: null,
+      completedAt: null,
+      messageType: 'upsert',
+      entityType: 'environment',
+      payload: payloadWithoutState,
+    });
+
+    expect(result.success).toBe(false);
+    expect(JSON.stringify(result.error?.issues)).toContain('"state"');
+  });
+
+  it('TC-3.3d malformed ready environment live messages missing statusLabel are rejected', () => {
     const payloadWithoutStatusLabel = {
       environmentId: readyEnvironmentFixture.environmentId,
       state: readyEnvironmentFixture.state,
@@ -343,7 +371,60 @@ describe('process live foundation', () => {
     expect(JSON.stringify(result.error?.issues)).toContain('"statusLabel"');
   });
 
-  it('TC-3.3d malformed ready environment live messages with empty statusLabel are rejected', () => {
+  it('response schemas reject missing environment instead of defaulting malformed payloads', () => {
+    const responseSchemaCases = [
+      {
+        name: 'processWorkSurfaceResponseSchema',
+        safeParse: (value: unknown) => processWorkSurfaceResponseSchema.safeParse(value),
+        payload: readyEnvironmentProcessWorkSurfaceFixture,
+      },
+      {
+        name: 'startProcessResponseSchema',
+        safeParse: (value: unknown) => startProcessResponseSchema.safeParse(value),
+        payload: {
+          ...startedProcessResponseFixture,
+          environment: readyEnvironmentFixture,
+        },
+      },
+      {
+        name: 'resumeProcessResponseSchema',
+        safeParse: (value: unknown) => resumeProcessResponseSchema.safeParse(value),
+        payload: {
+          ...resumedPausedProcessResponseFixture,
+          environment: readyEnvironmentFixture,
+        },
+      },
+      {
+        name: 'rehydrateProcessResponseSchema',
+        safeParse: (value: unknown) => rehydrateProcessResponseSchema.safeParse(value),
+        payload: {
+          ...rehydratedProcessResponseFixture,
+          environment: readyEnvironmentFixture,
+        },
+      },
+      {
+        name: 'rebuildProcessResponseSchema',
+        safeParse: (value: unknown) => rebuildProcessResponseSchema.safeParse(value),
+        payload: {
+          ...rebuiltProcessResponseFixture,
+          environment: readyEnvironmentFixture,
+        },
+      },
+    ];
+
+    for (const responseSchemaCase of responseSchemaCases) {
+      const { environment: _environment, ...payloadWithoutEnvironment } =
+        responseSchemaCase.payload;
+      const result = responseSchemaCase.safeParse(payloadWithoutEnvironment);
+
+      expect(result.success, `${responseSchemaCase.name} should reject missing environment`).toBe(
+        false,
+      );
+      expect(JSON.stringify(result.error?.issues)).toContain('"environment"');
+    }
+  });
+
+  it('TC-3.3e malformed ready environment live messages with empty statusLabel are rejected', () => {
     const result = liveProcessUpdateMessageSchema.safeParse({
       subscriptionId: 'subscription-001',
       processId: runningProcessSurfaceFixture.processId,

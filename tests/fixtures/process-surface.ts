@@ -392,6 +392,7 @@ export const resumedPausedToCompletedProcessResponseFixture = resumeProcessRespo
     updatedAt: '2026-04-13T12:25:00.000Z',
   }),
   currentRequest: null,
+  environment: absentEnvironmentFixture,
 });
 
 export const resumedInterruptedProcessResponseFixture = resumeProcessResponseSchema.parse({
@@ -438,6 +439,7 @@ export const resumedInterruptedToFailedProcessResponseFixture = resumeProcessRes
     updatedAt: '2026-04-13T12:28:00.000Z',
   }),
   currentRequest: null,
+  environment: absentEnvironmentFixture,
 });
 
 export const submittedProcessResponseFixture = submitProcessResponseResponseSchema.parse({

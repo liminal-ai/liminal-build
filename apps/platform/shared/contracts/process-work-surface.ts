@@ -232,7 +232,7 @@ export const defaultEnvironmentSummary = {
 
 export const environmentSummarySchema = z.object({
   environmentId: z.string().min(1).nullable().default(defaultEnvironmentSummary.environmentId),
-  state: environmentStateSchema.default(defaultEnvironmentSummary.state),
+  state: environmentStateSchema,
   statusLabel: z.string().min(1),
   blockedReason: z.string().min(1).nullable().default(defaultEnvironmentSummary.blockedReason),
   lastHydratedAt: z.string().min(1).nullable().default(defaultEnvironmentSummary.lastHydratedAt),
@@ -390,21 +390,21 @@ export const processWorkSurfaceResponseSchema = z.object({
   materials: processMaterialsSectionEnvelopeSchema,
   currentRequest: currentProcessRequestSchema.nullable(),
   sideWork: sideWorkSectionEnvelopeSchema,
-  environment: environmentSummarySchema.default(defaultEnvironmentSummary),
+  environment: environmentSummarySchema,
 });
 export type ProcessWorkSurfaceResponse = z.infer<typeof processWorkSurfaceResponseSchema>;
 
 export const startProcessResponseSchema = z.object({
   process: processSurfaceSummarySchema,
   currentRequest: currentProcessRequestSchema.nullable(),
-  environment: environmentSummarySchema.default(defaultEnvironmentSummary),
+  environment: environmentSummarySchema,
 });
 export type StartProcessResponse = z.infer<typeof startProcessResponseSchema>;
 
 export const resumeProcessResponseSchema = z.object({
   process: processSurfaceSummarySchema,
   currentRequest: currentProcessRequestSchema.nullable(),
-  environment: environmentSummarySchema.default(defaultEnvironmentSummary),
+  environment: environmentSummarySchema,
 });
 export type ResumeProcessResponse = z.infer<typeof resumeProcessResponseSchema>;
 
@@ -412,7 +412,7 @@ export const rehydrateProcessResponseSchema = z.object({
   accepted: z.literal(true),
   process: processSurfaceSummarySchema,
   currentRequest: currentProcessRequestSchema.nullable().default(null),
-  environment: environmentSummarySchema.default(defaultEnvironmentSummary),
+  environment: environmentSummarySchema,
 });
 export type RehydrateProcessResponse = z.infer<typeof rehydrateProcessResponseSchema>;
 
@@ -420,7 +420,7 @@ export const rebuildProcessResponseSchema = z.object({
   accepted: z.literal(true),
   process: processSurfaceSummarySchema,
   currentRequest: currentProcessRequestSchema.nullable().default(null),
-  environment: environmentSummarySchema.default(defaultEnvironmentSummary),
+  environment: environmentSummarySchema,
 });
 export type RebuildProcessResponse = z.infer<typeof rebuildProcessResponseSchema>;
 
