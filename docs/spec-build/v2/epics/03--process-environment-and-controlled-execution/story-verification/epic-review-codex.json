@@ -1,0 +1,207 @@
+{
+  "verdict": "REVISE",
+  "gate": {
+    "status": "PASS",
+    "command": "corepack pnpm run verify-all 2>&1 | tail -40",
+    "tail": "\n RUN  v4.1.4 /Users/leemoore/code/liminal-build\n\n\n Test Files  12 passed (12)\n      Tests  103 passed (103)\n   Start at  05:41:22\n   Duration  840ms (transform 1.21s, setup 0ms, import 3.24s, tests 1.01s, environment 1ms)\n\n\n> liminal-build@ test:client /Users/leemoore/code/liminal-build\n> corepack pnpm exec vitest run tests/service/client --environment jsdom\n\n\n RUN  v4.1.4 /Users/leemoore/code/liminal-build\n\n\n Test Files  19 passed (19)\n      Tests  148 passed (148)\n   Start at  05:41:23\n   Duration  1.18s (transform 1.36s, setup 0ms, import 2.77s, tests 687ms, environment 9.41s)\n\n\n> liminal-build@ test:integration /Users/leemoore/code/liminal-build\n> corepack pnpm exec vitest run tests/integration --environment node\n\n\n RUN  v4.1.4 /Users/leemoore/code/liminal-build\n\n\n Test Files  2 passed (2)\n      Tests  8 passed (8)\n   Start at  05:41:25\n   Duration  426ms (transform 240ms, setup 0ms, import 539ms, tests 135ms, environment 0ms)\n\n\n> liminal-build@ test:e2e /Users/leemoore/code/liminal-build\n> node -e \"console.log('SKIP: test:e2e scaffolded in Story 0; no executable suite yet')\"\n\nSKIP: test:e2e scaffolded in Story 0; no executable suite yet\n"
+  },
+  "counts": {
+    "blocking_findings": 3,
+    "boundary_stubs": 4
+  },
+  "blocking_findings": [
+    {
+      "finding": "Live Convex-backed hydration runs with an empty working set.",
+      "severity": "MAJOR",
+      "confidence": "HIGH",
+      "evidence": [
+        "apps/platform/server/services/processes/process-start.service.ts:51-67",
+        "apps/platform/server/services/projects/platform-store.ts:799-807",
+        "apps/platform/server/services/processes/environment/process-environment.service.ts:187-202",
+        "docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/epic.md:233-244"
+      ],
+      "impact": "The accepted HTTP start/resume path composes correctly only with InMemoryPlatformStore. On the real Convex store, current artifacts, outputs, and attached sources are not available to async hydration, so AC-2.2 is broken on the live durable path and downstream recovery work inherits the same gap.",
+      "validation_step": "Persist WorkingSetPlan in ConvexPlatformStore, reload it in executeHydration(), and add a test that runs start/resume against the Convex-backed store path."
+    },
+    {
+      "finding": "Stale/recovery freshness is not implemented end-to-end.",
+      "severity": "MAJOR",
+      "confidence": "HIGH",
+      "evidence": [
+        "docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/tech-design.md:312-339",
+        "convex/processEnvironmentStates.ts:42-52",
+        "convex/processEnvironmentStates.ts:160-170",
+        "convex/processes.ts:263-272"
+      ],
+      "impact": "stale is currently a fixture/seeded state, not a computed runtime outcome of canonical drift. That leaves TC-5.1a and the real rehydrate-from-drift story unresolved even though the surface can render the state once it exists.",
+      "validation_step": "Compute and store a fingerprint on hydration/rebuild, compare it against canonical inputs on bootstrap or material changes, transition to stale when it drifts, and add an integration test that drives canonical-input change -> stale -> rehydrate."
+    },
+    {
+      "finding": "The server execution contract cannot produce the process-facing lifecycle the epic and tech design require.",
+      "severity": "MAJOR",
+      "confidence": "HIGH",
+      "evidence": [
+        "apps/platform/server/services/processes/environment/provider-adapter.ts:15-23",
+        "apps/platform/server/services/processes/environment/process-environment.service.ts:359-443",
+        "docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/tech-design-server.md:564-570",
+        "docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/epic.md:306-325"
+      ],
+      "impact": "Actual execution can move the environment through running, checkpointing, and failed, but it cannot emit process-facing history, side-work, or waiting/completed/interrupted status transitions from the real execution path. AC-3.2a and TC-3.3a therefore remain fixture-driven rather than end-to-end real.",
+      "validation_step": "Expand ExecutionResult and ProcessEnvironmentService to persist/publish process status, history, side-work, and checkpoint candidates from execution, then add a server live-update test that reaches waiting without manual message injection."
+    }
+  ],
+  "nonblocking_warnings": [
+    {
+      "finding": "The implementation introduces an undocumented rehydrating environment state.",
+      "severity": "MINOR",
+      "confidence": "HIGH",
+      "evidence": [
+        "apps/platform/shared/contracts/process-work-surface.ts:83-110",
+        "apps/platform/server/services/processes/process-work-surface.service.ts:97-151",
+        "apps/platform/client/app/process-live.ts:90-92",
+        "apps/platform/client/app/bootstrap.ts:341-345",
+        "docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/epic.md:135-174",
+        "docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/epic.md:582-588"
+      ],
+      "impact": "The user-facing contract, control matrix, and durable schema are no longer perfectly aligned. Reviewers and downstream implementers must reason about a state the epic never names.",
+      "validation_step": "Either collapse rehydrating back into preparing, or update the epic, tech design, stories, and tests so the extra state is explicitly sanctioned."
+    },
+    {
+      "finding": "The gate is strong on UI/reducer behavior but weak on production-store and whole-chain validation.",
+      "severity": "MINOR",
+      "confidence": "HIGH",
+      "evidence": [
+        "tests/integration/process-work-surface.test.ts:1-487",
+        "tests/service/server/process-live-updates.test.ts:649-1207",
+        "tests/service/client/process-live.test.ts:176-826"
+      ],
+      "impact": "The suite gives high confidence in rendering and live message application, but medium confidence in the real Fastify + Convex durable path and in one-pass start -> execute -> checkpoint -> recover -> reopen behavior.",
+      "validation_step": "Add one deep test lane that runs against the Convex-backed store implementation and one end-to-end chain test that exercises write, recovery, and reopen together."
+    }
+  ],
+  "boundary_inventory": [
+    {
+      "boundary": "DaytonaProviderAdapter",
+      "status": "STUBBED_KNOWN",
+      "assessment": "App startup still defaults to InMemoryProviderAdapter; no real Daytona adapter implementation is present.",
+      "evidence": [
+        "apps/platform/server/app.ts:130-140",
+        "docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/pre-verification-cleanup.md:45-46"
+      ]
+    },
+    {
+      "boundary": "LocalProviderAdapter",
+      "status": "STUBBED_KNOWN",
+      "assessment": "Same provider boundary status as Daytona: no real local adapter ships in the tree; provider behavior remains test/in-memory.",
+      "evidence": [
+        "apps/platform/server/app.ts:130-140",
+        "docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/pre-verification-cleanup.md:45-46"
+      ]
+    },
+    {
+      "boundary": "Real GitHub code checkpoint writer",
+      "status": "STUBBED_KNOWN",
+      "assessment": "The default writer is still StubCodeCheckpointWriter; no @octokit/rest integration exists in source.",
+      "evidence": [
+        "apps/platform/server/app.ts:133-140",
+        "apps/platform/server/services/processes/environment/code-checkpoint-writer.ts:8-20",
+        "docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/pre-verification-cleanup.md:48-49"
+      ]
+    },
+    {
+      "boundary": "Real Convex canonical-material recovery query",
+      "status": "STUBBED_KNOWN",
+      "assessment": "ConvexPlatformStore.hasCanonicalRecoveryMaterials() always returns true, so missing-prerequisite rejection is not real on the live Convex path.",
+      "evidence": [
+        "apps/platform/server/services/projects/platform-store.ts:876-878"
+      ]
+    }
+  ],
+  "ac_tc_status": {
+    "AC-1.1": "SATISFIED",
+    "TC-1.1a": "SATISFIED",
+    "TC-1.1b": "SATISFIED",
+    "TC-1.1c": "SATISFIED",
+    "TC-1.1d": "SATISFIED",
+    "TC-1.1e": "SATISFIED",
+    "TC-1.1f": "SATISFIED",
+    "TC-1.1g": "SATISFIED",
+    "TC-1.1h": "SATISFIED",
+    "TC-1.1i": "SATISFIED",
+    "TC-1.1j": "SATISFIED",
+    "TC-1.1k": "SATISFIED",
+    "AC-1.2": "SATISFIED",
+    "TC-1.2a": "SATISFIED",
+    "TC-1.2b": "SATISFIED",
+    "AC-1.3": "SATISFIED",
+    "TC-1.3a": "SATISFIED",
+    "TC-1.3b": "SATISFIED",
+    "AC-1.4": "SATISFIED",
+    "TC-1.4a": "SATISFIED",
+    "AC-1.5": "SATISFIED",
+    "TC-1.5a": "SATISFIED",
+    "AC-2.1": "SATISFIED",
+    "TC-2.1a": "SATISFIED",
+    "TC-2.1b": "SATISFIED",
+    "AC-2.2": "VIOLATED",
+    "TC-2.2a": "VIOLATED",
+    "TC-2.2b": "VIOLATED",
+    "AC-2.3": "SATISFIED",
+    "TC-2.3a": "SATISFIED",
+    "TC-2.3b": "SATISFIED",
+    "AC-2.4": "SATISFIED",
+    "TC-2.4a": "SATISFIED",
+    "TC-2.4b": "SATISFIED",
+    "AC-2.5": "SATISFIED",
+    "TC-2.5a": "SATISFIED",
+    "TC-2.5b": "SATISFIED",
+    "AC-3.1": "SATISFIED",
+    "TC-3.1a": "SATISFIED",
+    "AC-3.2": "UNRESOLVED",
+    "TC-3.2a": "UNRESOLVED",
+    "TC-3.2b": "SATISFIED",
+    "AC-3.3": "UNRESOLVED",
+    "TC-3.3a": "UNRESOLVED",
+    "TC-3.3b": "SATISFIED",
+    "AC-3.4": "SATISFIED",
+    "TC-3.4a": "SATISFIED",
+    "AC-4.1": "SATISFIED",
+    "TC-4.1a": "SATISFIED",
+    "TC-4.1b": "SATISFIED",
+    "AC-4.2": "UNRESOLVED",
+    "TC-4.2a": "UNRESOLVED",
+    "TC-4.2b": "SATISFIED",
+    "AC-4.3": "SATISFIED",
+    "TC-4.3a": "SATISFIED",
+    "AC-4.4": "SATISFIED",
+    "TC-4.4a": "SATISFIED",
+    "TC-4.4b": "SATISFIED",
+    "AC-4.5": "SATISFIED",
+    "TC-4.5a": "SATISFIED",
+    "TC-4.5b": "SATISFIED",
+    "AC-5.1": "UNRESOLVED",
+    "TC-5.1a": "UNRESOLVED",
+    "TC-5.1b": "SATISFIED",
+    "AC-5.2": "SATISFIED",
+    "TC-5.2a": "SATISFIED",
+    "TC-5.2b": "SATISFIED",
+    "AC-5.3": "SATISFIED",
+    "TC-5.3a": "SATISFIED",
+    "TC-5.3b": "SATISFIED",
+    "AC-5.4": "UNRESOLVED",
+    "TC-5.4a": "SATISFIED",
+    "TC-5.4b": "UNRESOLVED",
+    "AC-5.5": "UNRESOLVED",
+    "TC-5.5a": "UNRESOLVED",
+    "TC-5.5b": "SATISFIED",
+    "AC-6.1": "SATISFIED",
+    "TC-6.1a": "SATISFIED",
+    "AC-6.2": "SATISFIED",
+    "TC-6.2a": "SATISFIED",
+    "AC-6.3": "SATISFIED",
+    "TC-6.3a": "SATISFIED",
+    "AC-6.4": "SATISFIED",
+    "TC-6.4a": "SATISFIED",
+    "TC-6.4b": "SATISFIED"
+  }
+}
