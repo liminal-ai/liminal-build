@@ -20,6 +20,8 @@ import {
 } from './services/processes/live/process-live-hub.js';
 import { ProcessModuleRegistry } from './services/processes/process-module-registry.js';
 import { ProcessAccessService } from './services/processes/process-access.service.js';
+import { CheckpointPlanner } from './services/processes/environment/checkpoint-planner.js';
+import type { CodeCheckpointWriter } from './services/processes/environment/code-checkpoint-writer.js';
 import { ProcessEnvironmentService } from './services/processes/environment/process-environment.service.js';
 import {
   InMemoryProviderAdapter,
@@ -60,6 +62,8 @@ export interface CreateAppOptions {
   processModuleRegistry?: ProcessModuleRegistry;
   providerAdapter?: ProviderAdapter;
   scriptExecutionService?: ScriptExecutionService;
+  checkpointPlanner?: CheckpointPlanner;
+  codeCheckpointWriter?: CodeCheckpointWriter;
   processEnvironmentService?: ProcessEnvironmentService;
   processResponseService?: ProcessResponseService;
   processRegistrationService?: ProcessRegistrationService;
@@ -129,6 +133,8 @@ export async function createApp(options: CreateAppOptions = {}) {
       providerAdapter,
       processLiveHub,
       scriptExecutionService,
+      options.checkpointPlanner,
+      options.codeCheckpointWriter,
     );
   const processStartService =
     options.processStartService ??

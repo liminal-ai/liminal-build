@@ -12,6 +12,10 @@ function buildProvider(result: ExecutionResult): ProviderAdapter {
       lastHydratedAt: '2026-04-15T12:00:00.000Z',
     })),
     executeScript: vi.fn(async () => result),
+    collectCheckpointCandidate: vi.fn(async () => ({
+      artifacts: [],
+      codeDiffs: [],
+    })),
   };
 }
 

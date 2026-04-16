@@ -309,6 +309,10 @@ class RecordingPlatformStore implements PlatformStore {
     }));
   }
 
+  async persistCheckpointArtifacts(): Promise<PlatformProcessOutputSummary[]> {
+    throw new Error('NOT_IMPLEMENTED: RecordingPlatformStore.persistCheckpointArtifacts');
+  }
+
   async listProcessSideWorkItems(): Promise<SideWorkItem[]> {
     return [];
   }

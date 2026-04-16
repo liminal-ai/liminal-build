@@ -134,6 +134,8 @@ export const upsertProcessEnvironmentState = mutation({
     environmentId: v.union(v.string(), v.null()),
     blockedReason: v.union(v.string(), v.null()),
     lastHydratedAt: v.union(v.string(), v.null()),
+    lastCheckpointAt: v.optional(v.union(v.string(), v.null())),
+    lastCheckpointResult: v.optional(v.union(checkpointResultValidator, v.null())),
   },
   handler: async (ctx, args): Promise<EnvironmentSummary> => {
     let processRecord: Doc<'processes'> | null = null;

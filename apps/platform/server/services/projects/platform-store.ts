@@ -16,6 +16,7 @@ import {
   type SideWorkItem,
   type SourceAttachmentSummary,
 } from '../../../shared/contracts/index.js';
+import type { ArtifactCheckpointTarget } from '../processes/environment/checkpoint-types.js';
 
 export interface StoredPlatformUser {
   userId: string;
@@ -139,6 +140,8 @@ export interface PlatformStore {
     environmentId: string | null;
     blockedReason: string | null;
     lastHydratedAt: string | null;
+    lastCheckpointAt?: string | null;
+    lastCheckpointResult?: EnvironmentSummary['lastCheckpointResult'];
   }): Promise<EnvironmentSummary>;
   getCurrentProcessMaterialRefs(args: { processId: string }): Promise<CurrentProcessMaterialRefs>;
   setCurrentProcessMaterialRefs(args: {
@@ -155,6 +158,10 @@ export interface PlatformStore {
   replaceCurrentProcessOutputs(args: {
     processId: string;
     outputs: PlatformProcessOutputWriteInput[];
+  }): Promise<PlatformProcessOutputSummary[]>;
+  persistCheckpointArtifacts(args: {
+    processId: string;
+    artifacts: ArtifactCheckpointTarget[];
   }): Promise<PlatformProcessOutputSummary[]>;
   listProcessSideWorkItems(args: { processId: string }): Promise<SideWorkItem[]>;
   replaceCurrentProcessSideWorkItems(args: {
@@ -299,6 +306,8 @@ const upsertProcessEnvironmentStateMutation = makeFunctionReference<
     environmentId: string | null;
     blockedReason: string | null;
     lastHydratedAt: string | null;
+    lastCheckpointAt?: string | null;
+    lastCheckpointResult?: EnvironmentSummary['lastCheckpointResult'];
   },
   EnvironmentSummary
 >('processEnvironmentStates:upsertProcessEnvironmentState');
@@ -531,6 +540,8 @@ export class NullPlatformStore implements PlatformStore {
     environmentId: string | null;
     blockedReason: string | null;
     lastHydratedAt: string | null;
+    lastCheckpointAt?: string | null;
+    lastCheckpointResult?: EnvironmentSummary['lastCheckpointResult'];
   }): Promise<EnvironmentSummary> {
     return environmentSummarySchema.parse({
       environmentId: args.environmentId,
@@ -591,6 +602,10 @@ export class NullPlatformStore implements PlatformStore {
       state: output.state,
       updatedAt: output.updatedAt ?? new Date().toISOString(),
     }));
+  }
+
+  async persistCheckpointArtifacts(): Promise<PlatformProcessOutputSummary[]> {
+    throw new Error('NOT_IMPLEMENTED: NullPlatformStore.persistCheckpointArtifacts');
   }
 
   async listProcessSideWorkItems(): Promise<SideWorkItem[]> {
@@ -731,6 +746,8 @@ export class ConvexPlatformStore implements PlatformStore {
     environmentId: string | null;
     blockedReason: string | null;
     lastHydratedAt: string | null;
+    lastCheckpointAt?: string | null;
+    lastCheckpointResult?: EnvironmentSummary['lastCheckpointResult'];
   }): Promise<EnvironmentSummary> {
     return this.client.mutation(upsertProcessEnvironmentStateMutation, args, {
       skipQueue: true,
@@ -785,6 +802,10 @@ export class ConvexPlatformStore implements PlatformStore {
         updatedAt: output.updatedAt,
       })),
     });
+  }
+
+  async persistCheckpointArtifacts(): Promise<PlatformProcessOutputSummary[]> {
+    throw new Error('NOT_IMPLEMENTED: ConvexPlatformStore.persistCheckpointArtifacts');
   }
 
   async listProcessSideWorkItems(args: { processId: string }): Promise<SideWorkItem[]> {
@@ -1193,6 +1214,8 @@ export class InMemoryPlatformStore implements PlatformStore {
     environmentId: string | null;
     blockedReason: string | null;
     lastHydratedAt: string | null;
+    lastCheckpointAt?: string | null;
+    lastCheckpointResult?: EnvironmentSummary['lastCheckpointResult'];
   }): Promise<EnvironmentSummary> {
     const existing =
       this.processEnvironmentSummariesByProcessId.get(args.processId) ??
@@ -1277,6 +1300,10 @@ export class InMemoryPlatformStore implements PlatformStore {
 
     this.processOutputsByProcessId.set(args.processId, nextOutputs);
     return nextOutputs;
+  }
+
+  async persistCheckpointArtifacts(): Promise<PlatformProcessOutputSummary[]> {
+    throw new Error('NOT_IMPLEMENTED: InMemoryPlatformStore.persistCheckpointArtifacts');
   }
 
   async listProcessSideWorkItems(args: { processId: string }): Promise<SideWorkItem[]> {

@@ -514,6 +514,9 @@ describe('auth routes', () => {
           updatedAt: output.updatedAt ?? '2026-04-13T12:06:00.000Z',
         }));
       },
+      async persistCheckpointArtifacts() {
+        throw new Error('NOT_IMPLEMENTED: auth-routes.test persistCheckpointArtifacts');
+      },
       async listProcessSideWorkItems() {
         return [];
       },

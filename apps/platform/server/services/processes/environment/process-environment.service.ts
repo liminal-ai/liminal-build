@@ -2,6 +2,8 @@ import type { EnvironmentSummary } from '../../../../shared/contracts/index.js';
 import type { PlatformStore } from '../../projects/platform-store.js';
 import type { ProcessLiveHub } from '../live/process-live-hub.js';
 import { buildProcessSurfaceSummary } from '../process-work-surface.service.js';
+import type { CheckpointPlanner } from './checkpoint-planner.js';
+import type { CodeCheckpointWriter } from './code-checkpoint-writer.js';
 import type { ProviderAdapter } from './provider-adapter.js';
 import type { ScriptExecutionService } from './script-execution.service.js';
 
@@ -11,6 +13,12 @@ export class ProcessEnvironmentService {
     private readonly providerAdapter: ProviderAdapter,
     private readonly processLiveHub: ProcessLiveHub,
     private readonly scriptExecutionService?: ScriptExecutionService,
+    private readonly checkpointPlanner?: CheckpointPlanner,
+    private readonly codeCheckpointWriter?: CodeCheckpointWriter,
+    private readonly artifactCheckpointPersistence: Pick<
+      PlatformStore,
+      'persistCheckpointArtifacts'
+    > = platformStore,
   ) {}
 
   /**
@@ -199,6 +207,18 @@ export class ProcessEnvironmentService {
           environment: checkpointingEnvironment,
         },
       });
+
+      if (
+        this.checkpointPlanner !== undefined ||
+        this.codeCheckpointWriter !== undefined ||
+        this.artifactCheckpointPersistence !== this.platformStore
+      ) {
+        this.runCheckpointAsync({
+          projectId: args.projectId,
+          processId: args.processId,
+          environmentId: args.environmentId,
+        });
+      }
     } catch (error) {
       try {
         const failedEnvironment = await this.platformStore.upsertProcessEnvironmentState({
@@ -222,5 +242,14 @@ export class ProcessEnvironmentService {
         // Execution failures must not escape the fire-and-forget path.
       }
     }
+  }
+
+  private runCheckpointAsync(args: {
+    projectId: string;
+    processId: string;
+    environmentId: string;
+  }): void {
+    void args;
+    throw new Error('NOT_IMPLEMENTED: ProcessEnvironmentService.runCheckpointAsync');
   }
 }

@@ -1,4 +1,5 @@
 import type { WorkingSetPlan } from '../../projects/platform-store.js';
+import type { CheckpointCandidate } from './checkpoint-types.js';
 
 export interface HydrationResult {
   environmentId: string;
@@ -14,6 +15,10 @@ export interface ExecutionResult {
 export interface ProviderAdapter {
   hydrateEnvironment(args: { processId: string; plan: WorkingSetPlan }): Promise<HydrationResult>;
   executeScript(args: { processId: string; environmentId: string }): Promise<ExecutionResult>;
+  collectCheckpointCandidate(args: {
+    processId: string;
+    environmentId: string;
+  }): Promise<CheckpointCandidate>;
 }
 
 /**
@@ -41,6 +46,29 @@ export class InMemoryProviderAdapter implements ProviderAdapter {
       completedAt: new Date().toISOString(),
     };
   }
+
+  async collectCheckpointCandidate(args: {
+    processId: string;
+    environmentId: string;
+  }): Promise<CheckpointCandidate> {
+    return {
+      artifacts: [
+        {
+          artifactId: `${args.processId}:artifact-checkpoint-1`,
+          producedAt: new Date().toISOString(),
+          contents: `artifact checkpoint contents for ${args.environmentId}`,
+          targetLabel: 'Generated artifact checkpoint',
+        },
+      ],
+      codeDiffs: [
+        {
+          sourceAttachmentId: `${args.processId}:source-checkpoint-1`,
+          targetRef: 'main',
+          diff: `diff --git a/${args.processId}.md b/${args.processId}.md`,
+        },
+      ],
+    };
+  }
 }
 
 /**
@@ -55,6 +83,13 @@ export class FailingProviderAdapter implements ProviderAdapter {
   }
 
   async executeScript(_args: { processId: string; environmentId: string }): Promise<never> {
+    throw new Error(this.reason);
+  }
+
+  async collectCheckpointCandidate(_args: {
+    processId: string;
+    environmentId: string;
+  }): Promise<never> {
     throw new Error(this.reason);
   }
 }

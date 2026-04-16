@@ -6,6 +6,7 @@ import {
 } from '../../../apps/platform/server/services/auth/auth-session.service.js';
 import { AuthUserSyncService } from '../../../apps/platform/server/services/auth/auth-user-sync.service.js';
 import { InMemoryPlatformStore } from '../../../apps/platform/server/services/projects/platform-store.js';
+import { CheckpointPlanner } from '../../../apps/platform/server/services/processes/environment/checkpoint-planner.js';
 import {
   currentProcessRequestSchema,
   processHistoryItemSchema,
@@ -1110,5 +1111,116 @@ describe('process actions api', () => {
     });
 
     await app.close();
+  });
+});
+
+describe('checkpoint planner', () => {
+  it('TC-4.2a plans writable source code checkpoint targets', async () => {
+    const planner = new CheckpointPlanner();
+
+    await expect(
+      planner.planFor({
+        processId: 'process-story4-001',
+        candidate: {
+          codeDiffs: [
+            {
+              sourceAttachmentId: 'source-writable-001',
+              targetRef: 'feature/story-4',
+              diff: 'diff --git a/src/file.ts b/src/file.ts',
+            },
+          ],
+        },
+        sourceAccessModes: {
+          'source-writable-001': 'read_write',
+        },
+      }),
+    ).resolves.toEqual({
+      artifactTargets: [],
+      codeTargets: [
+        {
+          sourceAttachmentId: 'source-writable-001',
+          targetRef: 'feature/story-4',
+          diff: 'diff --git a/src/file.ts b/src/file.ts',
+        },
+      ],
+      skippedReadOnly: [],
+    });
+  });
+
+  it('TC-4.3a excludes read_only sources from code checkpoint planning', async () => {
+    const planner = new CheckpointPlanner();
+
+    await expect(
+      planner.planFor({
+        processId: 'process-story4-002',
+        candidate: {
+          codeDiffs: [
+            {
+              sourceAttachmentId: 'source-readonly-001',
+              targetRef: 'main',
+              diff: 'diff --git a/README.md b/README.md',
+            },
+          ],
+        },
+        sourceAccessModes: {
+          'source-readonly-001': 'read_only',
+        },
+      }),
+    ).resolves.toEqual({
+      artifactTargets: [],
+      codeTargets: [],
+      skippedReadOnly: [
+        {
+          sourceAttachmentId: 'source-readonly-001',
+          accessMode: 'read_only',
+        },
+      ],
+    });
+  });
+
+  it('S4-NT-1 artifact candidates remain eligible even when code candidates are skipped', async () => {
+    const planner = new CheckpointPlanner();
+
+    await expect(
+      planner.planFor({
+        processId: 'process-story4-003',
+        candidate: {
+          artifacts: [
+            {
+              artifactId: 'artifact-001',
+              producedAt: '2026-04-15T12:18:00.000Z',
+              contents: 'artifact contents',
+              targetLabel: 'Feature Specification Draft',
+            },
+          ],
+          codeDiffs: [
+            {
+              sourceAttachmentId: 'source-readonly-002',
+              targetRef: 'main',
+              diff: 'diff --git a/docs/spec.md b/docs/spec.md',
+            },
+          ],
+        },
+        sourceAccessModes: {
+          'source-readonly-002': 'read_only',
+        },
+      }),
+    ).resolves.toEqual({
+      artifactTargets: [
+        {
+          artifactId: 'artifact-001',
+          producedAt: '2026-04-15T12:18:00.000Z',
+          contents: 'artifact contents',
+          targetLabel: 'Feature Specification Draft',
+        },
+      ],
+      codeTargets: [],
+      skippedReadOnly: [
+        {
+          sourceAttachmentId: 'source-readonly-002',
+          accessMode: 'read_only',
+        },
+      ],
+    });
   });
 });

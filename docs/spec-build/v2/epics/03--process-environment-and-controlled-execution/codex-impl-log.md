@@ -2004,6 +2004,82 @@ default `2>/dev/null` pattern is unsafe for diagnosis.
 - The existing `ProviderAdapter` interface already has `executeScript` in
   the tech design — use that seam.
 
+## Story 3 Transition Checkpoint
+
+- Story 3 acceptance: accepted
+- Story 3 red-phase commit: `414879a`
+- Story 3 acceptance commit: `5dd159f` (`feat: Story 3 — Controlled Execution and Live Environment State`)
+- Convergence rounds run: 1
+- Cumulative test baseline: 9 convex + 86 server + 138 client = 233 passing
+- Baseline movement: 220 (post-Story-2) → 233 (post-Story-3). Matches expected ~10-13 delta; well within pre-story projection.
+- Boundary inventory: `ScriptExecutionService` + `ProviderAdapter.executeScript` now provider-backed via `InMemoryProviderAdapter` / `FailingProviderAdapter` stubs (still test-only adapters — hosted/local providers not yet implemented). `code-checkpoint-writer.ts` remains unimplemented (Story 4 work).
+
+### Story 3 Round 1 Dual Verification
+
+- Sonnet Round 1: PASS with 3 nonblocking warnings (W-1 missing isolation tests, W-2 thin server legibility assertion, W-3 untested fallback blockedReason)
+- Codex Round 1: REVISE with 1 MAJOR/HIGH blocker — same-session execution-failure publication didn't recompute process.controls, so rehydrate/rebuild stayed disabled until reload; violated AC-3.4 in-session recovery path. Sonnet missed this; Codex caught it. Same pattern as Story 1 Fix Batch 01.
+
+### Story 3 Fix Batch 01
+
+- Spec: `story-03-fix-batch-01.md`
+- Item 1 (required): all 3 execution-lane live publications (`running`, `checkpointing`, `failed`) now include an env-aware `process` summary via `buildProcessSurfaceSummary(currentProcess, nextEnvironment)`. Current process read once per execution run via existing `platformStore.getProcessRecord(...)`.
+- Item 2 (required): added `TC-3.4b execution failure republishes recovery controls without refetch` — drives paired process+env failure publication on a running surface and asserts rehydrate/rebuild enable without reload.
+- Item 3 (preferred): split out two standalone isolation tests (`environment updates do not wipe unrelated history state`, `... materials state`) addressing Sonnet W-1.
+- Implementer fix-batch modified only `process-environment.service.ts` and added tests to `process-live.test.ts`. No existing assertions changed.
+
+### Story 3 Round 2 Dual Verification
+
+- Sonnet Round 2: PASS. Codex blocker closed; W-1 closed by Item 3; W-2 and W-3 remain accepted-risk.
+- Codex Round 2: PASS. Original blocker closed, 0 blocking, 0 new warnings, test diff additive-only, no regression in Story 1/2/3 assertions.
+
+### Orchestration Learnings (Story 3)
+
+- The hybrid-direct-Bash codex exec dispatch worked cleanly for all three Codex roles in this story (red implementer, green implementer, fix implementer, round-1 verifier, round-2 verifier). Total 5 successful codex exec runs in one story with zero stalls. The diagnosed pattern holds.
+- Parallel dispatch (codex exec + one-shot Sonnet Agent) was stable — no cross-lane interference.
+- The finding Codex caught and Sonnet missed mirrors the Story 1 Fix Batch pattern: whenever a live publication can change the env-derived control state, the publication must carry a recomputed `process` summary. This is a cross-story invariant worth hoisting into a helper or codifying in contracts later. Logging for future orchestrators.
+
+## Story 4 Preflight
+
+- `state`: `STORY_ACTIVE`
+- `phase`: `red`
+- Story: `stories/04-durable-checkpoint-of-artifacts-and-writable-sources.md`
+- Story base commit: `5dd159f`
+- Lane: Codex `gpt-5.4` reasoning `xhigh` via direct Bash `codex exec` (proven pattern)
+
+### Preflight Assessment
+
+- Story 4 introduces the REAL durable checkpoint path. Artifact outputs persist to canonical artifact state; writable-source code persists to canonical code truth (GitHub). `lastCheckpointResult` populated for the first time.
+- Primary new server files: `services/processes/environment/checkpoint-planner.ts`, `services/processes/environment/code-checkpoint-writer.ts` (GitHub write boundary)
+- Extended: `process-environment.service.ts` (checkpoint step after execution success), `ProviderAdapter.collectCheckpointCandidate(...)`, `platform-store.ts` (checkpoint-result writes)
+- `checkpointing` env state already wired in Story 3 — Story 4 populates what happens DURING checkpointing and sets `lastCheckpointResult`.
+- Client: `process-environment-panel.ts` renders latest checkpoint result (target, outcome, failureReason).
+
+### Scope Boundaries
+
+- In scope: checkpoint PLANNING (decide artifact vs code target + writable source guard), artifact output persistence, code checkpoint via GitHub writer, `lastCheckpointResult` population, checkpoint failure visibility with retry path.
+- Out of scope: Story 5 rehydrate/rebuild (no recovery mutations); Story 6 reopen restoration (TC-4.1b is explicitly deferred to Story 6); ordered checkpoint-history (epic owns only latest-result in this slice); full GitHub review/branching/PR workflows.
+- Read-only source guard is critical for AC-4.3 — the planner must refuse code checkpointing for `accessMode = 'read_only'` attachments.
+
+### Expected Test Baseline
+
+- Prior cumulative: 233 passing (9/86/138)
+- Story 4 expected additions (from test plan):
+  - `convex/processEnvironmentStates.test.ts` — +3-5 tests on lastCheckpointResult persistence + latest-only overwrite
+  - `tests/service/server/process-actions-api.test.ts` — +4-6 tests on checkpoint planning guards
+  - `tests/service/server/process-live-updates.test.ts` — +2-3 tests on checkpoint-result live visibility
+  - `tests/service/client/process-environment-panel.test.ts` — +2-3 tests on checkpoint result rendering
+  - Possibly new file for code-checkpoint-writer tests if GitHub boundary gets direct coverage
+- Expected post-Story-4: ~243–253
+
+### Story-Specific Warnings For Implementer
+
+- `code-checkpoint-writer.ts` is the GitHub write boundary — implement as a stub/fake that can succeed/fail deterministically for tests. Do NOT make real HTTP calls. `@octokit/rest` is the candidate package per tech-design but actual wiring may be deferred to the real-provider epic.
+- Read-only source guard (AC-4.3): planner refuses code-checkpoint target for `accessMode === 'read_only'` attachments. Test this explicitly.
+- `lastCheckpointResult` is latest-only — when a new checkpoint settles, it replaces prior visible result. Do NOT introduce an append-only checkpoint history table.
+- Checkpoint failure does NOT silently drop work (AC-4.5) — it must surface with a retry/recovery path visible to the user.
+- Do NOT implement Story 5 rehydrate/rebuild mutations. Do NOT implement Story 6 reopen restoration; TC-4.1b will be end-to-end exercisable in Story 6.
+
+
 
 
 
