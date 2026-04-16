@@ -14,7 +14,9 @@ export function renderProcessCheckpointResult(args: {
 
   const section = args.targetDocument.createElement('section');
   const heading = args.targetDocument.createElement('h5');
-  const summary = args.targetDocument.createElement('p');
+  const badge = args.targetDocument.createElement('span');
+  const kind = args.targetDocument.createElement('p');
+  const target = args.targetDocument.createElement('p');
   const completedAt = args.targetDocument.createElement('p');
 
   section.setAttribute('data-process-checkpoint-result', 'true');
@@ -22,9 +24,12 @@ export function renderProcessCheckpointResult(args: {
   section.setAttribute('data-process-checkpoint-outcome', args.result.outcome);
 
   heading.textContent = 'Latest checkpoint';
-  summary.textContent = `${formatCheckpointOutcome(args.result)} ${args.result.checkpointKind} checkpoint for ${args.result.targetLabel}`;
+  badge.setAttribute('data-process-checkpoint-outcome-badge', args.result.outcome);
+  badge.textContent = formatCheckpointOutcome(args.result);
+  kind.textContent = `Kind: ${args.result.checkpointKind}`;
+  target.textContent = `Target: ${args.result.targetLabel}`;
   completedAt.textContent = `Completed at: ${args.result.completedAt}`;
-  section.append(heading, summary, completedAt);
+  section.append(heading, badge, kind, target, completedAt);
 
   if (args.result.targetRef !== null) {
     const targetRef = args.targetDocument.createElement('p');

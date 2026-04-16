@@ -14,11 +14,15 @@ export class StubCodeCheckpointWriter implements CodeCheckpointWriter {
     outcome: 'succeeded' | 'failed';
     failureReason?: string;
   }> {
-    throw new Error('NOT_IMPLEMENTED: StubCodeCheckpointWriter.writeFor');
+    return {
+      outcome: 'succeeded',
+    };
   }
 }
 
 export class FailingCodeCheckpointWriter implements CodeCheckpointWriter {
+  constructor(private readonly reason: string = 'Code checkpoint failed.') {}
+
   async writeFor(_args: {
     sourceAttachmentId: string;
     targetRef: string | null;
@@ -27,6 +31,9 @@ export class FailingCodeCheckpointWriter implements CodeCheckpointWriter {
     outcome: 'succeeded' | 'failed';
     failureReason?: string;
   }> {
-    throw new Error('NOT_IMPLEMENTED: FailingCodeCheckpointWriter.writeFor');
+    return {
+      outcome: 'failed',
+      failureReason: this.reason,
+    };
   }
 }

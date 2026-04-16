@@ -164,8 +164,8 @@ export const upsertProcessEnvironmentState = mutation({
         state: args.state,
         blockedReason: args.blockedReason,
         lastHydratedAt: args.lastHydratedAt,
-        lastCheckpointAt: null,
-        lastCheckpointResult: null,
+        lastCheckpointAt: args.lastCheckpointAt ?? null,
+        lastCheckpointResult: args.lastCheckpointResult ?? null,
         workingSetFingerprint: null,
         createdAt: now,
         updatedAt: now,
@@ -177,6 +177,12 @@ export const upsertProcessEnvironmentState = mutation({
         state: args.state,
         blockedReason: args.blockedReason,
         lastHydratedAt: args.lastHydratedAt ?? existing.lastHydratedAt,
+        lastCheckpointAt:
+          args.lastCheckpointAt === undefined ? existing.lastCheckpointAt : args.lastCheckpointAt,
+        lastCheckpointResult:
+          args.lastCheckpointResult === undefined
+            ? existing.lastCheckpointResult
+            : args.lastCheckpointResult,
         updatedAt: now,
       });
     }

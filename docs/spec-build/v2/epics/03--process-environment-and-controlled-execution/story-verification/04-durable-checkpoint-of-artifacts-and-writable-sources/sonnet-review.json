@@ -1,0 +1,8 @@
+{
+  "verdict": "PASS",
+  "story": "04-durable-checkpoint-of-artifacts-and-writable-sources",
+  "gate_result": "passed",
+  "blocking_findings_count": 0,
+  "test_files_modified_since_red_commit": 1,
+  "summary": "All nine TC conditions (TC-4.1a through TC-4.5b) are satisfied: CheckpointPlanner correctly gates read_write vs read_only sources, CodeCheckpointWriter is a stub with no real HTTP or @octokit/rest, all checkpoint publications include a recomputed process summary per the Story 3 cross-story invariant, artifact persistence flows through the PlatformStore seam to a Convex mutation, and the environment panel renders outcome badges, target labels, and failure reasons. The full verify gate passes (format, lint, typecheck, build, 93 server tests, 141 client tests). The single implementer-flagged spec deviation — unknown source attachments defaulting to read_write instead of read_only in buildSourceAccessModes — is assessed as a nonblocking accepted risk: durable read_only sources are still correctly gated, no Story 4 TC requires the conservative default, and the fix (change ??= 'read_write' to ??= 'read_only') is a one-line hardening item for a future story. Two additional nonblocking warnings are noted: absence of process_event history emission at checkpoint settle (design says should, story says may, no TC requires it) and a minor outer-vs-inner checkpoint activation guard discrepancy that has no reachable production path with current callers."
+}

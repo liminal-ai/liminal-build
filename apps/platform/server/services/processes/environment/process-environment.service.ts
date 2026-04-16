@@ -1,8 +1,14 @@
-import type { EnvironmentSummary } from '../../../../shared/contracts/index.js';
+import type {
+  EnvironmentSummary,
+  LastCheckpointResult,
+  ProcessSummary,
+  SourceAttachmentSummary,
+} from '../../../../shared/contracts/index.js';
 import type { PlatformStore } from '../../projects/platform-store.js';
 import type { ProcessLiveHub } from '../live/process-live-hub.js';
 import { buildProcessSurfaceSummary } from '../process-work-surface.service.js';
 import type { CheckpointPlanner } from './checkpoint-planner.js';
+import type { CodeCheckpointTarget } from './checkpoint-types.js';
 import type { CodeCheckpointWriter } from './code-checkpoint-writer.js';
 import type { ProviderAdapter } from './provider-adapter.js';
 import type { ScriptExecutionService } from './script-execution.service.js';
@@ -64,14 +70,11 @@ export class ProcessEnvironmentService {
       const transitionResult = await this.platformStore.transitionProcessToRunning({
         processId: args.processId,
       });
-      this.processLiveHub.publish({
+      this.publishEnvironmentUpsert({
         projectId: args.projectId,
         processId: args.processId,
-        publication: {
-          messageType: 'upsert',
-          process: buildProcessSurfaceSummary(transitionResult.process, hydratedEnvironment),
-          environment: hydratedEnvironment,
-        },
+        process: transitionResult.process,
+        environment: hydratedEnvironment,
       });
 
       try {
@@ -92,14 +95,27 @@ export class ProcessEnvironmentService {
         blockedReason: hydrationError,
         lastHydratedAt: existing.lastHydratedAt,
       });
-      this.processLiveHub.publish({
-        projectId: args.projectId,
+      const currentProcess = await this.platformStore.getProcessRecord({
         processId: args.processId,
-        publication: {
-          messageType: 'upsert',
-          environment: failedEnvironment,
-        },
       });
+
+      if (currentProcess !== null) {
+        this.publishEnvironmentUpsert({
+          projectId: args.projectId,
+          processId: args.processId,
+          process: currentProcess,
+          environment: failedEnvironment,
+        });
+      } else {
+        this.processLiveHub.publish({
+          projectId: args.projectId,
+          processId: args.processId,
+          publication: {
+            messageType: 'upsert',
+            environment: failedEnvironment,
+          },
+        });
+      }
     }
   }
 
@@ -154,14 +170,11 @@ export class ProcessEnvironmentService {
         blockedReason: null,
         lastHydratedAt,
       });
-      this.processLiveHub.publish({
+      this.publishEnvironmentUpsert({
         projectId: args.projectId,
         processId: args.processId,
-        publication: {
-          messageType: 'upsert',
-          process: buildProcessSurfaceSummary(currentProcess, runningEnvironment),
-          environment: runningEnvironment,
-        },
+        process: currentProcess,
+        environment: runningEnvironment,
       });
 
       const executionResult = await args.scriptExecutionService.executeFor({
@@ -178,14 +191,11 @@ export class ProcessEnvironmentService {
           blockedReason: executionResult.failureReason ?? 'Execution failed.',
           lastHydratedAt: runningEnvironment.lastHydratedAt,
         });
-        this.processLiveHub.publish({
+        this.publishEnvironmentUpsert({
           projectId: args.projectId,
           processId: args.processId,
-          publication: {
-            messageType: 'upsert',
-            process: buildProcessSurfaceSummary(currentProcess, failedEnvironment),
-            environment: failedEnvironment,
-          },
+          process: currentProcess,
+          environment: failedEnvironment,
         });
         return;
       }
@@ -198,14 +208,11 @@ export class ProcessEnvironmentService {
         blockedReason: null,
         lastHydratedAt: runningEnvironment.lastHydratedAt,
       });
-      this.processLiveHub.publish({
+      this.publishEnvironmentUpsert({
         projectId: args.projectId,
         processId: args.processId,
-        publication: {
-          messageType: 'upsert',
-          process: buildProcessSurfaceSummary(currentProcess, checkpointingEnvironment),
-          environment: checkpointingEnvironment,
-        },
+        process: currentProcess,
+        environment: checkpointingEnvironment,
       });
 
       if (
@@ -229,14 +236,11 @@ export class ProcessEnvironmentService {
           blockedReason: error instanceof Error ? error.message : 'Unknown execution error',
           lastHydratedAt,
         });
-        this.processLiveHub.publish({
+        this.publishEnvironmentUpsert({
           projectId: args.projectId,
           processId: args.processId,
-          publication: {
-            messageType: 'upsert',
-            process: buildProcessSurfaceSummary(currentProcess, failedEnvironment),
-            environment: failedEnvironment,
-          },
+          process: currentProcess,
+          environment: failedEnvironment,
         });
       } catch {
         // Execution failures must not escape the fire-and-forget path.
@@ -249,7 +253,329 @@ export class ProcessEnvironmentService {
     processId: string;
     environmentId: string;
   }): void {
-    void args;
-    throw new Error('NOT_IMPLEMENTED: ProcessEnvironmentService.runCheckpointAsync');
+    const checkpointPlanner = this.checkpointPlanner;
+    const codeCheckpointWriter = this.codeCheckpointWriter;
+
+    if (checkpointPlanner === undefined || codeCheckpointWriter === undefined) {
+      return;
+    }
+
+    setTimeout(() => {
+      void this.executeCheckpoint({
+        ...args,
+        checkpointPlanner,
+        codeCheckpointWriter,
+      });
+    }, 0);
   }
+
+  private async executeCheckpoint(args: {
+    projectId: string;
+    processId: string;
+    environmentId: string;
+    checkpointPlanner: CheckpointPlanner;
+    codeCheckpointWriter: CodeCheckpointWriter;
+  }): Promise<void> {
+    const currentProcess = await this.platformStore.getProcessRecord({
+      processId: args.processId,
+    });
+
+    if (currentProcess === null) {
+      return;
+    }
+
+    const existingEnvironment = await this.platformStore.getProcessEnvironmentSummary({
+      processId: args.processId,
+    });
+    const existingMaterialRefs = await this.platformStore.getCurrentProcessMaterialRefs({
+      processId: args.processId,
+    });
+    const projectSourceAttachments = await this.platformStore.listProjectSourceAttachments({
+      projectId: currentProcess.projectId,
+    });
+    const currentSourceIds = new Set(existingMaterialRefs.sourceAttachmentIds);
+    const currentSourceAttachments =
+      currentSourceIds.size === 0
+        ? projectSourceAttachments
+        : projectSourceAttachments.filter((source) =>
+            currentSourceIds.has(source.sourceAttachmentId),
+          );
+    const sourceSummariesById = new Map(
+      currentSourceAttachments.map((source) => [source.sourceAttachmentId, source]),
+    );
+
+    let artifactCheckpointResult: LastCheckpointResult | null = null;
+
+    try {
+      const candidate = await this.providerAdapter.collectCheckpointCandidate({
+        processId: args.processId,
+        environmentId: args.environmentId,
+      });
+      const plan = await args.checkpointPlanner.planFor({
+        processId: args.processId,
+        candidate,
+        sourceAccessModes: buildSourceAccessModes({
+          codeTargets: candidate.codeDiffs ?? [],
+          sourceSummaries: currentSourceAttachments,
+        }),
+      });
+
+      if (plan.artifactTargets.length > 0) {
+        await this.artifactCheckpointPersistence.persistCheckpointArtifacts({
+          processId: args.processId,
+          artifacts: plan.artifactTargets,
+        });
+        artifactCheckpointResult = buildCheckpointResult({
+          checkpointKind: 'artifact',
+          outcome: 'succeeded',
+          targetLabel: plan.artifactTargets[0]?.targetLabel ?? 'Checkpoint artifact',
+          targetRef: null,
+          completedAt: plan.artifactTargets[0]?.producedAt ?? new Date().toISOString(),
+          failureReason: null,
+        });
+
+        const artifactEnvironment = await this.platformStore.upsertProcessEnvironmentState({
+          processId: args.processId,
+          providerKind: null,
+          state: 'checkpointing',
+          environmentId: args.environmentId,
+          blockedReason: null,
+          lastHydratedAt: existingEnvironment.lastHydratedAt,
+          lastCheckpointAt: artifactCheckpointResult.completedAt,
+          lastCheckpointResult: artifactCheckpointResult,
+        });
+        this.publishEnvironmentUpsert({
+          projectId: args.projectId,
+          processId: args.processId,
+          process: currentProcess,
+          environment: artifactEnvironment,
+        });
+      }
+
+      if (plan.codeTargets.length > 0) {
+        const codeOutcomes = await Promise.all(
+          plan.codeTargets.map(async (target) => ({
+            target,
+            writeResult: await args.codeCheckpointWriter.writeFor(target),
+          })),
+        );
+        const firstFailure = codeOutcomes.find(
+          (outcome) => outcome.writeResult.outcome === 'failed',
+        );
+
+        if (firstFailure !== undefined) {
+          const failedCodeResult = buildCheckpointResult({
+            checkpointKind: 'code',
+            outcome: 'failed',
+            targetLabel: resolveCheckpointTargetLabel(firstFailure.target, sourceSummariesById),
+            targetRef: resolveCheckpointTargetRef(firstFailure.target, sourceSummariesById),
+            completedAt: new Date().toISOString(),
+            failureReason: firstFailure.writeResult.failureReason ?? 'Code checkpoint failed.',
+          });
+          const failedEnvironment = await this.platformStore.upsertProcessEnvironmentState({
+            processId: args.processId,
+            providerKind: null,
+            state: 'failed',
+            environmentId: args.environmentId,
+            blockedReason: failedCodeResult.failureReason,
+            lastHydratedAt: existingEnvironment.lastHydratedAt,
+            lastCheckpointAt: failedCodeResult.completedAt,
+            lastCheckpointResult: failedCodeResult,
+          });
+          this.publishEnvironmentUpsert({
+            projectId: args.projectId,
+            processId: args.processId,
+            process: currentProcess,
+            environment: failedEnvironment,
+          });
+          return;
+        }
+
+        const successfulCodeTarget = codeOutcomes[0]?.target ?? plan.codeTargets[0];
+        const finalCheckpointResult = buildCheckpointResult({
+          checkpointKind: plan.artifactTargets.length > 0 ? 'mixed' : 'code',
+          outcome: 'succeeded',
+          targetLabel:
+            plan.artifactTargets.length > 0
+              ? `${plan.artifactTargets[0]?.targetLabel ?? 'Checkpoint artifact'} + ${resolveCheckpointTargetLabel(successfulCodeTarget, sourceSummariesById)}`
+              : resolveCheckpointTargetLabel(successfulCodeTarget, sourceSummariesById),
+          targetRef: resolveCheckpointTargetRef(successfulCodeTarget, sourceSummariesById),
+          completedAt: new Date().toISOString(),
+          failureReason: null,
+        });
+        const readyEnvironment = await this.platformStore.upsertProcessEnvironmentState({
+          processId: args.processId,
+          providerKind: null,
+          state: 'ready',
+          environmentId: args.environmentId,
+          blockedReason: null,
+          lastHydratedAt: existingEnvironment.lastHydratedAt,
+          lastCheckpointAt: finalCheckpointResult.completedAt,
+          lastCheckpointResult: finalCheckpointResult,
+        });
+        this.publishEnvironmentUpsert({
+          projectId: args.projectId,
+          processId: args.processId,
+          process: currentProcess,
+          environment: readyEnvironment,
+        });
+        return;
+      }
+
+      if (plan.skippedReadOnly.length > 0 && plan.artifactTargets.length === 0) {
+        const skippedTarget = plan.skippedReadOnly[0];
+        const failedReadOnlyResult = buildCheckpointResult({
+          checkpointKind: 'code',
+          outcome: 'failed',
+          targetLabel:
+            sourceSummariesById.get(skippedTarget?.sourceAttachmentId ?? '')?.displayName ??
+            skippedTarget?.sourceAttachmentId ??
+            'Attached source',
+          targetRef:
+            sourceSummariesById.get(skippedTarget?.sourceAttachmentId ?? '')?.targetRef ?? null,
+          completedAt: new Date().toISOString(),
+          failureReason: 'Code checkpoint was blocked because the attached source is not writable.',
+        });
+        const failedEnvironment = await this.platformStore.upsertProcessEnvironmentState({
+          processId: args.processId,
+          providerKind: null,
+          state: 'failed',
+          environmentId: args.environmentId,
+          blockedReason: failedReadOnlyResult.failureReason,
+          lastHydratedAt: existingEnvironment.lastHydratedAt,
+          lastCheckpointAt: failedReadOnlyResult.completedAt,
+          lastCheckpointResult: failedReadOnlyResult,
+        });
+        this.publishEnvironmentUpsert({
+          projectId: args.projectId,
+          processId: args.processId,
+          process: currentProcess,
+          environment: failedEnvironment,
+        });
+        return;
+      }
+
+      const readyEnvironment = await this.platformStore.upsertProcessEnvironmentState({
+        processId: args.processId,
+        providerKind: null,
+        state: 'ready',
+        environmentId: args.environmentId,
+        blockedReason: null,
+        lastHydratedAt: existingEnvironment.lastHydratedAt,
+        lastCheckpointAt: artifactCheckpointResult?.completedAt,
+        lastCheckpointResult: artifactCheckpointResult ?? undefined,
+      });
+      this.publishEnvironmentUpsert({
+        projectId: args.projectId,
+        processId: args.processId,
+        process: currentProcess,
+        environment: readyEnvironment,
+      });
+    } catch (error) {
+      const failureReason = error instanceof Error ? error.message : 'Unknown checkpoint error';
+      const failedCheckpointResult = buildCheckpointResult({
+        checkpointKind: artifactCheckpointResult === null ? 'artifact' : 'code',
+        outcome: 'failed',
+        targetLabel: artifactCheckpointResult?.targetLabel ?? 'Checkpoint artifact',
+        targetRef: artifactCheckpointResult?.targetRef ?? null,
+        completedAt: new Date().toISOString(),
+        failureReason,
+      });
+      const failedEnvironment = await this.platformStore.upsertProcessEnvironmentState({
+        processId: args.processId,
+        providerKind: null,
+        state: 'failed',
+        environmentId: args.environmentId,
+        blockedReason: failureReason,
+        lastHydratedAt: existingEnvironment.lastHydratedAt,
+        lastCheckpointAt: failedCheckpointResult.completedAt,
+        lastCheckpointResult: failedCheckpointResult,
+      });
+      this.publishEnvironmentUpsert({
+        projectId: args.projectId,
+        processId: args.processId,
+        process: currentProcess,
+        environment: failedEnvironment,
+      });
+    }
+  }
+
+  private publishEnvironmentUpsert(args: {
+    projectId: string;
+    processId: string;
+    process: ProcessSummary | null;
+    environment: EnvironmentSummary;
+  }): void {
+    if (args.process === null) {
+      return;
+    }
+
+    this.processLiveHub.publish({
+      projectId: args.projectId,
+      processId: args.processId,
+      publication: {
+        messageType: 'upsert',
+        process: buildProcessSurfaceSummary(args.process, args.environment),
+        environment: args.environment,
+      },
+    });
+  }
+}
+
+function buildCheckpointResult(args: {
+  checkpointKind: LastCheckpointResult['checkpointKind'];
+  outcome: LastCheckpointResult['outcome'];
+  targetLabel: string;
+  targetRef: string | null;
+  completedAt: string;
+  failureReason: string | null;
+}): LastCheckpointResult {
+  return {
+    checkpointId: `checkpoint:${args.checkpointKind}:${args.completedAt}`,
+    checkpointKind: args.checkpointKind,
+    outcome: args.outcome,
+    targetLabel: args.targetLabel,
+    targetRef: args.targetRef,
+    completedAt: args.completedAt,
+    failureReason: args.failureReason,
+  };
+}
+
+function buildSourceAccessModes(args: {
+  codeTargets: Array<{ sourceAttachmentId: string }>;
+  sourceSummaries: SourceAttachmentSummary[];
+}): Record<string, SourceAttachmentSummary['accessMode']> {
+  const sourceAccessModes = Object.fromEntries(
+    args.sourceSummaries.map((source) => [source.sourceAttachmentId, source.accessMode]),
+  ) as Record<string, SourceAttachmentSummary['accessMode']>;
+
+  for (const codeTarget of args.codeTargets) {
+    sourceAccessModes[codeTarget.sourceAttachmentId] ??= 'read_only';
+  }
+
+  return sourceAccessModes;
+}
+
+function resolveCheckpointTargetLabel(
+  target: CodeCheckpointTarget | undefined,
+  sourceSummariesById: Map<string, SourceAttachmentSummary>,
+): string {
+  if (target === undefined) {
+    return 'Attached source';
+  }
+
+  return (
+    sourceSummariesById.get(target.sourceAttachmentId)?.displayName ?? target.sourceAttachmentId
+  );
+}
+
+function resolveCheckpointTargetRef(
+  target: CodeCheckpointTarget | undefined,
+  sourceSummariesById: Map<string, SourceAttachmentSummary>,
+): string | null {
+  if (target === undefined) {
+    return null;
+  }
+
+  return target.targetRef ?? sourceSummariesById.get(target.sourceAttachmentId)?.targetRef ?? null;
 }

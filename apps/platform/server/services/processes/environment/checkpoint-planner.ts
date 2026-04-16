@@ -7,7 +7,34 @@ export class CheckpointPlanner {
     candidate: CheckpointCandidate;
     sourceAccessModes: Record<string, SourceAccessMode>;
   }): Promise<CheckpointPlan> {
-    void args;
-    throw new Error('NOT_IMPLEMENTED: CheckpointPlanner.planFor');
+    void args.processId;
+
+    const artifactTargets = [...(args.candidate.artifacts ?? [])];
+    const codeTargets = [];
+    const skippedReadOnly: CheckpointPlan['skippedReadOnly'] = [];
+
+    for (const codeDiff of args.candidate.codeDiffs ?? []) {
+      const accessMode = args.sourceAccessModes[codeDiff.sourceAttachmentId] ?? 'read_only';
+
+      if (accessMode !== 'read_write') {
+        skippedReadOnly.push({
+          sourceAttachmentId: codeDiff.sourceAttachmentId,
+          accessMode,
+        });
+        continue;
+      }
+
+      codeTargets.push({
+        sourceAttachmentId: codeDiff.sourceAttachmentId,
+        targetRef: codeDiff.targetRef ?? null,
+        diff: codeDiff.diff,
+      });
+    }
+
+    return {
+      artifactTargets,
+      codeTargets,
+      skippedReadOnly,
+    };
   }
 }

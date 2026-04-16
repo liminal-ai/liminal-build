@@ -350,6 +350,15 @@ const replaceCurrentProcessOutputsMutation = makeFunctionReference<
   PlatformProcessOutputSummary[]
 >('processOutputs:replaceCurrentProcessOutputs');
 
+const persistCheckpointArtifactsMutation = makeFunctionReference<
+  'mutation',
+  {
+    processId: string;
+    artifacts: ArtifactCheckpointTarget[];
+  },
+  PlatformProcessOutputSummary[]
+>('artifacts:persistCheckpointArtifacts');
+
 const listProcessSideWorkItemsQuery = makeFunctionReference<
   'query',
   { processId: string },
@@ -549,8 +558,8 @@ export class NullPlatformStore implements PlatformStore {
       statusLabel: deriveEnvironmentStatusLabel(args.state),
       blockedReason: args.blockedReason,
       lastHydratedAt: args.lastHydratedAt,
-      lastCheckpointAt: null,
-      lastCheckpointResult: null,
+      lastCheckpointAt: args.lastCheckpointAt ?? null,
+      lastCheckpointResult: args.lastCheckpointResult ?? null,
     });
   }
 
@@ -604,8 +613,18 @@ export class NullPlatformStore implements PlatformStore {
     }));
   }
 
-  async persistCheckpointArtifacts(): Promise<PlatformProcessOutputSummary[]> {
-    throw new Error('NOT_IMPLEMENTED: NullPlatformStore.persistCheckpointArtifacts');
+  async persistCheckpointArtifacts(args: {
+    processId: string;
+    artifacts: ArtifactCheckpointTarget[];
+  }): Promise<PlatformProcessOutputSummary[]> {
+    return args.artifacts.map((artifact, index) => ({
+      outputId: `${args.processId}:checkpoint-output-${index + 1}`,
+      linkedArtifactId: artifact.artifactId ?? `${args.processId}:checkpoint-artifact-${index + 1}`,
+      displayName: artifact.targetLabel,
+      revisionLabel: null,
+      state: 'published_to_artifact',
+      updatedAt: artifact.producedAt,
+    }));
   }
 
   async listProcessSideWorkItems(): Promise<SideWorkItem[]> {
@@ -804,8 +823,28 @@ export class ConvexPlatformStore implements PlatformStore {
     });
   }
 
-  async persistCheckpointArtifacts(): Promise<PlatformProcessOutputSummary[]> {
-    throw new Error('NOT_IMPLEMENTED: ConvexPlatformStore.persistCheckpointArtifacts');
+  async persistCheckpointArtifacts(args: {
+    processId: string;
+    artifacts: ArtifactCheckpointTarget[];
+  }): Promise<PlatformProcessOutputSummary[]> {
+    return this.client.mutation(
+      persistCheckpointArtifactsMutation,
+      {
+        processId: args.processId,
+        artifacts: args.artifacts.map((artifact) => ({
+          artifactId: artifact.artifactId,
+          producedAt: artifact.producedAt,
+          contents:
+            typeof artifact.contents === 'string'
+              ? artifact.contents
+              : Buffer.from(artifact.contents).toString('base64'),
+          targetLabel: artifact.targetLabel,
+        })),
+      },
+      {
+        skipQueue: true,
+      },
+    );
   }
 
   async listProcessSideWorkItems(args: { processId: string }): Promise<SideWorkItem[]> {
@@ -1226,8 +1265,12 @@ export class InMemoryPlatformStore implements PlatformStore {
       statusLabel: deriveEnvironmentStatusLabel(args.state),
       blockedReason: args.blockedReason,
       lastHydratedAt: args.lastHydratedAt ?? existing.lastHydratedAt,
-      lastCheckpointAt: existing.lastCheckpointAt,
-      lastCheckpointResult: existing.lastCheckpointResult,
+      lastCheckpointAt:
+        args.lastCheckpointAt === undefined ? existing.lastCheckpointAt : args.lastCheckpointAt,
+      lastCheckpointResult:
+        args.lastCheckpointResult === undefined
+          ? existing.lastCheckpointResult
+          : args.lastCheckpointResult,
     });
     this.processEnvironmentSummariesByProcessId.set(args.processId, next);
     return cloneEnvironmentSummary(next);
@@ -1302,8 +1345,108 @@ export class InMemoryPlatformStore implements PlatformStore {
     return nextOutputs;
   }
 
-  async persistCheckpointArtifacts(): Promise<PlatformProcessOutputSummary[]> {
-    throw new Error('NOT_IMPLEMENTED: InMemoryPlatformStore.persistCheckpointArtifacts');
+  async persistCheckpointArtifacts(args: {
+    processId: string;
+    artifacts: ArtifactCheckpointTarget[];
+  }): Promise<PlatformProcessOutputSummary[]> {
+    const processRecord = await this.getProcessRecord({
+      processId: args.processId,
+    });
+
+    if (processRecord === null) {
+      return [];
+    }
+
+    const existingArtifacts = this.artifactsByProjectId.get(processRecord.projectId) ?? [];
+    const existingOutputs = this.processOutputsByProcessId.get(args.processId) ?? [];
+    const checkpointOutputs = args.artifacts.map((artifact, index) => {
+      const artifactId =
+        artifact.artifactId ??
+        `${args.processId}:checkpoint-artifact-${existingArtifacts.length + index + 1}`;
+      const existingOutput = existingOutputs.find(
+        (output) => output.linkedArtifactId === artifactId,
+      );
+
+      return {
+        artifact: {
+          artifactId,
+          displayName: artifact.targetLabel,
+          currentVersionLabel: null,
+          attachmentScope: 'process' as const,
+          processId: args.processId,
+          processDisplayLabel: processRecord.displayLabel,
+          updatedAt: artifact.producedAt,
+        },
+        output: {
+          outputId:
+            existingOutput?.outputId ??
+            `${args.processId}:checkpoint-output-${existingOutputs.length + index + 1}`,
+          linkedArtifactId: artifactId,
+          displayName: artifact.targetLabel,
+          revisionLabel: null,
+          state: 'published_to_artifact',
+          updatedAt: artifact.producedAt,
+        },
+      };
+    });
+    const checkpointArtifactIds = new Set(
+      checkpointOutputs.map(({ artifact }) => artifact.artifactId),
+    );
+    const nextArtifacts = [
+      ...existingArtifacts.filter((artifact) => !checkpointArtifactIds.has(artifact.artifactId)),
+      ...checkpointOutputs.map(({ artifact }) => artifact),
+    ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    const nextOutputs = [
+      ...existingOutputs.filter(
+        (output) =>
+          output.linkedArtifactId === null || !checkpointArtifactIds.has(output.linkedArtifactId),
+      ),
+      ...checkpointOutputs.map(({ output }) => output),
+    ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+
+    this.artifactsByProjectId.set(processRecord.projectId, nextArtifacts);
+    this.processOutputsByProcessId.set(args.processId, nextOutputs);
+
+    const existingRefs = await this.getCurrentProcessMaterialRefs({
+      processId: args.processId,
+    });
+    this.currentMaterialRefsByProcessId.set(args.processId, {
+      artifactIds: [...new Set([...existingRefs.artifactIds, ...checkpointArtifactIds])],
+      sourceAttachmentIds: [...existingRefs.sourceAttachmentIds],
+    });
+
+    const nextUpdatedAt =
+      checkpointOutputs.reduce<string | null>(
+        (latest, { output }) =>
+          latest === null || output.updatedAt.localeCompare(latest) > 0 ? output.updatedAt : latest,
+        null,
+      ) ?? new Date().toISOString();
+
+    for (const [projectId, processes] of this.processesByProjectId.entries()) {
+      if (projectId !== processRecord.projectId) {
+        continue;
+      }
+
+      this.processesByProjectId.set(
+        projectId,
+        processes.map((process) =>
+          process.processId === args.processId
+            ? processSummarySchema.parse({
+                ...process,
+                updatedAt: nextUpdatedAt,
+              })
+            : process,
+        ),
+      );
+    }
+
+    this.updateProjectSummary(processRecord.projectId, (project) => ({
+      ...project,
+      artifactCount: nextArtifacts.length,
+      lastUpdatedAt: nextUpdatedAt,
+    }));
+
+    return nextOutputs;
   }
 
   async listProcessSideWorkItems(args: { processId: string }): Promise<SideWorkItem[]> {

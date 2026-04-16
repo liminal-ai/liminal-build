@@ -6,7 +6,10 @@ import {
 } from '../../../apps/platform/server/services/auth/auth-session.service.js';
 import { AuthUserSyncService } from '../../../apps/platform/server/services/auth/auth-user-sync.service.js';
 import { CheckpointPlanner } from '../../../apps/platform/server/services/processes/environment/checkpoint-planner.js';
-import { StubCodeCheckpointWriter } from '../../../apps/platform/server/services/processes/environment/code-checkpoint-writer.js';
+import {
+  FailingCodeCheckpointWriter,
+  StubCodeCheckpointWriter,
+} from '../../../apps/platform/server/services/processes/environment/code-checkpoint-writer.js';
 import {
   FailingProviderAdapter,
   type ProviderAdapter,
@@ -20,6 +23,7 @@ import {
   projectSummarySchema,
 } from '../../../apps/platform/shared/contracts/index.js';
 import { readyProcessMaterialsFixture } from '../../fixtures/materials.js';
+import { readyEnvironmentFixture } from '../../fixtures/process-environment.js';
 import {
   progressUpdateHistoryFixture,
   readyProcessHistoryFixture,
@@ -28,7 +32,6 @@ import {
   currentProcessRequestFixture,
   readyProcessWorkSurfaceFixture,
 } from '../../fixtures/process-surface.js';
-import { readyEnvironmentFixture } from '../../fixtures/process-environment.js';
 import { draftProcessFixture, runningProcessFixture } from '../../fixtures/processes.js';
 import { readySideWorkFixture } from '../../fixtures/side-work.js';
 import { buildApp } from '../../utils/build-app.js';
@@ -578,6 +581,19 @@ describe('server-driven environment execution', () => {
     updatedAt: '2026-04-15T10:30:00.000Z',
   });
 
+  const executionWritableSource = {
+    sourceAttachmentId: `${executionProcessId}:source-checkpoint-1`,
+    displayName: 'execution-source',
+    purpose: 'implementation' as const,
+    accessMode: 'read_write' as const,
+    targetRef: 'main',
+    hydrationState: 'hydrated' as const,
+    attachmentScope: 'project' as const,
+    processId: null,
+    processDisplayLabel: null,
+    updatedAt: '2026-04-15T10:30:00.000Z',
+  };
+
   function buildExecutionStore() {
     return new InMemoryPlatformStore({
       accessibleProjectsByUserId: {
@@ -588,6 +604,9 @@ describe('server-driven environment execution', () => {
       },
       processesByProjectId: {
         [executionProjectId]: [executionDraftProcess],
+      },
+      sourceAttachmentsByProjectId: {
+        [executionProjectId]: [executionWritableSource],
       },
     });
   }
@@ -899,7 +918,7 @@ describe('server-driven environment execution', () => {
         (m) =>
           m.entityType === 'environment' &&
           m.payload !== null &&
-          (m.payload as { state: string }).state === 'failed',
+          (m.payload as { state: string }).state === 'ready',
       ),
     );
 
@@ -943,7 +962,7 @@ describe('server-driven environment execution', () => {
       platformStore,
       processLiveHub,
       checkpointPlanner: new CheckpointPlanner(),
-      codeCheckpointWriter: new StubCodeCheckpointWriter(),
+      codeCheckpointWriter: new FailingCodeCheckpointWriter('test code checkpoint failure'),
     });
 
     await app.listen({ port: 0, host: '127.0.0.1' });
