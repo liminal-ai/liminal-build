@@ -178,8 +178,8 @@ export const failedProcessSurfaceFixture = processSurfaceSummarySchema.parse({
 
 export const preparingEnvironmentProcessSurfaceFixture = buildProcessSurfaceSummaryFixture({
   processId: 'process-surface-preparing-001',
-  status: 'running',
-  availableActions: ['review'],
+  status: 'draft',
+  availableActions: ['start'],
   controls: preparingEnvironmentProcessControlsFixture,
   hasEnvironment: true,
 });

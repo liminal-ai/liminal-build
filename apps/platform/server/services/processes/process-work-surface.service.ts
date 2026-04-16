@@ -76,29 +76,6 @@ const fallbackEnvironmentSummary = environmentSummarySchema.parse({
   ...defaultEnvironmentSummary,
 });
 
-export function deriveProcessSurfaceAvailableActions(
-  status: ProcessSummary['status'],
-): ProcessSurfaceSummary['availableActions'] {
-  switch (status) {
-    case 'draft':
-      return ['start'];
-    case 'running':
-      return ['review'];
-    case 'waiting':
-      return ['respond'];
-    case 'paused':
-      return ['resume'];
-    case 'completed':
-      return ['review'];
-    case 'failed':
-      return ['review', 'restart'];
-    case 'interrupted':
-      return ['resume', 'review', 'restart'];
-    default:
-      return [];
-  }
-}
-
 function isRestartEligible(status: ProcessSummary['status']): boolean {
   return status === 'failed' || status === 'interrupted';
 }

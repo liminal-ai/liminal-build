@@ -882,6 +882,103 @@ describe('server-driven environment execution', () => {
     });
   });
 
+  it('TC-3.4b execution failure with no failureReason falls back to "Execution failed."', async () => {
+    const processLiveHub = new InMemoryProcessLiveHub();
+    const platformStore = buildExecutionStore();
+    const noReasonProvider: ProviderAdapter = {
+      hydrateEnvironment: async ({ processId }) => ({
+        environmentId: `env-execution-${processId}`,
+        lastHydratedAt: '2026-04-15T10:31:00.000Z',
+      }),
+      executeScript: async () => ({
+        outcome: 'failed',
+        completedAt: '2026-04-15T10:32:00.000Z',
+        // no failureReason — exercises the ?? 'Execution failed.' fallback
+      }),
+      collectCheckpointCandidate: async () => ({ artifacts: [], codeDiffs: [] }),
+      rehydrateEnvironment: async ({ environmentId }) => ({
+        environmentId,
+        lastHydratedAt: '2026-04-15T10:33:00.000Z',
+      }),
+      rebuildEnvironment: async ({ processId }) => ({
+        environmentId: `env-rebuild-${processId}`,
+      }),
+    };
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+      processLiveHub,
+      providerAdapter: noReasonProvider,
+    });
+
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const address = app.server.address();
+
+    if (address === null || typeof address === 'string') {
+      throw new Error('Expected an ephemeral address for websocket tests.');
+    }
+
+    const messages: Array<ReturnType<typeof liveProcessUpdateMessageSchema.parse>> = [];
+    const socket = new WebSocket(
+      `ws://127.0.0.1:${address.port}/ws/projects/${executionProjectId}/processes/${executionProcessId}`,
+    );
+
+    socket.addEventListener('message', (event) => {
+      messages.push(liveProcessUpdateMessageSchema.parse(JSON.parse(String(event.data))));
+    });
+
+    await waitFor(() =>
+      messages.some((m) => m.messageType === 'snapshot' && m.entityType === 'process'),
+    );
+
+    const startResponse = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${executionProjectId}/processes/${executionProcessId}/start`,
+      cookies: { [sessionCookieName]: 'valid-session-cookie' },
+    });
+
+    expect(startResponse.statusCode).toBe(200);
+    expect(startResponse.json().environment.state).toBe('preparing');
+
+    await waitFor(() =>
+      messages.some(
+        (m) =>
+          m.entityType === 'environment' &&
+          m.payload !== null &&
+          (m.payload as { state: string }).state === 'ready',
+      ),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    const failedMessage = messages.find(
+      (m) =>
+        m.entityType === 'environment' &&
+        m.payload !== null &&
+        (m.payload as { state: string }).state === 'failed',
+    );
+
+    socket.close();
+    await app.close();
+
+    expect(failedMessage).toMatchObject({
+      messageType: 'upsert',
+      entityType: 'environment',
+      payload: {
+        state: 'failed',
+        blockedReason: 'Execution failed.',
+      },
+    });
+  });
+
   it('TC-4.1a publishes a successful checkpoint result through the environment upsert', async () => {
     const processLiveHub = new InMemoryProcessLiveHub();
     const platformStore = buildExecutionStore();
