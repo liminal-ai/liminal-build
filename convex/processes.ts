@@ -8,6 +8,7 @@ import type {
 } from '../apps/platform/shared/contracts/index.js';
 import type { Doc, Id } from './_generated/dataModel.js';
 import { type MutationCtx, mutation, type QueryCtx, query } from './_generated/server.js';
+import { computeWorkingSetFingerprint } from './processEnvironmentStates.js';
 
 export const supportedProcessTypeValidator = v.union(
   v.literal('ProductDefinition'),
@@ -260,7 +261,7 @@ export const createProcess = mutation({
       updatedAt: now,
     });
 
-    await ctx.db.insert('processEnvironmentStates', {
+    const envStateRowId = await ctx.db.insert('processEnvironmentStates', {
       processId,
       providerKind: null,
       environmentId: null,
@@ -306,6 +307,15 @@ export const createProcess = mutation({
         updatedAt: now,
       });
     }
+
+    // Compute and store the initial working-set fingerprint so the env state
+    // row is never persisted with `workingSetFingerprint: null`. At creation
+    // time the working set is empty (no artifacts, outputs, or sources yet),
+    // so this is the SHA-256 of the empty canonical JSON. That is still a
+    // valid fingerprint and gives downstream read-time stale comparisons a
+    // meaningful baseline from the moment the process exists.
+    const initialFingerprint = await computeWorkingSetFingerprint(ctx, processId);
+    await ctx.db.patch(envStateRowId, { workingSetFingerprint: initialFingerprint });
 
     await ctx.db.patch(projectId, {
       lastUpdatedAt: now,

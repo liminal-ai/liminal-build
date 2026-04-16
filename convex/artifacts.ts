@@ -79,6 +79,11 @@ export const listProjectArtifactSummaries = query({
  * are uploaded as a Blob from this action and the resulting storageIds are
  * handed off to `recordCheckpointArtifactsInternal` which writes the artifact
  * rows transactionally.
+ *
+ * Failure semantics: storage uploads are not transactional with the row write,
+ * so if the row mutation throws (or any upload after the first throws) we must
+ * delete every storage blob already uploaded in this invocation. Otherwise
+ * partial failures leak orphan blobs into Convex File Storage.
  */
 export const persistCheckpointArtifacts = internalAction({
   args: {
@@ -95,25 +100,43 @@ export const persistCheckpointArtifacts = internalAction({
       contentStorageId: Id<'_storage'>;
       targetLabel: string;
     }> = [];
+    // Tracked separately so we can roll back blob uploads on any failure
+    // (an upload after the first, or the downstream mutation).
+    const uploadedStorageIds: Id<'_storage'>[] = [];
 
-    for (const artifact of args.artifacts) {
-      const blob = new Blob([artifact.contents]);
-      const contentStorageId = await ctx.storage.store(blob);
-      artifactsWithStorage.push({
-        artifactId: artifact.artifactId,
-        producedAt: artifact.producedAt,
-        contentStorageId,
-        targetLabel: artifact.targetLabel,
-      });
+    try {
+      for (const artifact of args.artifacts) {
+        const blob = new Blob([artifact.contents]);
+        const contentStorageId = await ctx.storage.store(blob);
+        uploadedStorageIds.push(contentStorageId);
+        artifactsWithStorage.push({
+          artifactId: artifact.artifactId,
+          producedAt: artifact.producedAt,
+          contentStorageId,
+          targetLabel: artifact.targetLabel,
+        });
+      }
+
+      const result: Array<ProcessOutputReference & { linkedArtifactId: string | null }> =
+        await ctx.runMutation(recordCheckpointArtifactsInternalRef, {
+          processId: args.processId,
+          artifacts: artifactsWithStorage,
+        });
+
+      return result;
+    } catch (error) {
+      // Best-effort rollback: delete every blob this invocation uploaded so
+      // failures do not leave orphan storage entries. We swallow individual
+      // delete errors to avoid masking the original failure.
+      for (const storageId of uploadedStorageIds) {
+        try {
+          await ctx.storage.delete(storageId);
+        } catch {
+          // Continue cleanup of other blobs even if one delete fails.
+        }
+      }
+      throw error;
     }
-
-    const result: Array<ProcessOutputReference & { linkedArtifactId: string | null }> =
-      await ctx.runMutation(recordCheckpointArtifactsInternalRef, {
-        processId: args.processId,
-        artifacts: artifactsWithStorage,
-      });
-
-    return result;
   },
 });
 

@@ -94,9 +94,15 @@ declare module 'fastify' {
 
 export async function createApp(options: CreateAppOptions = {}) {
   const env = options.env ?? story0PlaceholderEnv;
+  // ConvexPlatformStore needs admin auth so it can call internal Convex
+  // functions — notably the Epic 3 artifact persistence internalAction
+  // (`artifacts:persistCheckpointArtifacts`). The deploy key is plumbed
+  // through to the constructor and passed to `ConvexHttpClient.setAdminAuth`.
   const platformStore =
     options.platformStore ??
-    (hasLiveConvexConfig(env) ? new ConvexPlatformStore(env.CONVEX_URL) : new NullPlatformStore());
+    (hasLiveConvexConfig(env)
+      ? new ConvexPlatformStore(env.CONVEX_URL, env.CONVEX_DEPLOY_KEY)
+      : new NullPlatformStore());
   const authSessionService =
     options.authSessionService ??
     new AuthSessionService({

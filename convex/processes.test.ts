@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { getCurrentProcessMaterialRefs, setCurrentProcessMaterialRefs } from './processes.js';
+import { computeWorkingSetFingerprint } from './processEnvironmentStates.js';
+import {
+  createProcess,
+  getCurrentProcessMaterialRefs,
+  setCurrentProcessMaterialRefs,
+} from './processes.js';
 import { createFakeConvexContext } from './test_helpers/fake_convex_context.js';
 
 function getHandler<TArgs, TReturn>(
@@ -21,6 +26,18 @@ const getCurrentProcessMaterialRefsHandler = getHandler<
   { processId: string },
   { artifactIds: string[]; sourceAttachmentIds: string[] }
 >(getCurrentProcessMaterialRefs);
+
+const createProcessHandler = getHandler<
+  {
+    projectId: string;
+    processType: 'ProductDefinition' | 'FeatureSpecification' | 'FeatureImplementation';
+    displayLabel: string;
+  },
+  {
+    kind: 'created';
+    process: { processId: string };
+  }
+>(createProcess);
 
 function buildProcessSeed() {
   return {
@@ -199,5 +216,74 @@ describe('convex/processes current material refs', () => {
         sourceAttachmentIds: ['source-other-project-1'],
       }),
     ).rejects.toThrow('Current artifacts must belong to the same project as the process.');
+  });
+});
+
+describe('convex/processes createProcess initial fingerprint', () => {
+  function buildCreateProcessSeed() {
+    return {
+      projects: [
+        {
+          _id: 'project-create-1',
+          _creationTime: 1,
+          name: 'Project Create',
+          ownerUserId: 'user-1',
+          processCount: 0,
+          artifactCount: 0,
+          sourceAttachmentCount: 0,
+          lastUpdatedAt: '2026-04-15T12:00:00.000Z',
+          createdAt: '2026-04-15T12:00:00.000Z',
+          updatedAt: '2026-04-15T12:00:00.000Z',
+        },
+      ],
+    };
+  }
+
+  it('stores a non-null workingSetFingerprint on the initial env state row that matches computeWorkingSetFingerprint', async () => {
+    const { ctx, db } = createFakeConvexContext(buildCreateProcessSeed());
+
+    const created = await createProcessHandler(ctx, {
+      projectId: 'project-create-1',
+      processType: 'FeatureSpecification',
+      displayLabel: 'Created Process',
+    });
+
+    const envStateRows = db.list('processEnvironmentStates');
+    expect(envStateRows).toHaveLength(1);
+    const envStateRow = envStateRows[0] as Record<string, unknown>;
+
+    // The fingerprint must be populated, never null, so read-time stale
+    // comparison has a meaningful baseline from creation.
+    expect(envStateRow.workingSetFingerprint).not.toBeNull();
+    expect(typeof envStateRow.workingSetFingerprint).toBe('string');
+    expect(envStateRow.workingSetFingerprint as string).toMatch(/^[0-9a-f]{64}$/);
+
+    // The stored fingerprint must equal a fresh computation against the same
+    // process, so subsequent comparisons hold.
+    const recomputed = await computeWorkingSetFingerprint(
+      ctx as unknown as Parameters<typeof computeWorkingSetFingerprint>[0],
+      created.process.processId as never,
+    );
+    expect(envStateRow.workingSetFingerprint).toBe(recomputed);
+  });
+
+  it('stores a non-null fingerprint for every supported process type', async () => {
+    const processTypes: Array<
+      'ProductDefinition' | 'FeatureSpecification' | 'FeatureImplementation'
+    > = ['ProductDefinition', 'FeatureSpecification', 'FeatureImplementation'];
+
+    for (const processType of processTypes) {
+      const { ctx, db } = createFakeConvexContext(buildCreateProcessSeed());
+
+      await createProcessHandler(ctx, {
+        projectId: 'project-create-1',
+        processType,
+        displayLabel: `Created ${processType}`,
+      });
+
+      const envStateRow = db.list('processEnvironmentStates')[0] as Record<string, unknown>;
+      expect(envStateRow.workingSetFingerprint).not.toBeNull();
+      expect(envStateRow.workingSetFingerprint as string).toMatch(/^[0-9a-f]{64}$/);
+    }
   });
 });

@@ -220,4 +220,55 @@ describe('convex/artifacts checkpoint persistence with file storage', () => {
     expect(db.list('artifacts')).toHaveLength(0);
     expect(storage.list()).not.toContain(contentStorageId);
   });
+
+  it('rolls back uploaded storage blobs when the internal mutation throws (single artifact)', async () => {
+    const { ctx, storage } = buildArtifactCtx();
+
+    await expect(
+      persistCheckpointArtifactsHandler(ctx, {
+        processId: 'nonexistent-process-id',
+        artifacts: [
+          {
+            producedAt: '2026-04-15T12:40:00.000Z',
+            contents: 'body that should be cleaned up',
+            targetLabel: 'Orphan Candidate',
+          },
+        ],
+      }),
+    ).rejects.toThrow('Process not found.');
+
+    // The mutation threw because the process does not exist. Any blob uploaded
+    // before the mutation must be deleted so file storage stays clean.
+    expect(storage.list()).toHaveLength(0);
+  });
+
+  it('rolls back every previously uploaded blob when the internal mutation throws on a multi-artifact batch', async () => {
+    const { ctx, storage } = buildArtifactCtx();
+
+    await expect(
+      persistCheckpointArtifactsHandler(ctx, {
+        processId: 'nonexistent-process-id',
+        artifacts: [
+          {
+            producedAt: '2026-04-15T12:41:00.000Z',
+            contents: 'first body',
+            targetLabel: 'Batch Member 1',
+          },
+          {
+            producedAt: '2026-04-15T12:42:00.000Z',
+            contents: 'second body',
+            targetLabel: 'Batch Member 2',
+          },
+          {
+            producedAt: '2026-04-15T12:43:00.000Z',
+            contents: 'third body',
+            targetLabel: 'Batch Member 3',
+          },
+        ],
+      }),
+    ).rejects.toThrow('Process not found.');
+
+    // All three storage uploads must be rolled back when the row write fails.
+    expect(storage.list()).toHaveLength(0);
+  });
 });

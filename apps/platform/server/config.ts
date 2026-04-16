@@ -15,6 +15,12 @@ const runtimeEnvSchema = z.object({
   WORKOS_LOGIN_RETURN_URI: z.string().url(),
   CONVEX_DEPLOYMENT: z.string().min(1),
   CONVEX_URL: z.string().url(),
+  // Required: ConvexHttpClient.setAdminAuth(deployKey) authorizes the server to
+  // call internal queries/mutations/actions. Epic 3 introduced the artifact
+  // persistence internalAction (`artifacts:persistCheckpointArtifacts`) which
+  // is callable only with admin auth. Without this key the live checkpoint
+  // path returns 401 from Convex.
+  CONVEX_DEPLOY_KEY: z.string().min(1),
   DEFAULT_ENVIRONMENT_PROVIDER_KIND: z.enum(['daytona', 'local']).default('local'),
 });
 
@@ -30,6 +36,7 @@ export const story0PlaceholderEnv: ServerEnv = runtimeEnvSchema.parse({
   WORKOS_LOGIN_RETURN_URI: 'http://localhost:5001/projects',
   CONVEX_DEPLOYMENT: 'dev:story0',
   CONVEX_URL: 'https://story0.example.convex.cloud',
+  CONVEX_DEPLOY_KEY: 'story0-deploy-key-placeholder',
   DEFAULT_ENVIRONMENT_PROVIDER_KIND: 'local',
 });
 

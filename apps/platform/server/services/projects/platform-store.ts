@@ -710,8 +710,19 @@ export class NullPlatformStore implements PlatformStore {
 export class ConvexPlatformStore implements PlatformStore {
   private readonly client: ConvexHttpClient;
 
-  constructor(convexUrl: string) {
+  /**
+   * `adminDeployKey` is required so the client can call Convex internal
+   * functions (`internalQuery` / `internalMutation` / `internalAction`).
+   * Epic 3 introduced `artifacts:persistCheckpointArtifacts` as an
+   * `internalAction` invoked from the server; per `ConvexHttpClient`,
+   * internal calls require `setAdminAuth(deployKey)` to be authorized.
+   *
+   * `setAdminAuth` is marked `@internal` in Convex's public types so we
+   * narrow the cast to just the method we use rather than `as any`.
+   */
+  constructor(convexUrl: string, adminDeployKey: string) {
     this.client = new ConvexHttpClient(convexUrl);
+    (this.client as unknown as { setAdminAuth(token: string): void }).setAdminAuth(adminDeployKey);
   }
 
   async upsertUserFromWorkOS(args: {
