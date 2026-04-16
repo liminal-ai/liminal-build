@@ -38,7 +38,7 @@ export class InMemoryProviderAdapter implements ProviderAdapter {
   }): Promise<ExecutionResult> {
     return {
       outcome: 'succeeded',
-      completedAt: '2026-04-15T00:00:00.000Z',
+      completedAt: new Date().toISOString(),
     };
   }
 }
@@ -54,14 +54,7 @@ export class FailingProviderAdapter implements ProviderAdapter {
     throw new Error(this.reason);
   }
 
-  async executeScript(_args: {
-    processId: string;
-    environmentId: string;
-  }): Promise<ExecutionResult> {
-    return {
-      outcome: 'failed',
-      completedAt: '2026-04-15T00:00:00.000Z',
-      failureReason: this.reason,
-    };
+  async executeScript(_args: { processId: string; environmentId: string }): Promise<never> {
+    throw new Error(this.reason);
   }
 }

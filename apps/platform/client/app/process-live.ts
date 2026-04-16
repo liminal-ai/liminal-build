@@ -1,3 +1,4 @@
+import { deriveEnvironmentStatusLabel } from '../../shared/contracts/index.js';
 import type {
   CurrentProcessRequest,
   EnvironmentSummary,
@@ -75,8 +76,19 @@ function applyCurrentRequest(next: CurrentProcessRequest | null): CurrentProcess
   return next;
 }
 
+function normalizeEnvironmentState(
+  environment: EnvironmentSummary,
+  state: EnvironmentSummary['state'],
+): EnvironmentSummary {
+  return {
+    ...environment,
+    state,
+    statusLabel: deriveEnvironmentStatusLabel(state),
+  };
+}
+
 function applyEnvironment(next: EnvironmentSummary): EnvironmentSummary {
-  return next;
+  return normalizeEnvironmentState(next, next.state);
 }
 
 export interface ApplyLiveProcessMessageArgs {
@@ -124,6 +136,11 @@ export function applyLiveProcessMessage(args: ApplyLiveProcessMessageArgs): Proc
 
   if (args.message.entityType === 'process') {
     nextState.process = args.message.payload;
+
+    if (nextState.process.status === 'waiting' && nextState.environment?.state === 'running') {
+      nextState.environment = normalizeEnvironmentState(nextState.environment, 'ready');
+    }
+
     return nextState;
   }
 

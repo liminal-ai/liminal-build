@@ -1,0 +1,9 @@
+{
+  "verdict": "PASS",
+  "story": "03-controlled-execution-and-live-environment-state",
+  "round": 2,
+  "codex_blocker_closed": true,
+  "gate_result": "passed",
+  "blocking_findings_count": 0,
+  "summary": "Fix Batch 01 correctly addresses the Codex Round 1 blocker. All three execution-lane publications (running, checkpointing, failed) now include a recomputed process summary via buildProcessSurfaceSummary(currentProcess, nextEnvironment), where currentProcess is fetched once at the top of executeExecution and reused without additional store reads. The durable process status is unchanged on execution failure, preserving the AC-3.4 constraint. TC-3.4b provides a strong regression test demonstrating that a paired process+environment publication on the failed path enables rehydrate and rebuild controls in-session without reload. The two non-TC isolation tests (history and materials preservation) are now present as standalone named tests, closing W-1. The full verify gate passes with 233 tests across 33 files. W-2 (thin server legibility assertion) and W-3 (untested fallback blockedReason) remain open as accepted minor risks; no new blocking findings."
+}

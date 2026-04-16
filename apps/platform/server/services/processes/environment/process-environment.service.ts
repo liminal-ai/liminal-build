@@ -1,6 +1,4 @@
 import type { EnvironmentSummary } from '../../../../shared/contracts/index.js';
-import { AppError } from '../../../errors/app-error.js';
-import { notImplementedErrorCode } from '../../../errors/codes.js';
 import type { PlatformStore } from '../../projects/platform-store.js';
 import type { ProcessLiveHub } from '../live/process-live-hub.js';
 import { buildProcessSurfaceSummary } from '../process-work-surface.service.js';
@@ -102,13 +100,127 @@ export class ProcessEnvironmentService {
     processId: string;
     environmentId: string | null;
   }): void {
-    void this.scriptExecutionService;
-    void args;
+    const scriptExecutionService = this.scriptExecutionService;
 
-    throw new AppError({
-      code: notImplementedErrorCode,
-      message: 'Environment execution is not implemented yet.',
-      statusCode: 501,
+    if (scriptExecutionService === undefined || args.environmentId === null) {
+      return;
+    }
+
+    const environmentId = args.environmentId;
+
+    setTimeout(() => {
+      void this.executeExecution({
+        ...args,
+        environmentId,
+        scriptExecutionService,
+      });
+    }, 0);
+  }
+
+  private async executeExecution(args: {
+    projectId: string;
+    processId: string;
+    environmentId: string;
+    scriptExecutionService: ScriptExecutionService;
+  }): Promise<void> {
+    const currentProcess = await this.platformStore.getProcessRecord({
+      processId: args.processId,
     });
+
+    if (currentProcess === null) {
+      return;
+    }
+
+    let lastHydratedAt: string | null = null;
+
+    try {
+      const existingEnvironment = await this.platformStore.getProcessEnvironmentSummary({
+        processId: args.processId,
+      });
+      lastHydratedAt = existingEnvironment.lastHydratedAt;
+      const runningEnvironment = await this.platformStore.upsertProcessEnvironmentState({
+        processId: args.processId,
+        providerKind: null,
+        state: 'running',
+        environmentId: args.environmentId,
+        blockedReason: null,
+        lastHydratedAt,
+      });
+      this.processLiveHub.publish({
+        projectId: args.projectId,
+        processId: args.processId,
+        publication: {
+          messageType: 'upsert',
+          process: buildProcessSurfaceSummary(currentProcess, runningEnvironment),
+          environment: runningEnvironment,
+        },
+      });
+
+      const executionResult = await args.scriptExecutionService.executeFor({
+        processId: args.processId,
+        environmentId: args.environmentId,
+      });
+
+      if (executionResult.outcome === 'failed') {
+        const failedEnvironment = await this.platformStore.upsertProcessEnvironmentState({
+          processId: args.processId,
+          providerKind: null,
+          state: 'failed',
+          environmentId: args.environmentId,
+          blockedReason: executionResult.failureReason ?? 'Execution failed.',
+          lastHydratedAt: runningEnvironment.lastHydratedAt,
+        });
+        this.processLiveHub.publish({
+          projectId: args.projectId,
+          processId: args.processId,
+          publication: {
+            messageType: 'upsert',
+            process: buildProcessSurfaceSummary(currentProcess, failedEnvironment),
+            environment: failedEnvironment,
+          },
+        });
+        return;
+      }
+
+      const checkpointingEnvironment = await this.platformStore.upsertProcessEnvironmentState({
+        processId: args.processId,
+        providerKind: null,
+        state: 'checkpointing',
+        environmentId: args.environmentId,
+        blockedReason: null,
+        lastHydratedAt: runningEnvironment.lastHydratedAt,
+      });
+      this.processLiveHub.publish({
+        projectId: args.projectId,
+        processId: args.processId,
+        publication: {
+          messageType: 'upsert',
+          process: buildProcessSurfaceSummary(currentProcess, checkpointingEnvironment),
+          environment: checkpointingEnvironment,
+        },
+      });
+    } catch (error) {
+      try {
+        const failedEnvironment = await this.platformStore.upsertProcessEnvironmentState({
+          processId: args.processId,
+          providerKind: null,
+          state: 'failed',
+          environmentId: args.environmentId,
+          blockedReason: error instanceof Error ? error.message : 'Unknown execution error',
+          lastHydratedAt,
+        });
+        this.processLiveHub.publish({
+          projectId: args.projectId,
+          processId: args.processId,
+          publication: {
+            messageType: 'upsert',
+            process: buildProcessSurfaceSummary(currentProcess, failedEnvironment),
+            environment: failedEnvironment,
+          },
+        });
+      } catch {
+        // Execution failures must not escape the fire-and-forget path.
+      }
+    }
   }
 }

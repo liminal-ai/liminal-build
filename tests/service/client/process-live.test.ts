@@ -1,8 +1,12 @@
+import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
 import { applyLiveProcessMessage } from '../../../apps/platform/client/app/process-live.js';
+import { renderProcessEnvironmentPanel } from '../../../apps/platform/client/features/processes/process-environment-panel.js';
+import { buildProcessSurfaceSummary } from '../../../apps/platform/server/services/processes/process-work-surface.service.js';
 import {
   deriveEnvironmentStatusLabel,
   liveProcessUpdateMessageSchema,
+  processSummarySchema,
   processSurfaceStateSchema,
   processSurfaceSummarySchema,
 } from '../../../apps/platform/shared/contracts/index.js';
@@ -106,6 +110,59 @@ function buildConnectedExecutionState(lastSequenceNumber: number) {
       error: null,
     },
   });
+}
+
+function createDocument() {
+  return new JSDOM('<!doctype html><html><body></body></html>').window.document;
+}
+
+function buildExecutionFailureEnvironment() {
+  return buildEnvironmentSummaryFixture({
+    ...failedEnvironmentFixture,
+    statusLabel: 'provider.exec.stderr.chunk',
+    blockedReason: 'Execution failed after active work began.',
+  });
+}
+
+function applyExecutionFailurePublication(state: ReturnType<typeof buildConnectedExecutionState>) {
+  const failedEnvironment = buildExecutionFailureEnvironment();
+  const currentProcess = processSummarySchema.parse({
+    processId: state.process?.processId ?? runningProcessSurfaceFixture.processId,
+    displayLabel: state.process?.displayLabel ?? runningProcessSurfaceFixture.displayLabel,
+    processType: state.process?.processType ?? runningProcessSurfaceFixture.processType,
+    status: state.process?.status ?? runningProcessSurfaceFixture.status,
+    phaseLabel: state.process?.phaseLabel ?? runningProcessSurfaceFixture.phaseLabel,
+    nextActionLabel: state.process?.nextActionLabel ?? runningProcessSurfaceFixture.nextActionLabel,
+    availableActions: ['review'],
+    hasEnvironment: state.process?.hasEnvironment ?? runningProcessSurfaceFixture.hasEnvironment,
+    updatedAt: state.process?.updatedAt ?? runningProcessSurfaceFixture.updatedAt,
+  });
+  const processMessage = buildLiveProcessMessageFixture({
+    messageType: 'upsert',
+    entityType: 'process',
+    processId: state.processId ?? runningProcessSurfaceFixture.processId,
+    sequenceNumber: (state.live.lastSequenceNumber ?? 0) + 1,
+    payload: buildProcessSurfaceSummary(currentProcess, failedEnvironment),
+  });
+  const stateWithProcess = applyLiveProcessMessage({
+    state,
+    message: processMessage,
+  });
+  const environmentMessage = buildLiveProcessMessageFixture({
+    messageType: 'upsert',
+    entityType: 'environment',
+    processId: stateWithProcess.processId ?? runningProcessSurfaceFixture.processId,
+    sequenceNumber: (state.live.lastSequenceNumber ?? 0) + 2,
+    payload: failedEnvironment,
+  });
+
+  return {
+    failedEnvironment,
+    nextState: applyLiveProcessMessage({
+      state: stateWithProcess,
+      message: environmentMessage,
+    }),
+  };
 }
 
 describe('process live foundation', () => {
@@ -278,6 +335,66 @@ describe('process live foundation', () => {
       statusLabel: deriveEnvironmentStatusLabel('failed'),
       blockedReason: 'Execution failed after active work began.',
     });
+  });
+
+  it('TC-3.4b execution failure republishes recovery controls without refetch', () => {
+    const { nextState } = applyExecutionFailurePublication(buildConnectedExecutionState(1));
+    const environmentPanel = renderProcessEnvironmentPanel({
+      environment: nextState.environment,
+      targetDocument: createDocument(),
+    });
+
+    expect(nextState.process?.availableActions).toEqual(
+      expect.arrayContaining(['rehydrate', 'rebuild']),
+    );
+    expect(nextState.process?.controls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actionId: 'rehydrate',
+          enabled: true,
+        }),
+        expect.objectContaining({
+          actionId: 'rebuild',
+          enabled: true,
+        }),
+      ]),
+    );
+    expect(environmentPanel.getAttribute('data-environment-state')).toBe('failed');
+    expect(environmentPanel.textContent).toContain(
+      `State: ${deriveEnvironmentStatusLabel('failed')}`,
+    );
+  });
+
+  it('environment updates do not wipe unrelated history state', () => {
+    const state = buildConnectedExecutionState(1);
+    const nextState = applyLiveProcessMessage({
+      state,
+      message: buildLiveProcessMessageFixture({
+        messageType: 'upsert',
+        entityType: 'environment',
+        processId: state.processId ?? runningProcessSurfaceFixture.processId,
+        sequenceNumber: 2,
+        payload: buildExecutionFailureEnvironment(),
+      }),
+    });
+
+    expect(nextState.history).toEqual(state.history);
+  });
+
+  it('environment updates do not wipe unrelated materials state', () => {
+    const state = buildConnectedExecutionState(1);
+    const nextState = applyLiveProcessMessage({
+      state,
+      message: buildLiveProcessMessageFixture({
+        messageType: 'upsert',
+        entityType: 'environment',
+        processId: state.processId ?? runningProcessSurfaceFixture.processId,
+        sequenceNumber: 2,
+        payload: buildExecutionFailureEnvironment(),
+      }),
+    });
+
+    expect(nextState.materials).toEqual(state.materials);
   });
 
   it('TC-2.2a running state becomes visible during active work', () => {

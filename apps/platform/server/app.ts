@@ -25,6 +25,7 @@ import {
   InMemoryProviderAdapter,
   type ProviderAdapter,
 } from './services/processes/environment/provider-adapter.js';
+import { ScriptExecutionService } from './services/processes/environment/script-execution.service.js';
 import { ProcessResponseService } from './services/processes/process-response.service.js';
 import { ProcessResumeService } from './services/processes/process-resume.service.js';
 import { ProcessStartService } from './services/processes/process-start.service.js';
@@ -58,6 +59,7 @@ export interface CreateAppOptions {
   processAccessService?: ProcessAccessService;
   processModuleRegistry?: ProcessModuleRegistry;
   providerAdapter?: ProviderAdapter;
+  scriptExecutionService?: ScriptExecutionService;
   processEnvironmentService?: ProcessEnvironmentService;
   processResponseService?: ProcessResponseService;
   processRegistrationService?: ProcessRegistrationService;
@@ -118,9 +120,16 @@ export async function createApp(options: CreateAppOptions = {}) {
     options.processResponseService ??
     new ProcessResponseService(platformStore, processAccessService, processLiveHub);
   const providerAdapter = options.providerAdapter ?? new InMemoryProviderAdapter();
+  const scriptExecutionService =
+    options.scriptExecutionService ?? new ScriptExecutionService(providerAdapter);
   const processEnvironmentService =
     options.processEnvironmentService ??
-    new ProcessEnvironmentService(platformStore, providerAdapter, processLiveHub);
+    new ProcessEnvironmentService(
+      platformStore,
+      providerAdapter,
+      processLiveHub,
+      scriptExecutionService,
+    );
   const processStartService =
     options.processStartService ??
     new ProcessStartService(
