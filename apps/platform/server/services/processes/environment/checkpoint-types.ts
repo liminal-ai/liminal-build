@@ -10,7 +10,10 @@ export type CheckpointArtifact = {
 export type CodeDiff = {
   sourceAttachmentId: string;
   targetRef?: string;
+  repositoryUrl: string;
+  filePath: string;
   diff: string;
+  commitMessage: string;
 };
 
 export type CheckpointCandidate = {
@@ -22,8 +25,11 @@ export type ArtifactCheckpointTarget = CheckpointArtifact;
 
 export type CodeCheckpointTarget = {
   sourceAttachmentId: string;
+  repositoryUrl: string;
   targetRef: string | null;
+  filePath: string;
   diff: string;
+  commitMessage: string;
 };
 
 export type CheckpointPlan = {

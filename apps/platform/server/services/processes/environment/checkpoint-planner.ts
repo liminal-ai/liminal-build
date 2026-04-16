@@ -26,8 +26,11 @@ export class CheckpointPlanner {
 
       codeTargets.push({
         sourceAttachmentId: codeDiff.sourceAttachmentId,
+        repositoryUrl: codeDiff.repositoryUrl,
         targetRef: codeDiff.targetRef ?? null,
+        filePath: codeDiff.filePath,
         diff: codeDiff.diff,
+        commitMessage: codeDiff.commitMessage,
       });
     }
 

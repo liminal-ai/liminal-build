@@ -697,6 +697,7 @@ describe('processes api', () => {
         displayName: 'repo',
         purpose: 'research',
         accessMode: 'read_only',
+        repositoryUrl: 'https://github.com/liminal-ai/repo',
         targetRef: 'main',
         hydrationState: 'hydrated',
         attachmentScope: 'project',

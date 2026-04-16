@@ -13,6 +13,12 @@ export const sourceAttachmentsTableFields = {
     v.literal('other'),
   ),
   accessMode: v.union(v.literal('read_only'), v.literal('read_write')),
+  // Canonical clone URL for the source. Used by `LocalProviderAdapter` to clone
+  // the working tree at hydration time and by `OctokitCodeCheckpointWriter` to
+  // resolve the GitHub repo coordinates for direct writes back to the attached
+  // writable target ref. Must be a full URL the underlying tooling can use
+  // directly (e.g., `https://github.com/owner/repo`, `https://github.com/owner/repo.git`).
+  repositoryUrl: v.string(),
   targetRef: v.union(v.string(), v.null()),
   hydrationState: v.union(
     v.literal('not_hydrated'),
@@ -48,6 +54,7 @@ export const listProjectSourceAttachmentSummaries = query({
           displayName: sourceAttachment.displayName,
           purpose: sourceAttachment.purpose,
           accessMode: sourceAttachment.accessMode,
+          repositoryUrl: sourceAttachment.repositoryUrl,
           targetRef: sourceAttachment.targetRef,
           hydrationState: sourceAttachment.hydrationState,
           attachmentScope: sourceAttachment.processId === null ? 'project' : 'process',

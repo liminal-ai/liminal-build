@@ -46,26 +46,6 @@ export interface LocalProviderRuntime {
 export interface LocalProviderAdapterOptions {
   workspaceRoot?: string;
   runtime?: LocalProviderRuntime;
-  /**
-   * Resolves a source attachment's clone URL from its `displayName` and
-   * `sourceAttachmentId`. Defaults to treating `displayName` as a URL when it
-   * looks like one (`http://`, `https://`, `file://`, or `git://`), otherwise
-   * errors. Override for production mapping from attachment record to clone URL.
-   */
-  resolveSourceCloneUrl?: (args: {
-    sourceAttachmentId: string;
-    displayName: string;
-  }) => string | null;
-}
-
-function defaultResolveSourceCloneUrl(args: {
-  sourceAttachmentId: string;
-  displayName: string;
-}): string | null {
-  if (/^(https?:\/\/|git:\/\/|file:\/\/|git@)/.test(args.displayName)) {
-    return args.displayName;
-  }
-  return null;
 }
 
 const defaultRuntime: LocalProviderRuntime = {
@@ -130,9 +110,6 @@ export class LocalProviderAdapter implements ProviderAdapter {
   readonly providerKind: ProviderKind = 'local';
   private readonly workspaceRoot: string;
   private readonly runtime: LocalProviderRuntime;
-  private readonly resolveSourceCloneUrl: NonNullable<
-    LocalProviderAdapterOptions['resolveSourceCloneUrl']
-  >;
   private readonly environmentRoots = new Map<string, string>();
   private readonly environmentProcessIds = new Map<string, string>();
 
@@ -143,7 +120,6 @@ export class LocalProviderAdapter implements ProviderAdapter {
     this.workspaceRoot =
       options.workspaceRoot ?? path.join(os.tmpdir(), DEFAULT_LOCAL_WORKSPACE_ROOT_SUFFIX);
     this.runtime = options.runtime ?? defaultRuntime;
-    this.resolveSourceCloneUrl = options.resolveSourceCloneUrl ?? defaultResolveSourceCloneUrl;
   }
 
   async ensureEnvironment(args: EnsureEnvironmentArgs): Promise<EnsuredEnvironment> {
@@ -186,19 +162,6 @@ export class LocalProviderAdapter implements ProviderAdapter {
     }
 
     for (const source of args.plan.sourceInputs) {
-      const cloneUrl = this.resolveSourceCloneUrl({
-        sourceAttachmentId: source.sourceAttachmentId,
-        displayName: source.displayName,
-      });
-
-      if (cloneUrl === null) {
-        // Source records without a resolvable clone URL are skipped rather
-        // than failing hydration outright — the source may be a non-git
-        // attachment handled elsewhere. The spec boundary here is "real for
-        // available clone URLs", not "fail on every record".
-        continue;
-      }
-
       const destination = path.join(
         sourcesDir,
         safeFilenameForSource(source.displayName, source.sourceAttachmentId),
@@ -207,7 +170,7 @@ export class LocalProviderAdapter implements ProviderAdapter {
       await fs.rm(destination, { recursive: true, force: true });
 
       const error = await this.runtime.cloneSource({
-        repoUrl: cloneUrl,
+        repoUrl: source.repositoryUrl,
         targetRef: source.targetRef,
         destination,
       });

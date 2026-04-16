@@ -4,29 +4,35 @@ import {
   StubCodeCheckpointWriter,
 } from '../../../apps/platform/server/services/processes/environment/code-checkpoint-writer.js';
 
-describe('code checkpoint writer', () => {
-  it('resolves a successful code checkpoint write for writable sources', async () => {
+describe('code checkpoint writer test seams', () => {
+  it('StubCodeCheckpointWriter resolves a successful outcome for any candidate', async () => {
     const writer = new StubCodeCheckpointWriter();
 
     await expect(
       writer.writeFor({
         sourceAttachmentId: 'source-writable-001',
+        repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
         targetRef: 'feature/story-4',
-        diff: 'diff --git a/src/file.ts b/src/file.ts',
+        filePath: 'docs/test.md',
+        diff: 'diff content here',
+        commitMessage: 'Test commit',
       }),
     ).resolves.toEqual({
       outcome: 'succeeded',
     });
   });
 
-  it('returns a failed outcome with failureReason when canonical code persistence fails', async () => {
+  it('FailingCodeCheckpointWriter returns a failed outcome with failureReason', async () => {
     const writer = new FailingCodeCheckpointWriter();
 
     await expect(
       writer.writeFor({
         sourceAttachmentId: 'source-writable-002',
+        repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
         targetRef: 'main',
-        diff: 'diff --git a/README.md b/README.md',
+        filePath: 'README.md',
+        diff: 'diff content here',
+        commitMessage: 'Test commit',
       }),
     ).resolves.toEqual({
       outcome: 'failed',

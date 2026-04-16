@@ -761,6 +761,7 @@ export class ProcessEnvironmentService {
         artifactCandidates: args.executionResult.artifactCheckpointCandidates,
         codeCandidates: args.executionResult.codeCheckpointCandidates,
         workspaceHandle: ensuredWorkspaceHandle,
+        sourceSummariesById,
       });
       const plan = await args.checkpointPlanner.planFor({
         processId: args.processId,
@@ -1026,6 +1027,7 @@ export class ProcessEnvironmentService {
     artifactCandidates: ArtifactCheckpointCandidate[];
     codeCandidates: CodeCheckpointCandidate[];
     workspaceHandle: string | null;
+    sourceSummariesById: Map<string, SourceAttachmentSummary>;
   }): Promise<{ artifacts: CheckpointArtifact[]; codeDiffs: CodeDiff[] }> {
     const nowIso = new Date().toISOString();
 
@@ -1042,14 +1044,29 @@ export class ProcessEnvironmentService {
     );
 
     const codeDiffs: CodeDiff[] = await Promise.all(
-      args.codeCandidates.map(async (candidate) => ({
-        sourceAttachmentId: candidate.sourceAttachmentId,
-        targetRef: candidate.targetRef ?? undefined,
-        diff: await resolveCandidateContents({
-          ref: candidate.workspaceRef,
-          workspaceHandle: args.workspaceHandle,
-        }),
-      })),
+      args.codeCandidates.map(async (candidate) => {
+        const source = args.sourceSummariesById.get(candidate.sourceAttachmentId);
+        if (source === undefined) {
+          // A candidate for an unknown source attachment means the script
+          // produced work against something the durable store no longer knows
+          // about. Fail loud so the orchestrator catches this and records a
+          // failed checkpoint result rather than silently dropping the work.
+          throw new Error(
+            `CodeCheckpointCandidate references sourceAttachmentId '${candidate.sourceAttachmentId}' that is not in the project's current source listing.`,
+          );
+        }
+        return {
+          sourceAttachmentId: candidate.sourceAttachmentId,
+          repositoryUrl: source.repositoryUrl,
+          targetRef: candidate.targetRef ?? undefined,
+          filePath: candidate.filePath,
+          diff: await resolveCandidateContents({
+            ref: candidate.workspaceRef,
+            workspaceHandle: args.workspaceHandle,
+          }),
+          commitMessage: candidate.commitMessage,
+        };
+      }),
     );
 
     return { artifacts, codeDiffs };
@@ -1311,11 +1328,21 @@ export class ProcessEnvironmentService {
       }),
       sourceInputs: args.plan.sourceAttachmentIds.map((sourceAttachmentId) => {
         const source = sourceById.get(sourceAttachmentId);
+        if (source === undefined) {
+          // A plan referencing a source we can't resolve against the current
+          // project-scoped sources is a real breakage — fail loud rather than
+          // fabricating a placeholder repositoryUrl that would silently bypass
+          // hydration or checkpointing.
+          throw new Error(
+            `HydrationPlan references sourceAttachmentId '${sourceAttachmentId}' that is not in the project's source listing.`,
+          );
+        }
         return {
           sourceAttachmentId,
-          displayName: source?.displayName ?? sourceAttachmentId,
-          targetRef: source?.targetRef ?? null,
-          accessMode: source?.accessMode ?? 'read_only',
+          displayName: source.displayName,
+          repositoryUrl: source.repositoryUrl,
+          targetRef: source.targetRef,
+          accessMode: source.accessMode,
         };
       }),
     };

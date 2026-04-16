@@ -1224,8 +1224,11 @@ describe('checkpoint planner', () => {
           codeDiffs: [
             {
               sourceAttachmentId: 'source-writable-001',
+              repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
               targetRef: 'feature/story-4',
-              diff: 'diff --git a/src/file.ts b/src/file.ts',
+              filePath: 'src/file.ts',
+              diff: 'updated file contents',
+              commitMessage: 'Update src/file.ts',
             },
           ],
         },
@@ -1238,8 +1241,11 @@ describe('checkpoint planner', () => {
       codeTargets: [
         {
           sourceAttachmentId: 'source-writable-001',
+          repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
           targetRef: 'feature/story-4',
-          diff: 'diff --git a/src/file.ts b/src/file.ts',
+          filePath: 'src/file.ts',
+          diff: 'updated file contents',
+          commitMessage: 'Update src/file.ts',
         },
       ],
       skippedReadOnly: [],
@@ -1256,8 +1262,11 @@ describe('checkpoint planner', () => {
           codeDiffs: [
             {
               sourceAttachmentId: 'source-readonly-001',
+              repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
               targetRef: 'main',
-              diff: 'diff --git a/README.md b/README.md',
+              filePath: 'README.md',
+              diff: 'updated README contents',
+              commitMessage: 'Update README',
             },
           ],
         },
@@ -1295,8 +1304,11 @@ describe('checkpoint planner', () => {
           codeDiffs: [
             {
               sourceAttachmentId: 'source-readonly-002',
+              repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
               targetRef: 'main',
-              diff: 'diff --git a/docs/spec.md b/docs/spec.md',
+              filePath: 'docs/spec.md',
+              diff: 'spec contents',
+              commitMessage: 'Update docs/spec.md',
             },
           ],
         },

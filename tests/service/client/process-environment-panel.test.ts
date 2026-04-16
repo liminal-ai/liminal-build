@@ -1,7 +1,6 @@
 import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
 import { renderProcessEnvironmentPanel } from '../../../apps/platform/client/features/processes/process-environment-panel.js';
-import { deriveEnvironmentStatusLabel } from '../../../apps/platform/shared/contracts/index.js';
 import {
   buildEnvironmentSummaryFixture,
   checkpointFailedEnvironmentFixture,
@@ -16,30 +15,30 @@ function createDocument() {
 }
 
 describe('process environment panel', () => {
-  it('TC-3.2a panel renders running state as a process-facing label', () => {
+  it('TC-3.2a panel renders the server-supplied statusLabel for running state', () => {
+    const environment = buildEnvironmentSummaryFixture({
+      ...runningEnvironmentFixture,
+      statusLabel: 'Running in environment',
+    });
     const view = renderProcessEnvironmentPanel({
-      environment: buildEnvironmentSummaryFixture({
-        ...runningEnvironmentFixture,
-        statusLabel: 'provider.exec.stdout.fragment',
-      }),
+      environment,
       targetDocument: createDocument(),
     });
 
-    expect(view.textContent).toContain(`State: ${deriveEnvironmentStatusLabel('running')}`);
-    expect(view.textContent).not.toContain('provider.exec.stdout.fragment');
+    expect(view.textContent).toContain('State: Running in environment');
   });
 
-  it('TC-3.2b panel shows the current coherent state instead of raw fragments', () => {
+  it('TC-3.2b panel trusts the server statusLabel verbatim for checkpointing state', () => {
+    const environment = buildEnvironmentSummaryFixture({
+      ...checkpointingEnvironmentFixture,
+      statusLabel: 'Checkpointing work',
+    });
     const view = renderProcessEnvironmentPanel({
-      environment: buildEnvironmentSummaryFixture({
-        ...checkpointingEnvironmentFixture,
-        statusLabel: 'provider.exec.checkpoint.stderr',
-      }),
+      environment,
       targetDocument: createDocument(),
     });
 
-    expect(view.textContent).toContain(`State: ${deriveEnvironmentStatusLabel('checkpointing')}`);
-    expect(view.textContent).not.toContain('provider.exec.checkpoint.stderr');
+    expect(view.textContent).toContain('State: Checkpointing work');
   });
 
   it('TC-4.4a artifact checkpoint result renders an outcome badge and target label', () => {

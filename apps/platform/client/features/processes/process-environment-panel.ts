@@ -1,7 +1,4 @@
-import {
-  deriveEnvironmentStatusLabel,
-  type EnvironmentSummary,
-} from '../../../shared/contracts/index.js';
+import type { EnvironmentSummary } from '../../../shared/contracts/index.js';
 import { renderProcessCheckpointResult } from './process-checkpoint-result.js';
 
 export function renderProcessEnvironmentPanel(args: {
@@ -25,7 +22,7 @@ export function renderProcessEnvironmentPanel(args: {
   section.setAttribute('data-environment-state', args.environment.state);
 
   const status = args.targetDocument.createElement('p');
-  status.textContent = `State: ${deriveEnvironmentStatusLabel(args.environment.state)}`;
+  status.textContent = `State: ${args.environment.statusLabel}`;
   section.append(status);
 
   if (args.environment.environmentId !== null) {

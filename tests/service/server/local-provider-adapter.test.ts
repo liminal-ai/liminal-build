@@ -116,7 +116,8 @@ describe('LocalProviderAdapter', () => {
         sourceInputs: [
           {
             sourceAttachmentId: 'source-clone-1',
-            displayName: 'https://example.invalid/repo.git',
+            displayName: 'liminal-build',
+            repositoryUrl: 'https://example.invalid/repo.git',
             targetRef: 'main',
             accessMode: 'read_write',
           },
@@ -164,7 +165,8 @@ describe('LocalProviderAdapter', () => {
           sourceInputs: [
             {
               sourceAttachmentId: 'source-clone-fail-1',
-              displayName: 'https://example.invalid/missing.git',
+              displayName: 'missing-repo',
+              repositoryUrl: 'https://example.invalid/missing.git',
               targetRef: null,
               accessMode: 'read_only',
             },
@@ -427,6 +429,8 @@ describe('LocalProviderAdapter', () => {
               targetRef: 'main',
               accessMode: 'read_write',
               workspaceRef: 'missing-workspace.diff',
+              filePath: 'docs/missing.md',
+              commitMessage: 'Update docs/missing.md',
             },
           ],
         };

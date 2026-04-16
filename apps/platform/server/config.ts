@@ -29,6 +29,13 @@ const runtimeEnvSchema = z.object({
   // to `os.tmpdir()/liminal-build-sandboxes` (set inside the adapter when this
   // env var is absent).
   LOCAL_PROVIDER_WORKSPACE_ROOT: z.string().optional(),
+  // Required: GitHub Personal Access Token used by `OctokitCodeCheckpointWriter`
+  // to push code checkpoint commits directly to attached writable target refs.
+  // Production wiring constructs the writer with this token; the constructor
+  // throws if it is empty so the production path fails loud rather than
+  // silently falling back to the stub. See the Epic 3 implementation
+  // addendum (item 3) and tech-design-server.md:939-959.
+  GITHUB_TOKEN: z.string().min(1),
 });
 
 export type ServerEnv = z.infer<typeof runtimeEnvSchema>;
@@ -47,6 +54,11 @@ export const story0PlaceholderEnv: ServerEnv = runtimeEnvSchema.parse({
   // story0 placeholder: dev-shaped. Tests and Story 0 fixtures expect `local`
   // so they don't try to construct the Daytona-default adapter chain.
   DEFAULT_ENVIRONMENT_PROVIDER_KIND: 'local',
+  // story0 placeholder: tests inject `codeCheckpointWriter` explicitly via
+  // `options.codeCheckpointWriter` rather than letting `createApp` construct
+  // the real Octokit writer. This placeholder satisfies the schema's
+  // `min(1)` so test wiring still parses cleanly.
+  GITHUB_TOKEN: 'github_pat_story0_placeholder',
 });
 
 export function hasLiveConvexConfig(env: ServerEnv): boolean {

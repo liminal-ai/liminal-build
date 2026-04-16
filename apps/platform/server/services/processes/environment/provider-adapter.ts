@@ -28,6 +28,13 @@ export interface HydrationPlanOutputInput {
 export interface HydrationPlanSourceInput {
   sourceAttachmentId: string;
   displayName: string;
+  /**
+   * Canonical clone URL the adapter feeds to `git clone` (LocalProvider) and
+   * the writer uses to resolve `owner/repo` for direct GitHub writes. Always
+   * present after Chunk 3 — sources without a repo URL are no longer a valid
+   * durable shape.
+   */
+  repositoryUrl: string;
   targetRef: string | null;
   accessMode: SourceAccessMode;
 }
@@ -86,7 +93,26 @@ export interface CodeCheckpointCandidate {
   displayName: string;
   targetRef: string | null;
   accessMode: SourceAccessMode;
+  /**
+   * Filesystem location in the working tree that holds the changed file
+   * contents. For LocalProvider this is an absolute path inside the env's
+   * working tree (or relative to it); the orchestrator reads the contents and
+   * passes them to the writer.
+   */
   workspaceRef: string;
+  /**
+   * Path inside the canonical repo where the file should be committed. This is
+   * the GitHub repo-relative path (e.g. `docs/README.md`), not the working-tree
+   * path. The executing script declares this explicitly — the writer does not
+   * try to infer it from `workspaceRef`.
+   */
+  filePath: string;
+  /**
+   * Commit message for the direct write. Scripts that produce code checkpoint
+   * candidates must supply a meaningful message so the commit log is not
+   * littered with generic text.
+   */
+  commitMessage: string;
 }
 
 export type ProcessExecutionStatus = 'running' | 'waiting' | 'completed' | 'failed' | 'interrupted';
@@ -181,6 +207,8 @@ export class InMemoryProviderAdapter implements ProviderAdapter {
           targetRef: 'main',
           accessMode: 'read_write',
           workspaceRef: `mem://${args.environmentId}/${processId}-source-1.diff`,
+          filePath: `generated/${processId}-source-1.md`,
+          commitMessage: `Checkpoint ${processId} source update`,
         },
       ],
     };

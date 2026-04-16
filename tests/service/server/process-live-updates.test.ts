@@ -109,6 +109,9 @@ function buildPopulatedStore() {
     displayName: readyProcessMaterialsFixture.currentSources[0]?.displayName ?? 'liminal-build',
     purpose: readyProcessMaterialsFixture.currentSources[0]?.purpose ?? 'implementation',
     accessMode: readyProcessMaterialsFixture.currentSources[0]?.accessMode ?? 'read_only',
+    repositoryUrl:
+      readyProcessMaterialsFixture.currentSources[0]?.repositoryUrl ??
+      'https://github.com/liminal-ai/liminal-build',
     targetRef: readyProcessMaterialsFixture.currentSources[0]?.targetRef ?? null,
     hydrationState: readyProcessMaterialsFixture.currentSources[0]?.hydrationState ?? 'hydrated',
     attachmentScope: 'process' as const,
@@ -676,6 +679,7 @@ describe('server-driven environment execution', () => {
     displayName: 'execution-source',
     purpose: 'implementation' as const,
     accessMode: 'read_write' as const,
+    repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
     targetRef: 'main',
     hydrationState: 'hydrated' as const,
     attachmentScope: 'project' as const,

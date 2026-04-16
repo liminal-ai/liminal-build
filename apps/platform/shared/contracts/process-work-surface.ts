@@ -326,6 +326,10 @@ export const processSourceReferenceSchema = z.object({
   displayName: z.string().min(1),
   purpose: sourcePurposeSchema,
   accessMode: sourceAccessModeSchema.default('read_only'),
+  // Canonical clone URL for the source. Mirrored from the durable
+  // `sourceAttachments` row so the process surface and the orchestrator's
+  // checkpoint stage both see the same address the writer will push to.
+  repositoryUrl: z.string().min(1),
   targetRef: z.string().min(1).nullable(),
   hydrationState: hydrationStateSchema,
   updatedAt: z.string().min(1),

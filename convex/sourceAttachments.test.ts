@@ -13,6 +13,7 @@ type SourceAttachmentSummaryShape = {
   displayName: string;
   purpose: 'research' | 'review' | 'implementation' | 'other';
   accessMode: 'read_only' | 'read_write';
+  repositoryUrl: string;
   targetRef: string | null;
   hydrationState: 'not_hydrated' | 'hydrated' | 'stale' | 'unavailable';
   attachmentScope: 'project' | 'process';
@@ -67,6 +68,7 @@ function buildSourceAttachmentsSeed() {
         displayName: 'reference-repo',
         purpose: 'research',
         accessMode: 'read_only',
+        repositoryUrl: 'https://github.com/liminal-ai/reference-repo',
         targetRef: 'main',
         hydrationState: 'hydrated',
         updatedAt: '2026-04-15T12:05:00.000Z',
@@ -79,6 +81,7 @@ function buildSourceAttachmentsSeed() {
         displayName: 'liminal-build',
         purpose: 'implementation',
         accessMode: 'read_write',
+        repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
         targetRef: 'feature/epic-03',
         hydrationState: 'hydrated',
         updatedAt: '2026-04-15T12:10:00.000Z',
@@ -91,6 +94,7 @@ function buildSourceAttachmentsSeed() {
         displayName: 'stale-branch',
         purpose: 'review',
         accessMode: 'read_only',
+        repositoryUrl: 'https://github.com/liminal-ai/stale-branch-repo',
         targetRef: 'old-phase',
         hydrationState: 'stale',
         updatedAt: '2026-04-15T12:03:00.000Z',
@@ -163,6 +167,25 @@ describe('convex/sourceAttachments summaries', () => {
       processDisplayLabel: null,
       accessMode: 'read_only',
     });
+  });
+
+  it('returns repositoryUrl on every projected source attachment summary', async () => {
+    const { ctx } = createFakeConvexContext(buildSourceAttachmentsSeed());
+
+    const summaries = await listProjectSourceAttachmentSummariesHandler(ctx, {
+      projectId: 'project-sources-1',
+    });
+    const byId = new Map(summaries.map((summary) => [summary.sourceAttachmentId, summary]));
+
+    expect(byId.get('source-readonly-project-1')?.repositoryUrl).toBe(
+      'https://github.com/liminal-ai/reference-repo',
+    );
+    expect(byId.get('source-writable-process-1')?.repositoryUrl).toBe(
+      'https://github.com/liminal-ai/liminal-build',
+    );
+    expect(byId.get('source-readonly-stale-1')?.repositoryUrl).toBe(
+      'https://github.com/liminal-ai/stale-branch-repo',
+    );
   });
 
   it('projects mixed read_only and read_write attachments distinctly', async () => {

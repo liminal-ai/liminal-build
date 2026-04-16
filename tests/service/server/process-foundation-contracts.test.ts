@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildProcessSurfaceSummary } from '../../../apps/platform/server/services/processes/process-work-surface.service.js';
-import {
-  processSurfaceControlOrder,
-  requestErrorSchema,
-} from '../../../apps/platform/shared/contracts/index.js';
+import { requestErrorSchema } from '../../../apps/platform/shared/contracts/index.js';
 import {
   artifactCheckpointFailureFixture,
   codeCheckpointSuccessFixture,
@@ -26,7 +23,6 @@ describe('Epic 03 Story 0 foundation contracts', () => {
   it('builds a stable visible control set from durable process and environment truth', () => {
     const summary = buildProcessSurfaceSummary(draftProcessFixture, readyEnvironmentFixture);
 
-    expect(processSurfaceControlOrder).toEqual(stableProcessControlOrderFixture);
     expect(summary.controls.map((control) => control.actionId)).toEqual(
       stableProcessControlOrderFixture,
     );

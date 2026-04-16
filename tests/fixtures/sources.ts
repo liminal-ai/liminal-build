@@ -5,6 +5,7 @@ const baseSourceFixture = {
   displayName: 'liminal-build',
   purpose: 'research' as const,
   accessMode: 'read_only' as const,
+  repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
   targetRef: 'main',
   attachmentScope: 'project' as const,
   processId: null,

@@ -22,8 +22,8 @@ import { ProcessModuleRegistry } from './services/processes/process-module-regis
 import { ProcessAccessService } from './services/processes/process-access.service.js';
 import { CheckpointPlanner } from './services/processes/environment/checkpoint-planner.js';
 import {
-  StubCodeCheckpointWriter,
   type CodeCheckpointWriter,
+  OctokitCodeCheckpointWriter,
 } from './services/processes/environment/code-checkpoint-writer.js';
 import { DaytonaProviderAdapter } from './services/processes/environment/daytona-provider-adapter.js';
 import { LocalProviderAdapter } from './services/processes/environment/local-provider-adapter.js';
@@ -155,7 +155,14 @@ export async function createApp(options: CreateAppOptions = {}) {
   const scriptExecutionService =
     options.scriptExecutionService ?? new ScriptExecutionService(providerAdapterRegistry);
   const checkpointPlanner = options.checkpointPlanner ?? new CheckpointPlanner();
-  const codeCheckpointWriter = options.codeCheckpointWriter ?? new StubCodeCheckpointWriter();
+  // Test seam: when `options.codeCheckpointWriter` is supplied (e.g.,
+  // `StubCodeCheckpointWriter` or `FailingCodeCheckpointWriter`) tests drive
+  // the orchestrator without touching real GitHub. Production omits the
+  // option and constructs the real Octokit-backed writer; if `GITHUB_TOKEN`
+  // is missing or empty the writer's constructor throws so we fail loud
+  // rather than silently falling back to the stub.
+  const codeCheckpointWriter =
+    options.codeCheckpointWriter ?? new OctokitCodeCheckpointWriter({ token: env.GITHUB_TOKEN });
   const processEnvironmentService =
     options.processEnvironmentService ??
     new ProcessEnvironmentService(
