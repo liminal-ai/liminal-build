@@ -1,14 +1,18 @@
 import type { EnvironmentSummary } from '../../../../shared/contracts/index.js';
+import { AppError } from '../../../errors/app-error.js';
+import { notImplementedErrorCode } from '../../../errors/codes.js';
 import type { PlatformStore } from '../../projects/platform-store.js';
 import type { ProcessLiveHub } from '../live/process-live-hub.js';
 import { buildProcessSurfaceSummary } from '../process-work-surface.service.js';
 import type { ProviderAdapter } from './provider-adapter.js';
+import type { ScriptExecutionService } from './script-execution.service.js';
 
 export class ProcessEnvironmentService {
   constructor(
     private readonly platformStore: PlatformStore,
     private readonly providerAdapter: ProviderAdapter,
     private readonly processLiveHub: ProcessLiveHub,
+    private readonly scriptExecutionService?: ScriptExecutionService,
   ) {}
 
   /**
@@ -63,6 +67,16 @@ export class ProcessEnvironmentService {
           environment: hydratedEnvironment,
         },
       });
+
+      try {
+        this.runExecutionAsync({
+          projectId: args.projectId,
+          processId: args.processId,
+          environmentId: hydratedEnvironment.environmentId,
+        });
+      } catch {
+        // RED phase: keep the hydration success path legible while execution is still stubbed.
+      }
     } else {
       const failedEnvironment = await this.platformStore.upsertProcessEnvironmentState({
         processId: args.processId,
@@ -81,5 +95,20 @@ export class ProcessEnvironmentService {
         },
       });
     }
+  }
+
+  private runExecutionAsync(args: {
+    projectId: string;
+    processId: string;
+    environmentId: string | null;
+  }): void {
+    void this.scriptExecutionService;
+    void args;
+
+    throw new AppError({
+      code: notImplementedErrorCode,
+      message: 'Environment execution is not implemented yet.',
+      statusCode: 501,
+    });
   }
 }

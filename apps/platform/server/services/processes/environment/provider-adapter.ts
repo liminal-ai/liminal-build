@@ -5,8 +5,15 @@ export interface HydrationResult {
   lastHydratedAt: string;
 }
 
+export interface ExecutionResult {
+  outcome: 'succeeded' | 'failed';
+  completedAt: string;
+  failureReason?: string;
+}
+
 export interface ProviderAdapter {
   hydrateEnvironment(args: { processId: string; plan: WorkingSetPlan }): Promise<HydrationResult>;
+  executeScript(args: { processId: string; environmentId: string }): Promise<ExecutionResult>;
 }
 
 /**
@@ -24,6 +31,16 @@ export class InMemoryProviderAdapter implements ProviderAdapter {
       lastHydratedAt: new Date().toISOString(),
     };
   }
+
+  async executeScript(_args: {
+    processId: string;
+    environmentId: string;
+  }): Promise<ExecutionResult> {
+    return {
+      outcome: 'succeeded',
+      completedAt: '2026-04-15T00:00:00.000Z',
+    };
+  }
 }
 
 /**
@@ -35,5 +52,16 @@ export class FailingProviderAdapter implements ProviderAdapter {
 
   async hydrateEnvironment(_args: { processId: string; plan: WorkingSetPlan }): Promise<never> {
     throw new Error(this.reason);
+  }
+
+  async executeScript(_args: {
+    processId: string;
+    environmentId: string;
+  }): Promise<ExecutionResult> {
+    return {
+      outcome: 'failed',
+      completedAt: '2026-04-15T00:00:00.000Z',
+      failureReason: this.reason,
+    };
   }
 }

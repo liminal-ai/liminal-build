@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyLiveProcessMessage } from '../../../apps/platform/client/app/process-live.js';
 import {
+  deriveEnvironmentStatusLabel,
   liveProcessUpdateMessageSchema,
   processSurfaceStateSchema,
   processSurfaceSummarySchema,
@@ -26,6 +27,11 @@ import {
   readyProcessMaterialsFixture,
   revisedOutputProcessMaterialsFixture,
 } from '../../fixtures/materials.js';
+import {
+  buildEnvironmentSummaryFixture,
+  failedEnvironmentFixture,
+  runningEnvironmentFixture,
+} from '../../fixtures/process-environment.js';
 import {
   completedProcessSurfaceFixture,
   failedProcessSurfaceFixture,
@@ -75,6 +81,24 @@ function buildConnectedSideWorkState(lastSequenceNumber: number) {
       status: 'empty',
       items: [],
     },
+    live: {
+      connectionState: 'connected',
+      subscriptionId: 'subscription-001',
+      lastSequenceNumber,
+      error: null,
+    },
+  });
+}
+
+function buildConnectedExecutionState(lastSequenceNumber: number) {
+  return processSurfaceStateSchema.parse({
+    ...buildRunningSurfaceState(),
+    history: {
+      status: 'ready',
+      items: [progressUpdateHistoryFixture],
+    },
+    materials: readyProcessMaterialsFixture,
+    environment: runningEnvironmentFixture,
     live: {
       connectionState: 'connected',
       subscriptionId: 'subscription-001',
@@ -186,6 +210,74 @@ describe('process live foundation', () => {
     expect(failedState.environment?.state).toBe('failed');
     expect(failedState.environment?.state).not.toBe('running');
     expect(failedState.environment?.blockedReason).not.toBeNull();
+  });
+
+  it('TC-3.1a / TC-3.3a reducer keeps waiting distinct from active environment execution', () => {
+    const nextState = applyLiveProcessMessage({
+      state: buildConnectedExecutionState(1),
+      message: buildLiveProcessMessageFixture({
+        messageType: 'upsert',
+        entityType: 'process',
+        sequenceNumber: 2,
+        payload: processSurfaceSummarySchema.parse({
+          ...waitingProcessSurfaceFixture,
+          processId: runningProcessSurfaceFixture.processId,
+        }),
+      }),
+    });
+
+    expect(nextState.process?.status).toBe('waiting');
+    expect(nextState.environment?.state).not.toBe('running');
+  });
+
+  it('TC-3.3b reducer applies checkpointing as a distinct coherent state', () => {
+    const state = buildConnectedExecutionState(1);
+    const nextState = applyLiveProcessMessage({
+      state,
+      message: buildLiveProcessMessageFixture({
+        messageType: 'upsert',
+        entityType: 'environment',
+        processId: state.processId ?? runningProcessSurfaceFixture.processId,
+        sequenceNumber: 2,
+        payload: buildEnvironmentSummaryFixture({
+          ...runningEnvironmentFixture,
+          state: 'checkpointing',
+          statusLabel: 'provider.exec.raw.checkpoint-fragment',
+        }),
+      }),
+    });
+
+    expect(nextState.environment).toMatchObject({
+      state: 'checkpointing',
+      statusLabel: deriveEnvironmentStatusLabel('checkpointing'),
+    });
+  });
+
+  it('TC-3.4a execution failure preserves process identity, history, and materials visibility', () => {
+    const state = buildConnectedExecutionState(1);
+    const nextState = applyLiveProcessMessage({
+      state,
+      message: buildLiveProcessMessageFixture({
+        messageType: 'upsert',
+        entityType: 'environment',
+        processId: state.processId ?? runningProcessSurfaceFixture.processId,
+        sequenceNumber: 2,
+        payload: buildEnvironmentSummaryFixture({
+          ...failedEnvironmentFixture,
+          statusLabel: 'provider.exec.stderr.chunk',
+          blockedReason: 'Execution failed after active work began.',
+        }),
+      }),
+    });
+
+    expect(nextState.process?.processId).toBe(state.process?.processId);
+    expect(nextState.history).toEqual(state.history);
+    expect(nextState.materials).toEqual(state.materials);
+    expect(nextState.environment).toMatchObject({
+      state: 'failed',
+      statusLabel: deriveEnvironmentStatusLabel('failed'),
+      blockedReason: 'Execution failed after active work began.',
+    });
   });
 
   it('TC-2.2a running state becomes visible during active work', () => {

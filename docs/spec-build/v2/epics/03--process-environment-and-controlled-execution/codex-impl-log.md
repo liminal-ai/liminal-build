@@ -1885,4 +1885,125 @@ codex exec and monitor the jsonl for `turn.completed` or stall.
 **Secondary fix:** Always capture stderr from `codex exec`. The skill's
 default `2>/dev/null` pattern is unsafe for diagnosis.
 
+## Story 2 Transition Checkpoint
+
+- Story 2 acceptance: accepted
+- Story 2 commit: `06eb084`
+- Commit message: `feat: Story 2 — Start or Resume with Environment Preparation`
+- Cumulative test baseline: 9 convex + 81 server + 130 client = 220 passing
+- Baseline movement: 105 (post-Story 1) → 220 (post-Story 2). Large increase
+  reflects the Story 2 bootstrap/action/live/client-surface expansion plus
+  fix-batch assertion corrections.
+- Boundary inventory: `InMemoryProviderAdapter` introduced as the seeded
+  provider stub for Story 2. `DaytonaProviderAdapter` and
+  `LocalProviderAdapter` remain not-yet-implemented; slated for later stories
+  and epic-level verification will require honest disposition. The
+  `code-checkpoint-writer.ts` (GitHub write boundary) is a Story 4 concern.
+
+### Round 3 Dual Verification Evidence
+
+- Codex Round 3 verifier: `gpt-5.4 xhigh` via direct-Bash `codex exec`
+  dispatch (the proven pattern — see Diagnostic block above)
+  - Verdict: PASS
+  - Gate: passed
+  - Blocking findings: 0
+  - Round-2 blockers closed: yes (all 4)
+  - Review: `story-verification/02-start-or-resume-with-environment-preparation/codex-review-round-3.md`
+- Sonnet Round 3 verifier: `claude-sonnet-4-6` one-shot Agent
+  - Initial verdict (pre-fix): BLOCK on 3 gate items (biome + 2 test assertions)
+  - Post-fix confirm verdict: PASS
+  - Review: `story-verification/.../sonnet-review-round-3.md` (initial) +
+    `sonnet-review-round-3-confirm.md` (post-fix)
+
+### Fix Batch 01 Applied
+
+- Fix batch: `story-02-fix-batch-01.md`
+- Items: (1) biome autofix on `platform-store.ts`, (2) `S2-TC-2.1b` assertion
+  `status: 'running'` → `'paused'` (Story 2 preserves pre-resume status until
+  async hydration observes readiness), (3) `TC-2.1c` assertion
+  `availableActions: []` → `['review']` (Story 1 control-derivation). All
+  three confirmed as corrections, not assertion weakening.
+
+### Orchestration Learnings From This Run
+
+- **Teammate-managed codex exec dies mid-turn.** The `ls-team-impl-cc`
+  teammate pattern does not reliably keep `codex exec` alive when the
+  teammate returns control to the orchestrator. Use direct Bash
+  `run_in_background` dispatch for codex exec.
+- **Always capture stderr.** The codex-subagent skill's
+  `2>/dev/null` default hides diagnostic output.
+- **Avoid over-correction under pressure.** When a verification lane fails
+  repeatedly, the impulse to skip verification is as wrong as the impulse
+  to keep churning. The correct move is to diagnose the lane failure and
+  find a working dispatch pattern — which is what direct Bash
+  `run_in_background` provided.
+
+## Next Story
+
+- Next story: `stories/03-controlled-execution-and-live-environment-state.md`
+- Approach:
+  - Reload hybrid `ls-team-impl-cc` skill shape in context
+  - Story 3 red phase: direct `codex exec` for implementer (skeleton + failing
+    tests for AC-3.1 through AC-3.4), orchestrator commits the red baseline
+  - Story 3 green phase: direct `codex exec` for implementer (green the tests)
+  - Dual verify: direct `codex exec` for Codex verifier + one-shot Sonnet
+    Agent for Sonnet verifier
+  - Use proven dispatch pattern: Bash `run_in_background` with explicit
+    stderr capture and `turn.completed` / exit-code monitoring
+
+## Story 3 Preflight
+
+- `state`: `STORY_ACTIVE`
+- `phase`: `red`
+- Story: `stories/03-controlled-execution-and-live-environment-state.md`
+- Story base commit: `06eb084` (Story 2 just accepted)
+- Lane: Codex `gpt-5.4` reasoning `xhigh` via direct Bash `codex exec` (proven pattern)
+
+### Preflight Assessment
+
+- Story 3 extends the Story 2 `ProcessEnvironmentService` / provider seam with
+  a script-execution step. The environment transitions: preparing → ready →
+  running → checkpointing → settled, with `failed` as a recoverable branch at
+  any stage.
+- Primary new server file: `services/processes/environment/script-execution.service.ts`
+- Modified: `process-environment.service.ts` (add an execute step after ready),
+  `process-live-normalizer.ts` (emit coherent process-facing execution updates
+  rather than raw provider fragments), possibly
+  `process-environment-panel.ts` client rendering.
+- Client side: `process-live.ts` needs to reconcile `running` and
+  `checkpointing` environment states with existing preparing/ready handling.
+- Story 3 **must not** implement Story 4 checkpoint writes. `checkpointing`
+  state is visible but `lastCheckpointResult` behavior remains Story 4 work.
+
+### Expected Test Baseline
+
+- Prior cumulative: 220 passing (9/81/130)
+- Story 3 new coverage (from test plan):
+  - `tests/service/server/script-execution.service.test.ts` — new file, ~2 tests
+  - `tests/service/server/process-live-updates.test.ts` — ~4 new tests for
+    running/checkpointing/failed execution transitions
+  - `tests/service/client/process-live.test.ts` — ~3 new tests for execution
+    state reducer behavior
+  - `tests/service/client/process-environment-panel.test.ts` — rendering
+    updates for running/checkpointing labels
+  - `tests/service/client/process-controls.test.ts` — running/checkpointing
+    state-matrix additions (may already be covered by Story 1 baseline)
+- Expected post-Story-3 total: ~232–240
+
+### Story-Specific Warnings For Implementer
+
+- Do NOT implement Story 4 checkpoint writes. `environment.state =
+  checkpointing` is visible but no canonical artifact or code persistence
+  happens in this story. `lastCheckpointResult` population is out of scope.
+- Do NOT implement Story 5 recovery mutations.
+- Live execution updates must be process-facing coherent objects, not raw
+  provider stream fragments. The existing live normalizer pattern is the
+  correct seam.
+- Preserve the accepted-action vs later-failure boundary established in
+  Story 2.
+- The existing `ProviderAdapter` interface already has `executeScript` in
+  the tech design — use that seam.
+
+
+
 
