@@ -393,6 +393,13 @@ function validateExecutionResult(value: unknown): ValidationResult<ExecutionResu
     }
   }
 
+  const codeCandidateValidation = validateCodeCheckpointCandidates(
+    obj.codeCheckpointCandidates as ExecutionResult['codeCheckpointCandidates'],
+  );
+  if (!codeCandidateValidation.ok) {
+    return codeCandidateValidation;
+  }
+
   return {
     ok: true,
     value: {
@@ -406,6 +413,36 @@ function validateExecutionResult(value: unknown): ValidationResult<ExecutionResu
         obj.codeCheckpointCandidates as ExecutionResult['codeCheckpointCandidates'],
     },
   };
+}
+
+function validateCodeCheckpointCandidates(
+  candidates: CodeCheckpointCandidate[],
+): ValidationResult<void> {
+  for (const candidate of candidates) {
+    const sourceAttachmentId =
+      typeof candidate?.sourceAttachmentId === 'string' && candidate.sourceAttachmentId.length > 0
+        ? candidate.sourceAttachmentId
+        : '<unknown sourceAttachmentId>';
+
+    if (typeof candidate?.filePath !== 'string' || candidate.filePath.trim().length === 0) {
+      return {
+        ok: false,
+        reason: `codeCheckpointCandidate '${sourceAttachmentId}' is missing required filePath.`,
+      };
+    }
+
+    if (
+      typeof candidate?.commitMessage !== 'string' ||
+      candidate.commitMessage.trim().length === 0
+    ) {
+      return {
+        ok: false,
+        reason: `codeCheckpointCandidate '${sourceAttachmentId}' is missing required commitMessage.`,
+      };
+    }
+  }
+
+  return { ok: true, value: undefined };
 }
 
 async function validateCandidateRefs(args: {

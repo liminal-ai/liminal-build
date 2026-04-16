@@ -95,19 +95,17 @@ function applyEnvironment(
   current: EnvironmentSummary | null,
   next: EnvironmentSummary,
 ): EnvironmentSummary {
-  const normalized = normalizeEnvironmentState(next, next.state);
-
   if (
     current === null ||
-    !shouldPreserveCheckpointContext(normalized.state) ||
-    normalized.lastCheckpointResult !== null
+    !shouldPreserveCheckpointContext(next.state) ||
+    next.lastCheckpointResult !== null
   ) {
-    return normalized;
+    return next;
   }
 
   return {
-    ...normalized,
-    lastCheckpointAt: normalized.lastCheckpointAt ?? current.lastCheckpointAt,
+    ...next,
+    lastCheckpointAt: next.lastCheckpointAt ?? current.lastCheckpointAt,
     lastCheckpointResult: current.lastCheckpointResult,
   };
 }

@@ -16,29 +16,31 @@ function createDocument() {
 
 describe('process environment panel', () => {
   it('TC-3.2a panel renders the server-supplied statusLabel for running state', () => {
+    const customStatusLabel = 'CUSTOM SERVER LABEL FOR TESTING: running stays verbatim';
     const environment = buildEnvironmentSummaryFixture({
       ...runningEnvironmentFixture,
-      statusLabel: 'Running in environment',
+      statusLabel: customStatusLabel,
     });
     const view = renderProcessEnvironmentPanel({
       environment,
       targetDocument: createDocument(),
     });
 
-    expect(view.textContent).toContain('State: Running in environment');
+    expect(view.textContent).toContain(`State: ${customStatusLabel}`);
   });
 
   it('TC-3.2b panel trusts the server statusLabel verbatim for checkpointing state', () => {
+    const customStatusLabel = 'CUSTOM SERVER LABEL FOR TESTING: checkpointing stays verbatim';
     const environment = buildEnvironmentSummaryFixture({
       ...checkpointingEnvironmentFixture,
-      statusLabel: 'Checkpointing work',
+      statusLabel: customStatusLabel,
     });
     const view = renderProcessEnvironmentPanel({
       environment,
       targetDocument: createDocument(),
     });
 
-    expect(view.textContent).toContain('State: Checkpointing work');
+    expect(view.textContent).toContain(`State: ${customStatusLabel}`);
   });
 
   it('TC-4.4a artifact checkpoint result renders an outcome badge and target label', () => {

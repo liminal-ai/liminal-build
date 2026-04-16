@@ -459,6 +459,118 @@ describe('LocalProviderAdapter', () => {
     expect(exec.processHistoryItems[0]?.text).toContain('does not exist');
   });
 
+  it('executeScript rejects code checkpoint candidates missing required filePath or commitMessage', async () => {
+    const platformStore = new InMemoryPlatformStore();
+    const runtime: LocalProviderRuntime = {
+      cloneSource: async () => null,
+      runScript: async ({ workingTree }) => {
+        await fs.writeFile(
+          path.join(workingTree, 'valid-workspace-file.md'),
+          '# generated',
+          'utf8',
+        );
+        const result = {
+          processStatus: 'completed',
+          processHistoryItems: [],
+          outputWrites: [],
+          sideWorkWrites: [],
+          artifactCheckpointCandidates: [],
+          codeCheckpointCandidates: [
+            {
+              sourceAttachmentId: 'source-missing-file-path-1',
+              displayName: 'Missing filePath',
+              targetRef: 'main',
+              accessMode: 'read_write',
+              workspaceRef: 'valid-workspace-file.md',
+              commitMessage: 'Update docs/valid.md',
+            },
+            {
+              sourceAttachmentId: 'source-missing-commit-message-1',
+              displayName: 'Missing commitMessage',
+              targetRef: 'main',
+              accessMode: 'read_write',
+              workspaceRef: 'valid-workspace-file.md',
+              filePath: 'docs/valid.md',
+            },
+          ],
+        };
+        await fs.writeFile(
+          path.join(workingTree, SCRIPT_RESULT_FILENAME),
+          JSON.stringify(result),
+          'utf8',
+        );
+        return 0;
+      },
+    };
+    const adapter = new LocalProviderAdapter(platformStore, { workspaceRoot, runtime });
+    const ensured = await adapter.ensureEnvironment({
+      processId: 'proc-exec-missing-code-candidate-fields-1',
+      providerKind: 'local',
+    });
+
+    const missingFilePath = await adapter.executeScript({
+      environmentId: ensured.environmentId,
+      scriptPayload: { format: 'ts-module-source', entrypoint: 'default', source: 'noop' },
+    });
+
+    expect(missingFilePath.processStatus).toBe('failed');
+    expect(missingFilePath.processHistoryItems[0]?.text).toContain(
+      "codeCheckpointCandidate 'source-missing-file-path-1' is missing required filePath",
+    );
+
+    const commitMessageRuntime: LocalProviderRuntime = {
+      cloneSource: async () => null,
+      runScript: async ({ workingTree }) => {
+        await fs.writeFile(
+          path.join(workingTree, 'valid-workspace-file.md'),
+          '# generated',
+          'utf8',
+        );
+        const result = {
+          processStatus: 'completed',
+          processHistoryItems: [],
+          outputWrites: [],
+          sideWorkWrites: [],
+          artifactCheckpointCandidates: [],
+          codeCheckpointCandidates: [
+            {
+              sourceAttachmentId: 'source-missing-commit-message-1',
+              displayName: 'Missing commitMessage',
+              targetRef: 'main',
+              accessMode: 'read_write',
+              workspaceRef: 'valid-workspace-file.md',
+              filePath: 'docs/valid.md',
+            },
+          ],
+        };
+        await fs.writeFile(
+          path.join(workingTree, SCRIPT_RESULT_FILENAME),
+          JSON.stringify(result),
+          'utf8',
+        );
+        return 0;
+      },
+    };
+    const commitMessageAdapter = new LocalProviderAdapter(platformStore, {
+      workspaceRoot,
+      runtime: commitMessageRuntime,
+    });
+    const ensuredCommitMessage = await commitMessageAdapter.ensureEnvironment({
+      processId: 'proc-exec-missing-code-candidate-fields-2',
+      providerKind: 'local',
+    });
+
+    const missingCommitMessage = await commitMessageAdapter.executeScript({
+      environmentId: ensuredCommitMessage.environmentId,
+      scriptPayload: { format: 'ts-module-source', entrypoint: 'default', source: 'noop' },
+    });
+
+    expect(missingCommitMessage.processStatus).toBe('failed');
+    expect(missingCommitMessage.processHistoryItems[0]?.text).toContain(
+      "codeCheckpointCandidate 'source-missing-commit-message-1' is missing required commitMessage",
+    );
+  });
+
   it('teardownEnvironment removes the working tree and is idempotent', async () => {
     const platformStore = new InMemoryPlatformStore();
     const adapter = new LocalProviderAdapter(platformStore, { workspaceRoot });

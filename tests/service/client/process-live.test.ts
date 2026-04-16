@@ -6,7 +6,6 @@ import { applyLiveProcessMessage } from '../../../apps/platform/client/app/proce
 import { renderProcessEnvironmentPanel } from '../../../apps/platform/client/features/processes/process-environment-panel.js';
 import { buildProcessSurfaceSummary } from '../../../apps/platform/server/services/processes/process-work-surface.service.js';
 import {
-  deriveEnvironmentStatusLabel,
   liveProcessUpdateMessageSchema,
   processSummarySchema,
   processSurfaceStateSchema,
@@ -296,6 +295,7 @@ describe('process live foundation', () => {
 
   it('TC-3.3b reducer applies checkpointing as a distinct coherent state', () => {
     const state = buildConnectedExecutionState(1);
+    const customStatusLabel = 'CUSTOM SERVER LABEL FOR TESTING: checkpointing stays verbatim';
     const nextState = applyLiveProcessMessage({
       state,
       message: buildLiveProcessMessageFixture({
@@ -306,19 +306,20 @@ describe('process live foundation', () => {
         payload: buildEnvironmentSummaryFixture({
           ...runningEnvironmentFixture,
           state: 'checkpointing',
-          statusLabel: 'provider.exec.raw.checkpoint-fragment',
+          statusLabel: customStatusLabel,
         }),
       }),
     });
 
     expect(nextState.environment).toMatchObject({
       state: 'checkpointing',
-      statusLabel: deriveEnvironmentStatusLabel('checkpointing'),
+      statusLabel: customStatusLabel,
     });
   });
 
   it('TC-3.4a execution failure preserves process identity, history, and materials visibility', () => {
     const state = buildConnectedExecutionState(1);
+    const customStatusLabel = 'CUSTOM SERVER LABEL FOR TESTING: failure stays verbatim';
     const nextState = applyLiveProcessMessage({
       state,
       message: buildLiveProcessMessageFixture({
@@ -328,7 +329,7 @@ describe('process live foundation', () => {
         sequenceNumber: 2,
         payload: buildEnvironmentSummaryFixture({
           ...failedEnvironmentFixture,
-          statusLabel: 'provider.exec.stderr.chunk',
+          statusLabel: customStatusLabel,
           blockedReason: 'Execution failed after active work began.',
         }),
       }),
@@ -339,7 +340,7 @@ describe('process live foundation', () => {
     expect(nextState.materials).toEqual(state.materials);
     expect(nextState.environment).toMatchObject({
       state: 'failed',
-      statusLabel: deriveEnvironmentStatusLabel('failed'),
+      statusLabel: customStatusLabel,
       blockedReason: 'Execution failed after active work began.',
     });
   });
@@ -367,9 +368,7 @@ describe('process live foundation', () => {
       ]),
     );
     expect(environmentPanel.getAttribute('data-environment-state')).toBe('failed');
-    expect(environmentPanel.textContent).toContain(
-      `State: ${deriveEnvironmentStatusLabel('failed')}`,
-    );
+    expect(environmentPanel.textContent).toContain('State: provider.exec.stderr.chunk');
   });
 
   it('environment updates do not wipe unrelated history state', () => {
