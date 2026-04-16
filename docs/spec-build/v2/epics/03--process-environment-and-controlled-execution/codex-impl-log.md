@@ -2079,7 +2079,179 @@ default `2>/dev/null` pattern is unsafe for diagnosis.
 - Checkpoint failure does NOT silently drop work (AC-4.5) — it must surface with a retry/recovery path visible to the user.
 - Do NOT implement Story 5 rehydrate/rebuild mutations. Do NOT implement Story 6 reopen restoration; TC-4.1b will be end-to-end exercisable in Story 6.
 
+## Epic 3 Orchestration Debrief
 
+### Codex Dispatch Pattern
 
+**What broke:** The `ls-team-impl-cc` teammate pattern — spawning an Opus
+Claude Code teammate who loads `codex-subagent` and manages `codex exec` —
+is structurally unsafe for long-running Codex tasks. The teammate's child
+process (`codex exec`) gets orphaned/reaped when the teammate returns control
+to the orchestrator. Both dispatch attempts died mid-turn with no
+`turn.completed` event, no stderr (swallowed by `2>/dev/null`), and no
+visible error. Diagnosis took ~45 minutes across 3 failed attempts because
+the orchestrator passively waited instead of investigating after the first
+failure.
 
+**What works:** Direct `codex exec` via `Bash` with `run_in_background: true`
+from the orchestrator's own session. The child process is owned by the
+session's shell, survives until natural exit, and the `run_in_background`
+completion notification is the reliable signal. Stderr must be captured to a
+separate file (`2> /tmp/codex-run.err`) — never use the codex-subagent skill's
+default `2>/dev/null` pattern.
+
+**Rule for future orchestration:** Never route long-running external CLI
+tasks through a Claude Code teammate. Teammates are cheap context wrappers
+but unsafe lifecycle managers. Dispatch codex exec directly and monitor the
+jsonl for `turn.completed` or stall.
+
+### Passive Waiting vs Active Investigation
+
+The orchestrator waited 20 minutes on the first stalled Codex dispatch
+before investigating, then spent another 10 minutes on a retry before
+diagnosing the root cause. The user had to push multiple times before the
+orchestrator shifted from waiting to investigating.
+
+**Rule:** After any external dispatch, set a 5-minute investigation
+threshold, not a 20-minute passive wait. If 5 minutes pass with no progress
+signal, actively investigate: check the process table, read stderr, inspect
+the jsonl event stream, run a smoke test. Don't arm a monitor and go idle.
+
+### Smoke Test Before Long Dispatch
+
+A 10-second `codex exec --json "Reply with OK"` smoke test would have
+confirmed whether the CLI was alive before committing to a 15-minute
+verification run. The orchestrator skipped this on the first dispatch and
+wasted ~25 minutes before discovering the CLI worked fine (the dispatch
+mechanism was the problem, not the CLI).
+
+**Rule:** Before any Codex dispatch expected to take >5 minutes, run a smoke
+test to confirm the CLI is operational.
+
+### Over-Correction Under Pressure
+
+When the user expressed frustration about churning on Codex dispatch
+failures, the orchestrator panic-proposed skipping verification entirely.
+The user correctly called this out. The swing from one extreme to the other
+is an emotional reaction, not a judgment call.
+
+**Rule:** When a lane fails repeatedly, the correct response is to
+investigate the root cause and find a working pattern. It is NOT to skip the
+verification step, and it is NOT to keep retrying the same broken pattern.
+Hold steady; diagnose; adapt.
+
+### Sonnet Systematically Misses What Codex Catches
+
+Across Stories 2-5, Sonnet consistently returned PASS while Codex found
+MAJOR blockers:
+
+- **Story 3:** Sonnet PASS, Codex REVISE — same-session execution-failure
+  publication didn't recompute `process.controls` (AC-3.4 recovery path).
+- **Story 4:** Sonnet PASS (accepted fail-open as risk), Codex REVISE —
+  `buildSourceAccessModes` defaulted unknown sources to `read_write` instead
+  of fail-closed `read_only` (AC-4.3 violation).
+- **Story 5:** Sonnet PASS, Codex REVISE — `rehydrating` not in Convex
+  validator + prerequisite check only reachable in test store.
+
+This matches the `ls-team-impl-cc` warning about model-family bias. Cross-
+family verification caught 4 legitimate blockers that same-family would have
+missed.
+
+**Rule:** Never treat dual Sonnet/Opus PASS as equivalent to Codex + Sonnet
+PASS. Cross-family verification is structurally important.
+
+### Fix Batches Are the Norm
+
+Every story from 2-5 required a fix batch after initial verification. This
+is the expected outcome of the verify-then-fix cycle, not a sign of poor
+implementation. Budget ~30% of story time for the fix-verify loop.
+
+### Codex Red-Phase Test Setup Errors
+
+In Story 4, Codex wrote red-phase tests with contradictory setups (TC-4.1a
+waiting for `failed` while asserting success; TC-4.5b using success writer
+while asserting failure). Codex caught its own errors during green and
+correctly stopped rather than silently patching — good discipline. But the
+errors shouldn't have been written in the first place.
+
+**Rule:** Red-phase prompts should include an explicit self-verification
+step: "Before reporting, re-read each test and confirm the setup (fixtures,
+stubs, waiters) is coherent with the expected assertion."
+
+### Convex AI Guidelines Not Enforced in Implementer Reading Journeys
+
+The CLAUDE.md directive says to always read `convex/_generated/ai/guidelines.md`
+first when working on Convex code. The orchestrator's explicit prompts for
+Stories 3-6 did NOT include this file in the reading journey. Some Codex runs
+picked it up by reading CLAUDE.md independently, but enforcement was
+inconsistent. Additionally, `npx convex dev` reported the AI files were out
+of date — so even when read, guidelines may have been stale.
+
+**Rule:** When the repo's CLAUDE.md specifies mandatory reading for a
+technology, the orchestrator's prompts must explicitly include those files
+in the reading journey. Also run `npx convex ai-files update` before any
+implementation pass that touches Convex code.
+
+### Convex Module Path Naming Restrictions
+
+`npx convex dev` rejected `convex/test-helpers/fake-convex-context.ts`
+because Convex module paths cannot contain hyphens — only alphanumeric
+characters, underscores, or periods. The orchestrator initially fixed only
+the directory name and missed the filename having hyphens too. Both path
+components needed renaming.
+
+**Rule:** When fixing Convex path issues, use `find convex -name "*-*"` to
+find every hyphenated path in one pass. Don't fix one component and assume
+the rest are fine.
+
+### Verification Gate Does Not Exercise Convex Deployment
+
+`corepack pnpm run verify` does not run `npx convex dev` or `npx convex
+codegen`. Schema changes that break Convex deployment (hyphenated paths,
+missing validators) are invisible to the gate and only surface when someone
+tries to deploy.
+
+**Workaround:** Before accepting an epic that touches Convex schema,
+manually run `npx convex dev` at least once to confirm the schema deploys
+cleanly.
+
+### Epic-Level Review Finds Production-Path Gaps Story-Level Cannot
+
+Codex's epic-level review surfaced three MAJOR production-path gaps that no
+story-level review caught: ConvexPlatformStore hydration-plan persistence
+is a stub, stale-detection fingerprint not implemented, and execution
+contract can't produce waiting/history/side-work. These are all "in-memory
+path works, production path doesn't" gaps — structurally invisible to
+story-level review because every story tests against InMemoryPlatformStore.
+
+**Rule:** Epic-level review is not optional. The reviewer's prompt should
+explicitly ask: "For every critical AC, trace the implementation path
+through the REAL store, not just the test store. Flag any behavior that
+works on the test double but is stubbed or absent on the production store."
+
+### Context Window Management
+
+This session processed 7 stories, multiple fix batches, and dual
+verification on each. Context compression kicked in at several points. The
+impl log, committed code, and verification artifacts served as durable state
+that survived compression.
+
+**Rule:** For runs over 4-5 stories, write ALL significant decisions and
+learnings to the impl log immediately — not at the end. If it's not in the
+log or the code, it doesn't survive context compression.
+
+### What Worked Well
+
+- **Direct Bash codex exec dispatch** — once discovered, worked for ALL
+  subsequent runs with zero failures across Stories 3-6.
+- **TDD red-phase commit** — committed red baseline gave verifiers a clean
+  diff target for test-change classification.
+- **Fix batch spec files** — writing fix scope to markdown before dispatch
+  kept fixes bounded and gave verifiers clear references.
+- **Cross-family verification** — Codex caught 4 blockers Sonnet missed.
+- **Pre-verification cleanup batch** — surfaced 3 genuine fixable items
+  from the compiled deferred/accepted-risk list.
+- **User pushback was diagnostic signal.** Every time the user pushed back,
+  it pointed at a real process failure. Treat frustration as a symptom of a
+  real problem, not as noise to manage.
 

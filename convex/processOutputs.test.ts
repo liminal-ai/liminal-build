@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { listProcessOutputs, replaceCurrentProcessOutputs } from './processOutputs.js';
-import { createFakeConvexContext } from './test-helpers/fake-convex-context.js';
+import { createFakeConvexContext } from './test_helpers/fake_convex_context.js';
 
 function getHandler<TArgs, TReturn>(
   registered: unknown,

@@ -3,7 +3,7 @@ import {
   listProcessSideWorkItems,
   replaceCurrentProcessSideWorkItems,
 } from './processSideWorkItems.js';
-import { createFakeConvexContext } from './test-helpers/fake-convex-context.js';
+import { createFakeConvexContext } from './test_helpers/fake_convex_context.js';
 
 function getHandler<TArgs, TReturn>(
   registered: unknown,
