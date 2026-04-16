@@ -361,6 +361,10 @@ class RecordingPlatformStore implements PlatformStore {
     return true;
   }
 
+  async getArtifactContent(): Promise<string | null> {
+    return null;
+  }
+
   private updateProjectSummary(
     projectId: string,
     update: (project: ProjectSummary) => ProjectSummary,

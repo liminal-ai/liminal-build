@@ -544,6 +544,9 @@ describe('auth routes', () => {
       async hasCanonicalRecoveryMaterials() {
         return true;
       },
+      async getArtifactContent() {
+        return null;
+      },
     };
     const app = await buildApp({
       authSessionService: createTestAuthSessionService({

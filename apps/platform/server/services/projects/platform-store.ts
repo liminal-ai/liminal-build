@@ -178,6 +178,12 @@ export interface PlatformStore {
     items: PlatformSideWorkWriteInput[];
   }): Promise<SideWorkItem[]>;
   hasCanonicalRecoveryMaterials(args: { processId: string }): Promise<boolean>;
+  /**
+   * Reads the durable content for one artifact. Used by `LocalProviderAdapter`
+   * to materialize artifact content into the working tree during hydration.
+   * Returns `null` when the artifact row or its storage blob is missing.
+   */
+  getArtifactContent(args: { artifactId: string }): Promise<string | null>;
 }
 
 function buildDefaultEnvironmentSummary(): EnvironmentSummary {
@@ -394,6 +400,12 @@ const persistCheckpointArtifactsAction = makeFunctionReference<
   },
   PlatformProcessOutputSummary[]
 >('artifacts:persistCheckpointArtifacts');
+
+const fetchArtifactContentAction = makeFunctionReference<
+  'action',
+  { artifactId: string },
+  string | null
+>('artifacts:fetchArtifactContent');
 
 const listProcessSideWorkItemsQuery = makeFunctionReference<
   'query',
@@ -705,6 +717,10 @@ export class NullPlatformStore implements PlatformStore {
   async hasCanonicalRecoveryMaterials(): Promise<boolean> {
     return true;
   }
+
+  async getArtifactContent(_args: { artifactId: string }): Promise<string | null> {
+    return null;
+  }
 }
 
 export class ConvexPlatformStore implements PlatformStore {
@@ -959,6 +975,10 @@ export class ConvexPlatformStore implements PlatformStore {
     ]);
 
     return refs.artifactIds.length > 0 || refs.sourceAttachmentIds.length > 0 || outputs.length > 0;
+  }
+
+  async getArtifactContent(args: { artifactId: string }): Promise<string | null> {
+    return this.client.action(fetchArtifactContentAction, args);
   }
 }
 
@@ -1621,6 +1641,19 @@ export class InMemoryPlatformStore implements PlatformStore {
    */
   getArtifactContentForTesting(artifactId: string): string | null {
     return this.artifactContentsByArtifactId.get(artifactId) ?? null;
+  }
+
+  async getArtifactContent(args: { artifactId: string }): Promise<string | null> {
+    return this.artifactContentsByArtifactId.get(args.artifactId) ?? null;
+  }
+
+  /**
+   * Test seam: pre-seed artifact content keyed by artifactId so unit tests
+   * exercising `LocalProviderAdapter.hydrateEnvironment` can drive the
+   * read path without depending on a prior checkpoint write.
+   */
+  seedArtifactContentForTesting(artifactId: string, content: string): void {
+    this.artifactContentsByArtifactId.set(artifactId, content);
   }
 
   private updateProjectSummary(

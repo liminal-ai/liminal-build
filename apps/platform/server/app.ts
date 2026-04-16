@@ -25,11 +25,15 @@ import {
   StubCodeCheckpointWriter,
   type CodeCheckpointWriter,
 } from './services/processes/environment/code-checkpoint-writer.js';
+import { DaytonaProviderAdapter } from './services/processes/environment/daytona-provider-adapter.js';
+import { LocalProviderAdapter } from './services/processes/environment/local-provider-adapter.js';
 import { ProcessEnvironmentService } from './services/processes/environment/process-environment.service.js';
 import {
-  InMemoryProviderAdapter,
-  type ProviderAdapter,
-} from './services/processes/environment/provider-adapter.js';
+  DefaultProviderAdapterRegistry,
+  type ProviderAdapterRegistry,
+  SingleAdapterRegistry,
+} from './services/processes/environment/provider-adapter-registry.js';
+import type { ProviderAdapter } from './services/processes/environment/provider-adapter.js';
 import { ScriptExecutionService } from './services/processes/environment/script-execution.service.js';
 import { ProcessResponseService } from './services/processes/process-response.service.js';
 import { ProcessResumeService } from './services/processes/process-resume.service.js';
@@ -64,6 +68,7 @@ export interface CreateAppOptions {
   processAccessService?: ProcessAccessService;
   processModuleRegistry?: ProcessModuleRegistry;
   providerAdapter?: ProviderAdapter;
+  providerAdapterRegistry?: ProviderAdapterRegistry;
   scriptExecutionService?: ScriptExecutionService;
   checkpointPlanner?: CheckpointPlanner;
   codeCheckpointWriter?: CodeCheckpointWriter;
@@ -133,9 +138,22 @@ export async function createApp(options: CreateAppOptions = {}) {
   const processResponseService =
     options.processResponseService ??
     new ProcessResponseService(platformStore, processAccessService, processLiveHub);
-  const providerAdapter = options.providerAdapter ?? new InMemoryProviderAdapter();
+  // Test seam: when a single `providerAdapter` is supplied, the registry
+  // resolves every providerKind to that adapter so existing tests that pass
+  // `FailingProviderAdapter` etc. continue to work. Production wires real
+  // adapters (Local + Daytona skeleton) via `DefaultProviderAdapterRegistry`.
+  const providerAdapterRegistry: ProviderAdapterRegistry =
+    options.providerAdapterRegistry ??
+    (options.providerAdapter !== undefined
+      ? new SingleAdapterRegistry(options.providerAdapter)
+      : new DefaultProviderAdapterRegistry([
+          new LocalProviderAdapter(platformStore, {
+            workspaceRoot: env.LOCAL_PROVIDER_WORKSPACE_ROOT ?? undefined,
+          }),
+          new DaytonaProviderAdapter(),
+        ]));
   const scriptExecutionService =
-    options.scriptExecutionService ?? new ScriptExecutionService(providerAdapter);
+    options.scriptExecutionService ?? new ScriptExecutionService(providerAdapterRegistry);
   const checkpointPlanner = options.checkpointPlanner ?? new CheckpointPlanner();
   const codeCheckpointWriter = options.codeCheckpointWriter ?? new StubCodeCheckpointWriter();
   const processEnvironmentService =
@@ -143,7 +161,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     new ProcessEnvironmentService(
       platformStore,
       processAccessService,
-      providerAdapter,
+      providerAdapterRegistry,
       processLiveHub,
       scriptExecutionService,
       checkpointPlanner,

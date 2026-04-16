@@ -1,63 +1,93 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ScriptExecutionService } from '../../../apps/platform/server/services/processes/environment/script-execution.service.js';
+import { SingleAdapterRegistry } from '../../../apps/platform/server/services/processes/environment/provider-adapter-registry.js';
 import type {
   ExecutionResult,
   ProviderAdapter,
 } from '../../../apps/platform/server/services/processes/environment/provider-adapter.js';
+import { ScriptExecutionService } from '../../../apps/platform/server/services/processes/environment/script-execution.service.js';
 
 function buildProvider(result: ExecutionResult): ProviderAdapter {
   return {
-    hydrateEnvironment: vi.fn(async () => ({
+    providerKind: 'local',
+    ensureEnvironment: vi.fn(async ({ providerKind }) => ({
+      providerKind,
+      environmentId: 'environment-ensured-001',
+      workspaceHandle: 'workspace-ensured-001',
+    })),
+    hydrateEnvironment: vi.fn(async ({ plan }) => ({
       environmentId: 'environment-hydrated-001',
-      lastHydratedAt: '2026-04-15T12:00:00.000Z',
+      hydratedAt: '2026-04-15T12:00:00.000Z',
+      fingerprint: plan.fingerprint,
     })),
     executeScript: vi.fn(async () => result),
-    collectCheckpointCandidate: vi.fn(async () => ({
-      artifacts: [],
-      codeDiffs: [],
-    })),
-    rehydrateEnvironment: vi.fn(async () => ({
+    rehydrateEnvironment: vi.fn(async ({ plan }) => ({
       environmentId: 'environment-hydrated-001',
-      lastHydratedAt: '2026-04-15T12:00:00.000Z',
+      hydratedAt: '2026-04-15T12:00:00.000Z',
+      fingerprint: plan.fingerprint,
     })),
-    rebuildEnvironment: vi.fn(async () => ({
+    rebuildEnvironment: vi.fn(async ({ providerKind, plan }) => ({
+      providerKind,
       environmentId: 'environment-rebuilt-001',
       workspaceHandle: 'workspace-rebuilt-001',
+      hydratedAt: '2026-04-15T12:00:00.000Z',
+      fingerprint: plan.fingerprint,
     })),
+    teardownEnvironment: vi.fn(async () => undefined),
   };
 }
 
 describe('script execution service', () => {
-  it('calls provider.executeScript with correct args', async () => {
+  it('calls provider.executeScript with the env id and a script payload, resolving the adapter from the registry', async () => {
     const provider = buildProvider({
-      outcome: 'succeeded',
-      completedAt: '2026-04-15T12:01:00.000Z',
+      processStatus: 'completed',
+      processHistoryItems: [],
+      outputWrites: [],
+      sideWorkWrites: [],
+      artifactCheckpointCandidates: [],
+      codeCheckpointCandidates: [],
     });
-    const service = new ScriptExecutionService(provider);
+    const service = new ScriptExecutionService(new SingleAdapterRegistry(provider));
 
     await service.executeFor({
-      processId: 'process-execution-001',
+      providerKind: 'local',
       environmentId: 'environment-execution-001',
     });
 
     expect(provider.executeScript).toHaveBeenCalledWith({
-      processId: 'process-execution-001',
       environmentId: 'environment-execution-001',
+      scriptPayload: expect.objectContaining({
+        format: 'ts-module-source',
+        entrypoint: 'default',
+        source: expect.any(String),
+      }),
     });
   });
 
-  it("returns the provider's result unchanged", async () => {
+  it("returns the provider's ExecutionResult unchanged", async () => {
     const providerResult: ExecutionResult = {
-      outcome: 'failed',
-      completedAt: '2026-04-15T12:02:00.000Z',
-      failureReason: 'Execution failed in the provider.',
+      processStatus: 'failed',
+      processHistoryItems: [
+        {
+          historyItemId: 'failure-event-1',
+          kind: 'process_event',
+          lifecycleState: 'finalized',
+          text: 'Execution failed in the provider.',
+          createdAt: '2026-04-15T12:02:00.000Z',
+          relatedSideWorkId: null,
+          relatedArtifactId: null,
+        },
+      ],
+      outputWrites: [],
+      sideWorkWrites: [],
+      artifactCheckpointCandidates: [],
+      codeCheckpointCandidates: [],
     };
     const provider = buildProvider(providerResult);
-    const service = new ScriptExecutionService(provider);
+    const service = new ScriptExecutionService(new SingleAdapterRegistry(provider));
 
     await expect(
       service.executeFor({
-        processId: 'process-execution-002',
+        providerKind: 'local',
         environmentId: 'environment-execution-002',
       }),
     ).resolves.toEqual(providerResult);

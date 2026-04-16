@@ -703,27 +703,48 @@ describe('server-driven environment execution', () => {
 
   function buildExecutionFailureProvider(reason: string): ProviderAdapter {
     return {
-      hydrateEnvironment: async ({ processId }) => ({
+      providerKind: 'local',
+      ensureEnvironment: async ({ processId, providerKind }) => ({
+        providerKind,
         environmentId: `env-execution-${processId}`,
-        lastHydratedAt: '2026-04-15T10:31:00.000Z',
+        workspaceHandle: `workspace-execution-${processId}`,
+      }),
+      hydrateEnvironment: async ({ environmentId, plan }) => ({
+        environmentId,
+        hydratedAt: '2026-04-15T10:31:00.000Z',
+        fingerprint: plan.fingerprint,
       }),
       executeScript: async () => ({
-        outcome: 'failed',
-        completedAt: '2026-04-15T10:32:00.000Z',
-        failureReason: reason,
+        processStatus: 'failed',
+        processHistoryItems: [
+          {
+            historyItemId: `execution-failed:${Date.now()}`,
+            kind: 'process_event',
+            lifecycleState: 'finalized',
+            text: reason,
+            createdAt: '2026-04-15T10:32:00.000Z',
+            relatedSideWorkId: null,
+            relatedArtifactId: null,
+          },
+        ],
+        outputWrites: [],
+        sideWorkWrites: [],
+        artifactCheckpointCandidates: [],
+        codeCheckpointCandidates: [],
       }),
-      collectCheckpointCandidate: async () => ({
-        artifacts: [],
-        codeDiffs: [],
-      }),
-      rehydrateEnvironment: async ({ environmentId }) => ({
+      rehydrateEnvironment: async ({ environmentId, plan }) => ({
         environmentId,
-        lastHydratedAt: '2026-04-15T10:33:00.000Z',
+        hydratedAt: '2026-04-15T10:33:00.000Z',
+        fingerprint: plan.fingerprint,
       }),
-      rebuildEnvironment: async ({ processId }) => ({
+      rebuildEnvironment: async ({ processId, providerKind, plan }) => ({
+        providerKind,
         environmentId: `env-rebuild-${processId}`,
         workspaceHandle: `workspace-rebuild-${processId}`,
+        hydratedAt: '2026-04-15T10:34:00.000Z',
+        fingerprint: plan.fingerprint,
       }),
+      teardownEnvironment: async () => undefined,
     };
   }
 
@@ -994,23 +1015,40 @@ describe('server-driven environment execution', () => {
     const processLiveHub = new InMemoryProcessLiveHub();
     const platformStore = buildExecutionStore();
     const noReasonProvider: ProviderAdapter = {
-      hydrateEnvironment: async ({ processId }) => ({
+      providerKind: 'local',
+      ensureEnvironment: async ({ processId, providerKind }) => ({
+        providerKind,
         environmentId: `env-execution-${processId}`,
-        lastHydratedAt: '2026-04-15T10:31:00.000Z',
+        workspaceHandle: `workspace-execution-${processId}`,
       }),
-      executeScript: async () => ({
-        outcome: 'failed',
-        completedAt: '2026-04-15T10:32:00.000Z',
-        // no failureReason — exercises the ?? 'Execution failed.' fallback
-      }),
-      collectCheckpointCandidate: async () => ({ artifacts: [], codeDiffs: [] }),
-      rehydrateEnvironment: async ({ environmentId }) => ({
+      hydrateEnvironment: async ({ environmentId, plan }) => ({
         environmentId,
-        lastHydratedAt: '2026-04-15T10:33:00.000Z',
+        hydratedAt: '2026-04-15T10:31:00.000Z',
+        fingerprint: plan.fingerprint,
       }),
-      rebuildEnvironment: async ({ processId }) => ({
+      // No history items, no failureReason — exercises the
+      // 'Execution failed.' fallback inside extractExecutionFailureReason.
+      executeScript: async () => ({
+        processStatus: 'failed',
+        processHistoryItems: [],
+        outputWrites: [],
+        sideWorkWrites: [],
+        artifactCheckpointCandidates: [],
+        codeCheckpointCandidates: [],
+      }),
+      rehydrateEnvironment: async ({ environmentId, plan }) => ({
+        environmentId,
+        hydratedAt: '2026-04-15T10:33:00.000Z',
+        fingerprint: plan.fingerprint,
+      }),
+      rebuildEnvironment: async ({ processId, providerKind, plan }) => ({
+        providerKind,
         environmentId: `env-rebuild-${processId}`,
+        workspaceHandle: `workspace-rebuild-${processId}`,
+        hydratedAt: '2026-04-15T10:34:00.000Z',
+        fingerprint: plan.fingerprint,
       }),
+      teardownEnvironment: async () => undefined,
     };
     const app = await buildApp({
       authSessionService: createTestAuthSessionService({

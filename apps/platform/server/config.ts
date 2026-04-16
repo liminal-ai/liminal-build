@@ -21,7 +21,14 @@ const runtimeEnvSchema = z.object({
   // is callable only with admin auth. Without this key the live checkpoint
   // path returns 401 from Convex.
   CONVEX_DEPLOY_KEY: z.string().min(1),
-  DEFAULT_ENVIRONMENT_PROVIDER_KIND: z.enum(['daytona', 'local']).default('local'),
+  // Spec default for shared/remote: hosted Daytona. Trusted local development
+  // overrides via `.env` to `'local'`. See tech-design-server.md:107 and the
+  // Epic 3 implementation addendum (item 12).
+  DEFAULT_ENVIRONMENT_PROVIDER_KIND: z.enum(['daytona', 'local']).default('daytona'),
+  // Optional override for `LocalProviderAdapter`'s working-tree root. Defaults
+  // to `os.tmpdir()/liminal-build-sandboxes` (set inside the adapter when this
+  // env var is absent).
+  LOCAL_PROVIDER_WORKSPACE_ROOT: z.string().optional(),
 });
 
 export type ServerEnv = z.infer<typeof runtimeEnvSchema>;
@@ -37,6 +44,8 @@ export const story0PlaceholderEnv: ServerEnv = runtimeEnvSchema.parse({
   CONVEX_DEPLOYMENT: 'dev:story0',
   CONVEX_URL: 'https://story0.example.convex.cloud',
   CONVEX_DEPLOY_KEY: 'story0-deploy-key-placeholder',
+  // story0 placeholder: dev-shaped. Tests and Story 0 fixtures expect `local`
+  // so they don't try to construct the Daytona-default adapter chain.
   DEFAULT_ENVIRONMENT_PROVIDER_KIND: 'local',
 });
 

@@ -9,6 +9,7 @@ import {
   type ActionCtx,
   internalAction,
   internalMutation,
+  internalQuery,
   type MutationCtx,
   mutation,
   type QueryCtx,
@@ -230,6 +231,66 @@ export const deleteArtifactWithContent = mutation({
     await ctx.storage.delete(artifact.contentStorageId);
     await ctx.db.delete(args.artifactId);
     return null;
+  },
+});
+
+/**
+ * Internal action that returns an artifact's stored content as a UTF-8 string.
+ *
+ * Used by `LocalProviderAdapter.hydrateEnvironment` to materialize artifact
+ * content into the working tree. Returns `null` if the artifact row or its
+ * storage blob is missing — the caller decides how to surface that as a
+ * hydration failure.
+ *
+ * This is an action (not a query) because `ctx.storage.get` is only available
+ * to actions, per the Convex storage guidelines.
+ */
+export const fetchArtifactContent = internalAction({
+  args: {
+    artifactId: v.string(),
+  },
+  handler: async (ctx: ActionCtx, args): Promise<string | null> => {
+    const storageId: Id<'_storage'> | null = await ctx.runQuery(
+      lookupArtifactStorageIdInternalRef,
+      {
+        artifactId: args.artifactId,
+      },
+    );
+
+    if (storageId === null) {
+      return null;
+    }
+
+    const blob = await ctx.storage.get(storageId);
+
+    if (blob === null) {
+      return null;
+    }
+
+    return blob.text();
+  },
+});
+
+const lookupArtifactStorageIdInternalRef = makeFunctionReference<
+  'query',
+  { artifactId: string },
+  Id<'_storage'> | null
+>('artifacts:lookupArtifactStorageIdInternal');
+
+export const lookupArtifactStorageIdInternal = internalQuery({
+  args: {
+    artifactId: v.string(),
+  },
+  handler: async (ctx: QueryCtx, args): Promise<Id<'_storage'> | null> => {
+    let artifact: Doc<'artifacts'> | null = null;
+
+    try {
+      artifact = await ctx.db.get(args.artifactId as Id<'artifacts'>);
+    } catch {
+      return null;
+    }
+
+    return artifact?.contentStorageId ?? null;
   },
 });
 

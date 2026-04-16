@@ -1,3 +1,5 @@
+import { promises as fs } from 'node:fs';
+import * as path from 'node:path';
 import type {
   EnvironmentSummary,
   LastCheckpointResult,
@@ -25,17 +27,24 @@ import type { ProcessAccessService } from '../process-access.service.js';
 import { buildProcessSurfaceSummary } from '../process-work-surface.service.js';
 import { MaterialsSectionReader } from '../readers/materials-section.reader.js';
 import type { CheckpointPlanner } from './checkpoint-planner.js';
-import type { CodeCheckpointTarget } from './checkpoint-types.js';
+import type { CheckpointArtifact, CodeCheckpointTarget, CodeDiff } from './checkpoint-types.js';
 import type { CodeCheckpointWriter } from './code-checkpoint-writer.js';
 import { planHydrationWorkingSet } from './hydration-planner.js';
-import type { ProviderAdapter } from './provider-adapter.js';
+import type { ProviderAdapterRegistry } from './provider-adapter-registry.js';
+import type {
+  ArtifactCheckpointCandidate,
+  CodeCheckpointCandidate,
+  ExecutionResult,
+  HydrationPlan,
+  ProviderAdapter,
+} from './provider-adapter.js';
 import type { ScriptExecutionService } from './script-execution.service.js';
 
 export class ProcessEnvironmentService {
   constructor(
     private readonly platformStore: PlatformStore,
     private readonly processAccessService: ProcessAccessService,
-    private readonly providerAdapter: ProviderAdapter,
+    private readonly providerAdapterRegistry: ProviderAdapterRegistry,
     private readonly processLiveHub: ProcessLiveHub,
     private readonly scriptExecutionService?: ScriptExecutionService,
     private readonly checkpointPlanner?: CheckpointPlanner,
@@ -53,9 +62,21 @@ export class ProcessEnvironmentService {
    * `running` and includes the updated process in the live publication.
    * Designed to be called fire-and-forget after the HTTP handler responds with
    * `preparing` — the caller must NOT await this method.
+   *
+   * Failures inside `executeHydration` (including secondary failures while
+   * upserting the failed-state row) flow through `handleAsyncFailure` so the
+   * environment never gets stranded in `preparing`.
    */
   runHydrationAsync(args: { projectId: string; processId: string }): void {
-    void this.executeHydration(args);
+    void this.executeHydration(args).catch((error: unknown) => {
+      this.handleAsyncFailure({
+        projectId: args.projectId,
+        processId: args.processId,
+        environmentId: null,
+        contextLabel: 'hydration',
+        error,
+      });
+    });
   }
 
   async rehydrate(args: {
@@ -181,7 +202,15 @@ export class ProcessEnvironmentService {
     environmentId: string;
     plan: WorkingSetPlan;
   }): void {
-    void this.executeRehydrate(args).catch(() => {});
+    void this.executeRehydrate(args).catch((error: unknown) => {
+      this.handleAsyncFailure({
+        projectId: args.projectId,
+        processId: args.processId,
+        environmentId: args.environmentId,
+        contextLabel: 'rehydrate',
+        error,
+      });
+    });
   }
 
   private runRebuildAsync(args: {
@@ -190,16 +219,32 @@ export class ProcessEnvironmentService {
     environmentId: string;
     plan: WorkingSetPlan;
   }): void {
-    void this.executeRebuild(args).catch(() => {});
+    void this.executeRebuild(args).catch((error: unknown) => {
+      this.handleAsyncFailure({
+        projectId: args.projectId,
+        processId: args.processId,
+        environmentId: args.environmentId,
+        contextLabel: 'rebuild',
+        error,
+      });
+    });
   }
 
   private async executeHydration(args: { projectId: string; processId: string }): Promise<void> {
-    const [plan, existing] = await Promise.all([
+    const [plan, existing, currentProcess] = await Promise.all([
       this.platformStore.getProcessHydrationPlan({ processId: args.processId }),
       this.platformStore.getProcessEnvironmentSummary({ processId: args.processId }),
+      this.platformStore.getProcessRecord({ processId: args.processId }),
     ]);
 
     const resolvedPlan = plan ?? { artifactIds: [], sourceAttachmentIds: [], outputIds: [] };
+    const projectId = currentProcess?.projectId ?? args.projectId;
+    const adapter = this.providerAdapterRegistry.resolve(this.defaultEnvironmentProviderKind);
+    const hydrationPlan = await this.buildAdapterHydrationPlan({
+      projectId,
+      processId: args.processId,
+      plan: resolvedPlan,
+    });
     const preparationHistoryItem = await this.appendProcessEvent({
       processId: args.processId,
       text: 'Environment preparation started.',
@@ -214,9 +259,13 @@ export class ProcessEnvironmentService {
     let hydrationError: string | null = null;
 
     try {
-      const result = await this.providerAdapter.hydrateEnvironment({
+      const ensured = await adapter.ensureEnvironment({
         processId: args.processId,
-        plan: resolvedPlan,
+        providerKind: this.defaultEnvironmentProviderKind,
+      });
+      const result = await adapter.hydrateEnvironment({
+        environmentId: ensured.environmentId,
+        plan: hydrationPlan,
       });
       hydratedEnvironment = await this.platformStore.upsertProcessEnvironmentState({
         processId: args.processId,
@@ -224,62 +273,53 @@ export class ProcessEnvironmentService {
         state: 'ready',
         environmentId: result.environmentId,
         blockedReason: null,
-        lastHydratedAt: result.lastHydratedAt,
+        lastHydratedAt: result.hydratedAt,
       });
     } catch (error) {
       hydrationError = error instanceof Error ? error.message : 'Unknown hydration error';
     }
 
     if (hydratedEnvironment !== null) {
-      const transitionResult = await this.platformStore.transitionProcessToRunning({
-        processId: args.processId,
-      });
-      this.publishEnvironmentUpsert({
-        projectId: args.projectId,
-        processId: args.processId,
-        process: transitionResult.process,
-        environment: hydratedEnvironment,
-      });
-
+      let transitionedProcess: ProcessSummary | null = null;
       try {
-        this.runExecutionAsync({
+        const transitionResult = await this.platformStore.transitionProcessToRunning({
+          processId: args.processId,
+        });
+        transitionedProcess = transitionResult.process;
+      } catch (error) {
+        await this.transitionToFailed({
           projectId: args.projectId,
           processId: args.processId,
           environmentId: hydratedEnvironment.environmentId,
+          previousLastHydratedAt: hydratedEnvironment.lastHydratedAt,
+          failureReason:
+            error instanceof Error
+              ? error.message
+              : 'Unknown error while transitioning process to running.',
         });
-      } catch {
-        // RED phase: keep the hydration success path legible while execution is still stubbed.
+        return;
       }
-    } else {
-      const failedEnvironment = await this.platformStore.upsertProcessEnvironmentState({
+
+      this.publishEnvironmentUpsert({
+        projectId: args.projectId,
         processId: args.processId,
-        providerKind: this.defaultEnvironmentProviderKind,
-        state: 'failed',
-        environmentId: existing.environmentId,
-        blockedReason: hydrationError,
-        lastHydratedAt: existing.lastHydratedAt,
-      });
-      const currentProcess = await this.platformStore.getProcessRecord({
-        processId: args.processId,
+        process: transitionedProcess,
+        environment: hydratedEnvironment,
       });
 
-      if (currentProcess !== null) {
-        this.publishEnvironmentUpsert({
-          projectId: args.projectId,
-          processId: args.processId,
-          process: currentProcess,
-          environment: failedEnvironment,
-        });
-      } else {
-        this.processLiveHub.publish({
-          projectId: args.projectId,
-          processId: args.processId,
-          publication: {
-            messageType: 'upsert',
-            environment: failedEnvironment,
-          },
-        });
-      }
+      this.runExecutionAsync({
+        projectId: args.projectId,
+        processId: args.processId,
+        environmentId: hydratedEnvironment.environmentId,
+      });
+    } else {
+      await this.transitionToFailed({
+        projectId: args.projectId,
+        processId: args.processId,
+        environmentId: existing.environmentId,
+        previousLastHydratedAt: existing.lastHydratedAt,
+        failureReason: hydrationError,
+      });
     }
   }
 
@@ -289,11 +329,21 @@ export class ProcessEnvironmentService {
     environmentId: string;
     plan: WorkingSetPlan;
   }): Promise<void> {
+    const adapter = this.providerAdapterRegistry.resolve(this.defaultEnvironmentProviderKind);
+    const currentProcess = await this.platformStore.getProcessRecord({
+      processId: args.processId,
+    });
+    const projectId = currentProcess?.projectId ?? args.projectId;
+    const hydrationPlan = await this.buildAdapterHydrationPlan({
+      projectId,
+      processId: args.processId,
+      plan: args.plan,
+    });
+
     try {
-      const result = await this.providerAdapter.rehydrateEnvironment({
-        processId: args.processId,
+      const result = await adapter.rehydrateEnvironment({
         environmentId: args.environmentId,
-        plan: args.plan,
+        plan: hydrationPlan,
       });
       const readyEnvironment = await this.platformStore.upsertProcessEnvironmentState({
         processId: args.processId,
@@ -301,7 +351,7 @@ export class ProcessEnvironmentService {
         state: 'ready',
         environmentId: result.environmentId,
         blockedReason: null,
-        lastHydratedAt: result.lastHydratedAt,
+        lastHydratedAt: result.hydratedAt,
       });
       await this.publishRecoveryOutcome({
         projectId: args.projectId,
@@ -324,10 +374,22 @@ export class ProcessEnvironmentService {
     environmentId: string;
     plan: WorkingSetPlan;
   }): Promise<void> {
+    const adapter = this.providerAdapterRegistry.resolve(this.defaultEnvironmentProviderKind);
+    const currentProcess = await this.platformStore.getProcessRecord({
+      processId: args.processId,
+    });
+    const projectId = currentProcess?.projectId ?? args.projectId;
+    const hydrationPlan = await this.buildAdapterHydrationPlan({
+      projectId,
+      processId: args.processId,
+      plan: args.plan,
+    });
+
     try {
-      const result = await this.providerAdapter.rebuildEnvironment({
+      const result = await adapter.rebuildEnvironment({
         processId: args.processId,
-        plan: args.plan,
+        providerKind: this.defaultEnvironmentProviderKind,
+        plan: hydrationPlan,
       });
       const readyEnvironment = await this.platformStore.upsertProcessEnvironmentState({
         processId: args.processId,
@@ -335,7 +397,7 @@ export class ProcessEnvironmentService {
         state: 'ready',
         environmentId: result.environmentId,
         blockedReason: null,
-        lastHydratedAt: result.createdAt ?? new Date().toISOString(),
+        lastHydratedAt: result.hydratedAt,
       });
       await this.publishRecoveryOutcome({
         projectId: args.projectId,
@@ -371,6 +433,14 @@ export class ProcessEnvironmentService {
         ...args,
         environmentId,
         scriptExecutionService,
+      }).catch((error: unknown) => {
+        this.handleAsyncFailure({
+          projectId: args.projectId,
+          processId: args.processId,
+          environmentId,
+          contextLabel: 'execution',
+          error,
+        });
       });
     }, 0);
   }
@@ -412,17 +482,27 @@ export class ProcessEnvironmentService {
       });
 
       const executionResult = await args.scriptExecutionService.executeFor({
-        processId: args.processId,
+        providerKind: this.defaultEnvironmentProviderKind,
         environmentId: args.environmentId,
       });
 
-      if (executionResult.outcome === 'failed') {
+      // Apply ExecutionResult side effects (history items, output writes, side-work writes)
+      // before deciding the next env state. These produce durable process-facing updates
+      // even when the run failed, so the process surface reflects what happened.
+      await this.applyExecutionResultSideEffects({
+        projectId: args.projectId,
+        processId: args.processId,
+        executionResult,
+      });
+
+      if (executionResult.processStatus === 'failed') {
+        const failureReason = extractExecutionFailureReason(executionResult);
         const failedEnvironment = await this.platformStore.upsertProcessEnvironmentState({
           processId: args.processId,
           providerKind: this.defaultEnvironmentProviderKind,
           state: 'failed',
           environmentId: args.environmentId,
-          blockedReason: executionResult.failureReason ?? 'Execution failed.',
+          blockedReason: failureReason,
           lastHydratedAt: runningEnvironment.lastHydratedAt,
         });
         const executionFailedHistoryItem = await this.appendProcessEvent({
@@ -463,6 +543,7 @@ export class ProcessEnvironmentService {
           projectId: args.projectId,
           processId: args.processId,
           environmentId: args.environmentId,
+          executionResult,
         });
       }
     } catch (error) {
@@ -486,8 +567,82 @@ export class ProcessEnvironmentService {
           environment: failedEnvironment,
           historyItems: [executionFailedHistoryItem],
         });
-      } catch {
-        // Execution failures must not escape the fire-and-forget path.
+      } catch (secondaryError) {
+        // Even when the failed-state upsert itself fails (e.g., DB unavailable),
+        // we must not let the rejection escape the fire-and-forget path.
+        // Structured-log the secondary failure so operators can observe it.
+        // eslint-disable-next-line no-console
+        console.error('[process-environment] secondary failure during executeExecution catch', {
+          processId: args.processId,
+          environmentId: args.environmentId,
+          primaryError: error instanceof Error ? error.message : String(error),
+          secondaryError:
+            secondaryError instanceof Error ? secondaryError.message : String(secondaryError),
+        });
+      }
+    }
+  }
+
+  private async applyExecutionResultSideEffects(args: {
+    projectId: string;
+    processId: string;
+    executionResult: ExecutionResult;
+  }): Promise<void> {
+    // History items: append each in order. We swallow individual append errors
+    // so a transient per-row write failure does not abort the entire side-effect
+    // application; the broader env-state catch handles the request as failed.
+    for (const historyItem of args.executionResult.processHistoryItems) {
+      try {
+        await this.platformStore.appendProcessHistoryItem({
+          processId: args.processId,
+          kind: historyItem.kind,
+          lifecycleState: historyItem.lifecycleState,
+          text: historyItem.text,
+          relatedSideWorkId: historyItem.relatedSideWorkId,
+          relatedArtifactId: historyItem.relatedArtifactId,
+          clientRequestId: null,
+        });
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.warn('[process-environment] history item append failed', {
+          processId: args.processId,
+          historyItemId: historyItem.historyItemId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    // Output writes: replace semantics per spec. Only call replace when the
+    // execution declared writes — empty arrays from the script would otherwise
+    // wipe the canonical outputs row.
+    if (args.executionResult.outputWrites.length > 0) {
+      try {
+        await this.platformStore.replaceCurrentProcessOutputs({
+          processId: args.processId,
+          outputs: args.executionResult.outputWrites,
+        });
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.warn('[process-environment] output writes replace failed', {
+          processId: args.processId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    // Side work writes: replace semantics per spec.
+    if (args.executionResult.sideWorkWrites.length > 0) {
+      try {
+        await this.platformStore.replaceCurrentProcessSideWorkItems({
+          processId: args.processId,
+          items: args.executionResult.sideWorkWrites,
+        });
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.warn('[process-environment] side-work writes replace failed', {
+          processId: args.processId,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
   }
@@ -496,6 +651,7 @@ export class ProcessEnvironmentService {
     projectId: string;
     processId: string;
     environmentId: string;
+    executionResult: ExecutionResult;
   }): void {
     const checkpointPlanner = this.checkpointPlanner;
     const codeCheckpointWriter = this.codeCheckpointWriter;
@@ -509,6 +665,14 @@ export class ProcessEnvironmentService {
         ...args,
         checkpointPlanner,
         codeCheckpointWriter,
+      }).catch((error: unknown) => {
+        this.handleAsyncFailure({
+          projectId: args.projectId,
+          processId: args.processId,
+          environmentId: args.environmentId,
+          contextLabel: 'checkpoint',
+          error,
+        });
       });
     }, 0);
   }
@@ -517,6 +681,7 @@ export class ProcessEnvironmentService {
     projectId: string;
     processId: string;
     environmentId: string;
+    executionResult: ExecutionResult;
     checkpointPlanner: CheckpointPlanner;
     codeCheckpointWriter: CodeCheckpointWriter;
   }): Promise<void> {
@@ -551,9 +716,16 @@ export class ProcessEnvironmentService {
     let artifactCheckpointResult: LastCheckpointResult | null = null;
 
     try {
-      const candidate = await this.providerAdapter.collectCheckpointCandidate({
+      const adapter = this.providerAdapterRegistry.resolve(this.defaultEnvironmentProviderKind);
+      const ensuredWorkspaceHandle = await this.resolveWorkspaceHandle({
+        adapter,
         processId: args.processId,
         environmentId: args.environmentId,
+      });
+      const candidate = await this.buildLegacyCheckpointCandidate({
+        artifactCandidates: args.executionResult.artifactCheckpointCandidates,
+        codeCandidates: args.executionResult.codeCheckpointCandidates,
+        workspaceHandle: ensuredWorkspaceHandle,
       });
       const plan = await args.checkpointPlanner.planFor({
         processId: args.processId,
@@ -778,6 +950,74 @@ export class ProcessEnvironmentService {
     }
   }
 
+  /**
+   * Resolves the absolute filesystem workspace handle for `environmentId`. For
+   * `LocalProviderAdapter`, this is the actual working tree the script ran in.
+   * For other providers (`InMemory`, `Daytona` skeleton), there is no usable
+   * workspace handle for the orchestrator, so we return `null` and let the
+   * candidate-content resolver use the ref-as-content fallback.
+   */
+  private async resolveWorkspaceHandle(args: {
+    adapter: ProviderAdapter;
+    processId: string;
+    environmentId: string;
+  }): Promise<string | null> {
+    // Adapters that expose `getWorkspaceHandle` (LocalProviderAdapter) can
+    // return the working-tree path directly. For others we fall back to the
+    // ref-as-content path inside `buildLegacyCheckpointCandidate`.
+    const candidate = args.adapter as ProviderAdapter & {
+      getWorkspaceHandle?: (args: { environmentId: string }) => string | null;
+    };
+    if (typeof candidate.getWorkspaceHandle === 'function') {
+      try {
+        return candidate.getWorkspaceHandle({ environmentId: args.environmentId });
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Bridges the spec'd `ExecutionResult` checkpoint candidates into the
+   * `CheckpointPlanner`'s legacy `CheckpointCandidate` shape. The planner still
+   * thinks in `{ artifacts: [{ contents }], codeDiffs: [{ diff }] }` — Chunk 2
+   * reuses that planner unchanged and resolves `contentsRef` / `workspaceRef`
+   * to actual content here.
+   */
+  private async buildLegacyCheckpointCandidate(args: {
+    artifactCandidates: ArtifactCheckpointCandidate[];
+    codeCandidates: CodeCheckpointCandidate[];
+    workspaceHandle: string | null;
+  }): Promise<{ artifacts: CheckpointArtifact[]; codeDiffs: CodeDiff[] }> {
+    const nowIso = new Date().toISOString();
+
+    const artifacts: CheckpointArtifact[] = await Promise.all(
+      args.artifactCandidates.map(async (candidate) => ({
+        artifactId: candidate.artifactId,
+        producedAt: nowIso,
+        contents: await resolveCandidateContents({
+          ref: candidate.contentsRef,
+          workspaceHandle: args.workspaceHandle,
+        }),
+        targetLabel: candidate.displayName,
+      })),
+    );
+
+    const codeDiffs: CodeDiff[] = await Promise.all(
+      args.codeCandidates.map(async (candidate) => ({
+        sourceAttachmentId: candidate.sourceAttachmentId,
+        targetRef: candidate.targetRef ?? undefined,
+        diff: await resolveCandidateContents({
+          ref: candidate.workspaceRef,
+          workspaceHandle: args.workspaceHandle,
+        }),
+      })),
+    );
+
+    return { artifacts, codeDiffs };
+  }
+
   private publishEnvironmentUpsert(args: {
     projectId: string;
     processId: string;
@@ -843,8 +1083,131 @@ export class ProcessEnvironmentService {
         processId: args.processId,
         environment: failedEnvironment,
       });
-    } catch {
-      // Recovery failures must stay inside the fire-and-forget path.
+    } catch (secondaryError) {
+      // eslint-disable-next-line no-console
+      console.error('[process-environment] secondary failure during publishRecoveryFailure', {
+        processId: args.processId,
+        environmentId: args.environmentId,
+        primaryReason: args.failureReason,
+        secondaryError:
+          secondaryError instanceof Error ? secondaryError.message : String(secondaryError),
+      });
+    }
+  }
+
+  /**
+   * Defensive last-resort handler for fire-and-forget paths that reject before
+   * any inner try/catch can surface them as visible env state. Transitions the
+   * environment to `failed` if possible and publishes an environment upsert
+   * with a meaningful blocked reason. Never re-throws.
+   */
+  private handleAsyncFailure(args: {
+    projectId: string;
+    processId: string;
+    environmentId: string | null;
+    contextLabel: string;
+    error: unknown;
+  }): void {
+    const failureReason =
+      args.error instanceof Error
+        ? `${args.contextLabel} failed: ${args.error.message}`
+        : `${args.contextLabel} failed with unknown error.`;
+
+    void (async () => {
+      try {
+        const existing = await this.platformStore.getProcessEnvironmentSummary({
+          processId: args.processId,
+        });
+        const failed = await this.platformStore.upsertProcessEnvironmentState({
+          processId: args.processId,
+          providerKind: this.defaultEnvironmentProviderKind,
+          state: 'failed',
+          environmentId: args.environmentId ?? existing.environmentId,
+          blockedReason: failureReason,
+          lastHydratedAt: existing.lastHydratedAt,
+        });
+        const currentProcess = await this.platformStore.getProcessRecord({
+          processId: args.processId,
+        });
+        if (currentProcess !== null) {
+          this.publishEnvironmentUpsert({
+            projectId: args.projectId,
+            processId: args.processId,
+            process: currentProcess,
+            environment: failed,
+          });
+        } else {
+          this.processLiveHub.publish({
+            projectId: args.projectId,
+            processId: args.processId,
+            publication: { messageType: 'upsert', environment: failed },
+          });
+        }
+      } catch (secondaryError) {
+        // eslint-disable-next-line no-console
+        console.error('[process-environment] handleAsyncFailure could not transition to failed', {
+          processId: args.processId,
+          environmentId: args.environmentId,
+          contextLabel: args.contextLabel,
+          primaryReason: failureReason,
+          secondaryError:
+            secondaryError instanceof Error ? secondaryError.message : String(secondaryError),
+        });
+      }
+    })();
+  }
+
+  /**
+   * Single helper that transitions to `failed` and publishes the failed env
+   * upsert. Used by `executeHydration` so any post-ready transition error and
+   * any hydration error route through the same visible-failure path.
+   */
+  private async transitionToFailed(args: {
+    projectId: string;
+    processId: string;
+    environmentId: string | null;
+    previousLastHydratedAt: string | null;
+    failureReason: string | null;
+  }): Promise<void> {
+    try {
+      const failedEnvironment = await this.platformStore.upsertProcessEnvironmentState({
+        processId: args.processId,
+        providerKind: this.defaultEnvironmentProviderKind,
+        state: 'failed',
+        environmentId: args.environmentId,
+        blockedReason: args.failureReason,
+        lastHydratedAt: args.previousLastHydratedAt,
+      });
+      const currentProcess = await this.platformStore.getProcessRecord({
+        processId: args.processId,
+      });
+
+      if (currentProcess !== null) {
+        this.publishEnvironmentUpsert({
+          projectId: args.projectId,
+          processId: args.processId,
+          process: currentProcess,
+          environment: failedEnvironment,
+        });
+      } else {
+        this.processLiveHub.publish({
+          projectId: args.projectId,
+          processId: args.processId,
+          publication: {
+            messageType: 'upsert',
+            environment: failedEnvironment,
+          },
+        });
+      }
+    } catch (secondaryError) {
+      // eslint-disable-next-line no-console
+      console.error('[process-environment] transitionToFailed itself failed', {
+        processId: args.processId,
+        environmentId: args.environmentId,
+        primaryReason: args.failureReason,
+        secondaryError:
+          secondaryError instanceof Error ? secondaryError.message : String(secondaryError),
+      });
     }
   }
 
@@ -858,6 +1221,66 @@ export class ProcessEnvironmentService {
       ...materialRefs,
       outputIds: currentOutputs.map((output) => output.outputId),
     });
+  }
+
+  /**
+   * Enriches the durable `WorkingSetPlan` (just IDs) into the spec's
+   * `HydrationPlan` (display names, version labels, accessMode) by reading
+   * canonical artifact / source / output projections. The adapter receives the
+   * richer projection so it can write meaningful filenames into the working
+   * tree and decide what to clone.
+   *
+   * `fingerprint` rides through unchanged for now — Chunk 1 introduced the
+   * stored fingerprint, and Chunk 2 propagates it without recomputation here.
+   */
+  private async buildAdapterHydrationPlan(args: {
+    projectId: string;
+    processId: string;
+    plan: WorkingSetPlan;
+  }): Promise<HydrationPlan> {
+    const [artifacts, sources, outputs] = await Promise.all([
+      this.platformStore.listProjectArtifacts({ projectId: args.projectId }),
+      this.platformStore.listProjectSourceAttachments({ projectId: args.projectId }),
+      this.platformStore.listProcessOutputs({ processId: args.processId }),
+    ]);
+
+    const artifactById = new Map(artifacts.map((artifact) => [artifact.artifactId, artifact]));
+    const sourceById = new Map(sources.map((source) => [source.sourceAttachmentId, source]));
+    const outputById = new Map(outputs.map((output) => [output.outputId, output]));
+
+    // Chunk 1 added the durable `workingSetFingerprint` on the Convex env state
+    // row but did not extend the `EnvironmentSummary` contract with that field.
+    // Until that contract addition lands, propagate an empty fingerprint to the
+    // adapter — the adapter currently echoes it back into HydrationResult and
+    // the orchestrator does not yet stale-compare here.
+    return {
+      fingerprint: '',
+      artifactInputs: args.plan.artifactIds.map((artifactId) => {
+        const artifact = artifactById.get(artifactId);
+        return {
+          artifactId,
+          displayName: artifact?.displayName ?? artifactId,
+          versionLabel: artifact?.currentVersionLabel ?? null,
+        };
+      }),
+      outputInputs: args.plan.outputIds.map((outputId) => {
+        const output = outputById.get(outputId);
+        return {
+          outputId,
+          displayName: output?.displayName ?? outputId,
+          revisionLabel: output?.revisionLabel ?? null,
+        };
+      }),
+      sourceInputs: args.plan.sourceAttachmentIds.map((sourceAttachmentId) => {
+        const source = sourceById.get(sourceAttachmentId);
+        return {
+          sourceAttachmentId,
+          displayName: source?.displayName ?? sourceAttachmentId,
+          targetRef: source?.targetRef ?? null,
+          accessMode: source?.accessMode ?? 'read_only',
+        };
+      }),
+    };
   }
 
   private async appendProcessEvent(args: {
@@ -1022,4 +1445,53 @@ function resolveCheckpointTargetRef(
   }
 
   return target.targetRef ?? sourceSummariesById.get(target.sourceAttachmentId)?.targetRef ?? null;
+}
+
+function extractExecutionFailureReason(executionResult: ExecutionResult): string {
+  // Spec: ExecutionResult does not carry a top-level `failureReason`. The
+  // canonical place for the failure description is the `processHistoryItems`
+  // entries the script produced. Take the most recent finalized text, falling
+  // back to the generic label so the env summary always has a non-empty
+  // blockedReason for failed runs.
+  const lastFailureItem = [...executionResult.processHistoryItems]
+    .reverse()
+    .find((item) => item.lifecycleState === 'finalized' && item.text.trim().length > 0);
+  if (lastFailureItem !== undefined) {
+    return lastFailureItem.text;
+  }
+  return 'Execution failed.';
+}
+
+/**
+ * Resolves a candidate `contentsRef` / `workspaceRef` to actual textual
+ * content. For LocalProvider, refs are filesystem paths (absolute or relative
+ * to the working tree). For test fakes that produce non-filesystem schemes
+ * (`mem://...`), we fall back to using the ref itself as a synthetic content
+ * placeholder so the test path stays deterministic without breaking the
+ * planner.
+ */
+async function resolveCandidateContents(args: {
+  ref: string;
+  workspaceHandle: string | null;
+}): Promise<string> {
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(args.ref)) {
+    // Non-filesystem URI scheme (mem://, data://, etc.) — test-fake territory.
+    return args.ref;
+  }
+
+  const absolutePath = path.isAbsolute(args.ref)
+    ? args.ref
+    : args.workspaceHandle === null
+      ? null
+      : path.resolve(args.workspaceHandle, args.ref);
+
+  if (absolutePath === null) {
+    return args.ref;
+  }
+
+  try {
+    return await fs.readFile(absolutePath, 'utf8');
+  } catch {
+    return args.ref;
+  }
 }
