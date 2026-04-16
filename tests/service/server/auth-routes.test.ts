@@ -530,6 +530,9 @@ describe('auth routes', () => {
           updatedAt: item.updatedAt ?? '2026-04-13T12:06:00.000Z',
         }));
       },
+      async hasCanonicalRecoveryMaterials() {
+        return true;
+      },
     };
     const app = await buildApp({
       authSessionService: createTestAuthSessionService({

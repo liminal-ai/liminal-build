@@ -168,6 +168,7 @@ export interface PlatformStore {
     processId: string;
     items: PlatformSideWorkWriteInput[];
   }): Promise<SideWorkItem[]>;
+  hasCanonicalRecoveryMaterials(args: { processId: string }): Promise<boolean>;
 }
 
 function buildDefaultEnvironmentSummary(): EnvironmentSummary {
@@ -643,6 +644,10 @@ export class NullPlatformStore implements PlatformStore {
       updatedAt: item.updatedAt ?? new Date().toISOString(),
     }));
   }
+
+  async hasCanonicalRecoveryMaterials(): Promise<boolean> {
+    return true;
+  }
 }
 
 export class ConvexPlatformStore implements PlatformStore {
@@ -866,6 +871,11 @@ export class ConvexPlatformStore implements PlatformStore {
         updatedAt: item.updatedAt,
       })),
     });
+  }
+
+  async hasCanonicalRecoveryMaterials(): Promise<boolean> {
+    // Stub: real canonical-material availability check deferred to integration hardening
+    return true;
   }
 }
 
@@ -1477,6 +1487,21 @@ export class InMemoryPlatformStore implements PlatformStore {
 
     this.processSideWorkItemsByProcessId.set(args.processId, nextItems);
     return nextItems;
+  }
+
+  async hasCanonicalRecoveryMaterials(args: { processId: string }): Promise<boolean> {
+    const materialRefs = this.currentMaterialRefsByProcessId.get(args.processId);
+    const outputs = this.processOutputsByProcessId.get(args.processId);
+
+    // If neither map has an entry, we have no explicit signal — treat as present.
+    if (materialRefs === undefined && outputs === undefined) {
+      return true;
+    }
+
+    const refs = materialRefs ?? { artifactIds: [], sourceAttachmentIds: [] };
+    const outs = outputs ?? [];
+
+    return refs.artifactIds.length > 0 || refs.sourceAttachmentIds.length > 0 || outs.length > 0;
   }
 
   private updateProjectSummary(

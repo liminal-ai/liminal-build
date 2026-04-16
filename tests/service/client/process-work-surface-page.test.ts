@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { JSDOM } from 'jsdom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapApp } from '../../../apps/platform/client/app/bootstrap.js';

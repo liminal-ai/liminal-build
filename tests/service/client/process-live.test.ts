@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
 import { applyLiveProcessMessage } from '../../../apps/platform/client/app/process-live.js';

@@ -136,6 +136,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     options.processEnvironmentService ??
     new ProcessEnvironmentService(
       platformStore,
+      processAccessService,
       providerAdapter,
       processLiveHub,
       scriptExecutionService,

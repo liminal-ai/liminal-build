@@ -337,6 +337,10 @@ class RecordingPlatformStore implements PlatformStore {
     }));
   }
 
+  async hasCanonicalRecoveryMaterials(): Promise<boolean> {
+    return true;
+  }
+
   private updateProjectSummary(
     projectId: string,
     update: (project: ProjectSummary) => ProjectSummary,

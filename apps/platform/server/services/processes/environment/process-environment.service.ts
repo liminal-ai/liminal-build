@@ -6,20 +6,32 @@ import type {
   RehydrateProcessResponse,
   SourceAttachmentSummary,
 } from '../../../../shared/contracts/index.js';
+import {
+  rebuildProcessResponseSchema,
+  rehydrateProcessResponseSchema,
+} from '../../../../shared/contracts/index.js';
 import { AppError } from '../../../errors/app-error.js';
-import { notImplementedErrorCode } from '../../../errors/codes.js';
-import type { PlatformStore } from '../../projects/platform-store.js';
+import {
+  processEnvironmentNotRecoverableErrorCode,
+  processEnvironmentPrerequisiteMissingErrorCode,
+  processEnvironmentUnavailableErrorCode,
+} from '../../../errors/codes.js';
+import type { AuthenticatedActor } from '../../auth/auth-session.service.js';
+import type { PlatformStore, WorkingSetPlan } from '../../projects/platform-store.js';
 import type { ProcessLiveHub } from '../live/process-live-hub.js';
+import type { ProcessAccessService } from '../process-access.service.js';
 import { buildProcessSurfaceSummary } from '../process-work-surface.service.js';
 import type { CheckpointPlanner } from './checkpoint-planner.js';
 import type { CodeCheckpointTarget } from './checkpoint-types.js';
 import type { CodeCheckpointWriter } from './code-checkpoint-writer.js';
+import { planHydrationWorkingSet } from './hydration-planner.js';
 import type { ProviderAdapter } from './provider-adapter.js';
 import type { ScriptExecutionService } from './script-execution.service.js';
 
 export class ProcessEnvironmentService {
   constructor(
     private readonly platformStore: PlatformStore,
+    private readonly processAccessService: ProcessAccessService,
     private readonly providerAdapter: ProviderAdapter,
     private readonly processLiveHub: ProcessLiveHub,
     private readonly scriptExecutionService?: ScriptExecutionService,
@@ -43,31 +55,133 @@ export class ProcessEnvironmentService {
   }
 
   async rehydrate(args: {
-    actor: { userId: string };
+    actor: AuthenticatedActor;
     projectId: string;
     processId: string;
   }): Promise<RehydrateProcessResponse> {
-    void args;
+    const access = await this.processAccessService.assertProcessAccess(args);
+    const existingEnvironment = await this.platformStore.getProcessEnvironmentSummary({
+      processId: access.process.processId,
+    });
 
-    throw new AppError({
-      code: notImplementedErrorCode,
-      message: 'Story 5 RED: rehydrate is not implemented yet.',
-      statusCode: 501,
+    this.assertRehydrateAvailable(existingEnvironment);
+
+    const plan = await this.buildHydrationPlan(access.process.processId);
+    await this.platformStore.setProcessHydrationPlan({
+      processId: access.process.processId,
+      plan,
+    });
+
+    const environment = await this.platformStore.upsertProcessEnvironmentState({
+      processId: access.process.processId,
+      providerKind: null,
+      state: 'rehydrating',
+      environmentId: existingEnvironment.environmentId,
+      blockedReason: 'Rehydrate is in progress.',
+      lastHydratedAt: existingEnvironment.lastHydratedAt,
+    });
+
+    this.publishEnvironmentUpsert({
+      projectId: access.project.projectId,
+      processId: access.process.processId,
+      process: access.process,
+      environment,
+    });
+
+    if (environment.environmentId !== null) {
+      this.runRehydrateAsync({
+        projectId: access.project.projectId,
+        processId: access.process.processId,
+        environmentId: environment.environmentId,
+        plan,
+      });
+    }
+
+    return rehydrateProcessResponseSchema.parse({
+      accepted: true,
+      process: buildProcessSurfaceSummary(access.process, environment),
+      currentRequest: null,
+      environment,
     });
   }
 
   async rebuild(args: {
-    actor: { userId: string };
+    actor: AuthenticatedActor;
     projectId: string;
     processId: string;
   }): Promise<RebuildProcessResponse> {
-    void args;
-
-    throw new AppError({
-      code: notImplementedErrorCode,
-      message: 'Story 5 RED: rebuild is not implemented yet.',
-      statusCode: 501,
+    const access = await this.processAccessService.assertProcessAccess(args);
+    const existingEnvironment = await this.platformStore.getProcessEnvironmentSummary({
+      processId: access.process.processId,
     });
+
+    this.assertRebuildAvailable(existingEnvironment);
+
+    const [plan, storeHasMaterials] = await Promise.all([
+      this.buildHydrationPlan(access.process.processId),
+      this.platformStore.hasCanonicalRecoveryMaterials({ processId: access.process.processId }),
+    ]);
+    if (!hasCanonicalRecoveryMaterials(plan) && !storeHasMaterials) {
+      throw new AppError({
+        code: processEnvironmentPrerequisiteMissingErrorCode,
+        message: 'Required canonical materials are missing for rebuild.',
+        statusCode: 422,
+      });
+    }
+
+    await this.platformStore.setProcessHydrationPlan({
+      processId: access.process.processId,
+      plan,
+    });
+
+    const rebuildingEnvironmentId = buildRebuildingEnvironmentId(access.process.processId);
+    const environment = await this.platformStore.upsertProcessEnvironmentState({
+      processId: access.process.processId,
+      providerKind: null,
+      state: 'rebuilding',
+      environmentId: rebuildingEnvironmentId,
+      blockedReason: 'Rebuild is in progress.',
+      lastHydratedAt: existingEnvironment.lastHydratedAt,
+    });
+
+    this.publishEnvironmentUpsert({
+      projectId: access.project.projectId,
+      processId: access.process.processId,
+      process: access.process,
+      environment,
+    });
+
+    this.runRebuildAsync({
+      projectId: access.project.projectId,
+      processId: access.process.processId,
+      environmentId: rebuildingEnvironmentId,
+      plan,
+    });
+
+    return rebuildProcessResponseSchema.parse({
+      accepted: true,
+      process: buildProcessSurfaceSummary(access.process, environment),
+      currentRequest: null,
+      environment,
+    });
+  }
+
+  private runRehydrateAsync(args: {
+    projectId: string;
+    processId: string;
+    environmentId: string;
+    plan: WorkingSetPlan;
+  }): void {
+    void this.executeRehydrate(args).catch(() => {});
+  }
+
+  private runRebuildAsync(args: {
+    projectId: string;
+    processId: string;
+    environmentId: string;
+    plan: WorkingSetPlan;
+  }): void {
+    void this.executeRebuild(args).catch(() => {});
   }
 
   private async executeHydration(args: { projectId: string; processId: string }): Promise<void> {
@@ -148,6 +262,75 @@ export class ProcessEnvironmentService {
           },
         });
       }
+    }
+  }
+
+  private async executeRehydrate(args: {
+    projectId: string;
+    processId: string;
+    environmentId: string;
+    plan: WorkingSetPlan;
+  }): Promise<void> {
+    try {
+      const result = await this.providerAdapter.rehydrateEnvironment({
+        processId: args.processId,
+        environmentId: args.environmentId,
+        plan: args.plan,
+      });
+      const readyEnvironment = await this.platformStore.upsertProcessEnvironmentState({
+        processId: args.processId,
+        providerKind: null,
+        state: 'ready',
+        environmentId: result.environmentId,
+        blockedReason: null,
+        lastHydratedAt: result.lastHydratedAt,
+      });
+      await this.publishRecoveryOutcome({
+        projectId: args.projectId,
+        processId: args.processId,
+        environment: readyEnvironment,
+      });
+    } catch (error) {
+      await this.publishRecoveryFailure({
+        projectId: args.projectId,
+        processId: args.processId,
+        environmentId: args.environmentId,
+        failureReason: error instanceof Error ? error.message : 'Unknown rehydrate error',
+      });
+    }
+  }
+
+  private async executeRebuild(args: {
+    projectId: string;
+    processId: string;
+    environmentId: string;
+    plan: WorkingSetPlan;
+  }): Promise<void> {
+    try {
+      const result = await this.providerAdapter.rebuildEnvironment({
+        processId: args.processId,
+        plan: args.plan,
+      });
+      const readyEnvironment = await this.platformStore.upsertProcessEnvironmentState({
+        processId: args.processId,
+        providerKind: null,
+        state: 'ready',
+        environmentId: result.environmentId,
+        blockedReason: null,
+        lastHydratedAt: result.createdAt ?? new Date().toISOString(),
+      });
+      await this.publishRecoveryOutcome({
+        projectId: args.projectId,
+        processId: args.processId,
+        environment: readyEnvironment,
+      });
+    } catch (error) {
+      await this.publishRecoveryFailure({
+        projectId: args.projectId,
+        processId: args.processId,
+        environmentId: args.environmentId,
+        failureReason: error instanceof Error ? error.message : 'Unknown rebuild error',
+      });
     }
   }
 
@@ -552,6 +735,131 @@ export class ProcessEnvironmentService {
       },
     });
   }
+
+  private async publishRecoveryOutcome(args: {
+    projectId: string;
+    processId: string;
+    environment: EnvironmentSummary;
+  }): Promise<void> {
+    const currentProcess = await this.platformStore.getProcessRecord({
+      processId: args.processId,
+    });
+
+    this.publishEnvironmentUpsert({
+      projectId: args.projectId,
+      processId: args.processId,
+      process: currentProcess,
+      environment: args.environment,
+    });
+  }
+
+  private async publishRecoveryFailure(args: {
+    projectId: string;
+    processId: string;
+    environmentId: string;
+    failureReason: string;
+  }): Promise<void> {
+    try {
+      const currentEnvironment = await this.platformStore.getProcessEnvironmentSummary({
+        processId: args.processId,
+      });
+      const failedEnvironment = await this.platformStore.upsertProcessEnvironmentState({
+        processId: args.processId,
+        providerKind: null,
+        state: 'failed',
+        environmentId: args.environmentId,
+        blockedReason: args.failureReason,
+        lastHydratedAt: currentEnvironment.lastHydratedAt,
+      });
+      await this.publishRecoveryOutcome({
+        projectId: args.projectId,
+        processId: args.processId,
+        environment: failedEnvironment,
+      });
+    } catch {
+      // Recovery failures must stay inside the fire-and-forget path.
+    }
+  }
+
+  private async buildHydrationPlan(processId: string): Promise<WorkingSetPlan> {
+    const [materialRefs, currentOutputs] = await Promise.all([
+      this.platformStore.getCurrentProcessMaterialRefs({ processId }),
+      this.platformStore.listProcessOutputs({ processId }),
+    ]);
+
+    return planHydrationWorkingSet({
+      ...materialRefs,
+      outputIds: currentOutputs.map((output) => output.outputId),
+    });
+  }
+
+  private assertRehydrateAvailable(environment: EnvironmentSummary): void {
+    if (environment.state === 'unavailable') {
+      throw new AppError({
+        code: processEnvironmentUnavailableErrorCode,
+        message:
+          environment.blockedReason ?? 'Environment lifecycle work is currently unavailable.',
+        statusCode: 503,
+      });
+    }
+
+    const canRehydrate =
+      (environment.state === 'stale' || environment.state === 'failed') &&
+      environment.environmentId !== null;
+
+    if (canRehydrate) {
+      return;
+    }
+
+    if (
+      environment.state === 'lost' ||
+      ((environment.state === 'stale' || environment.state === 'failed') &&
+        environment.environmentId === null)
+    ) {
+      throw new AppError({
+        code: processEnvironmentNotRecoverableErrorCode,
+        message: 'Rehydrate is blocked because rebuild is required first.',
+        statusCode: 409,
+      });
+    }
+
+    throw new AppError({
+      code: 'PROCESS_ACTION_NOT_AVAILABLE',
+      message: 'Rehydrate is not available for this process right now.',
+      statusCode: 409,
+    });
+  }
+
+  private assertRebuildAvailable(environment: EnvironmentSummary): void {
+    if (environment.state === 'unavailable') {
+      throw new AppError({
+        code: processEnvironmentUnavailableErrorCode,
+        message:
+          environment.blockedReason ?? 'Environment lifecycle work is currently unavailable.',
+        statusCode: 503,
+      });
+    }
+
+    if (environment.state === 'lost' || environment.state === 'failed') {
+      return;
+    }
+
+    throw new AppError({
+      code: 'PROCESS_ACTION_NOT_AVAILABLE',
+      message: 'Rebuild is not available for this process right now.',
+      statusCode: 409,
+    });
+  }
+}
+
+function hasCanonicalRecoveryMaterials(plan: WorkingSetPlan): boolean {
+  return (
+    plan.artifactIds.length > 0 || plan.sourceAttachmentIds.length > 0 || plan.outputIds.length > 0
+  );
+}
+
+function buildRebuildingEnvironmentId(processId: string): string {
+  return `env-rebuilt-${processId}`;
 }
 
 function buildCheckpointResult(args: {

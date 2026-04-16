@@ -87,8 +87,29 @@ function normalizeEnvironmentState(
   };
 }
 
-function applyEnvironment(next: EnvironmentSummary): EnvironmentSummary {
-  return normalizeEnvironmentState(next, next.state);
+function shouldPreserveCheckpointContext(state: EnvironmentSummary['state']): boolean {
+  return state === 'rehydrating' || state === 'rebuilding';
+}
+
+function applyEnvironment(
+  current: EnvironmentSummary | null,
+  next: EnvironmentSummary,
+): EnvironmentSummary {
+  const normalized = normalizeEnvironmentState(next, next.state);
+
+  if (
+    current === null ||
+    !shouldPreserveCheckpointContext(normalized.state) ||
+    normalized.lastCheckpointResult !== null
+  ) {
+    return normalized;
+  }
+
+  return {
+    ...normalized,
+    lastCheckpointAt: normalized.lastCheckpointAt ?? current.lastCheckpointAt,
+    lastCheckpointResult: current.lastCheckpointResult,
+  };
 }
 
 export interface ApplyLiveProcessMessageArgs {
@@ -160,7 +181,7 @@ export function applyLiveProcessMessage(args: ApplyLiveProcessMessageArgs): Proc
   }
 
   if (args.message.entityType === 'environment') {
-    nextState.environment = applyEnvironment(args.message.payload);
+    nextState.environment = applyEnvironment(args.state.environment, args.message.payload);
     return nextState;
   }
 

@@ -18,6 +18,7 @@ export const checkpointOutcomeValidator = v.union(v.literal('succeeded'), v.lite
 export const environmentStateValidator = v.union(
   v.literal('absent'),
   v.literal('preparing'),
+  v.literal('rehydrating'),
   v.literal('ready'),
   v.literal('running'),
   v.literal('checkpointing'),

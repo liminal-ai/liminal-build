@@ -1,5 +1,6 @@
 import type {
   AppState,
+  EnvironmentSummary,
   LiveProcessUpdateMessage,
   ParsedRoute,
   ProcessHistoryItem,
@@ -16,6 +17,7 @@ import type {
 } from '../../shared/contracts/index.js';
 import {
   buildProcessLiveUpdatesPath,
+  deriveEnvironmentStatusLabel,
   liveProcessUpdateMessageSchema,
 } from '../../shared/contracts/index.js';
 import { ApiRequestError, getAuthenticatedUser } from '../browser-api/auth-api.js';
@@ -332,6 +334,102 @@ export async function bootstrapApp(
     };
   };
 
+  const mergeProcessSurfaceEnvironment = (
+    currentEnvironment: AppState['processSurface']['environment'],
+    nextEnvironment: AppState['processSurface']['environment'],
+  ): AppState['processSurface']['environment'] => {
+    if (
+      currentEnvironment === null ||
+      nextEnvironment === null ||
+      (nextEnvironment.state !== 'rehydrating' && nextEnvironment.state !== 'rebuilding') ||
+      nextEnvironment.lastCheckpointResult !== null
+    ) {
+      return nextEnvironment;
+    }
+
+    return {
+      ...nextEnvironment,
+      lastCheckpointAt: nextEnvironment.lastCheckpointAt ?? currentEnvironment.lastCheckpointAt,
+      lastCheckpointResult: currentEnvironment.lastCheckpointResult,
+    };
+  };
+
+  const patchRecoveryControls = (
+    process: AppState['processSurface']['process'],
+    args: {
+      blockedAction: 'rehydrate' | 'rebuild';
+      blockedReason: string;
+      enableRebuild: boolean;
+    },
+  ): AppState['processSurface']['process'] => {
+    if (process === null) {
+      return null;
+    }
+
+    const nextControls = process.controls.map((control) => {
+      switch (control.actionId) {
+        case 'start':
+          return process.status === 'draft'
+            ? {
+                ...control,
+                enabled: false,
+                disabledReason:
+                  args.enableRebuild && args.blockedAction === 'rehydrate'
+                    ? 'Rebuild the environment before starting the process.'
+                    : !args.enableRebuild && args.blockedAction === 'rebuild'
+                      ? args.blockedReason
+                      : control.disabledReason,
+              }
+            : control;
+        case 'resume':
+          return process.status === 'paused' || process.status === 'interrupted'
+            ? {
+                ...control,
+                enabled: false,
+                disabledReason:
+                  args.enableRebuild && args.blockedAction === 'rehydrate'
+                    ? 'Rebuild the environment before resuming the process.'
+                    : !args.enableRebuild && args.blockedAction === 'rebuild'
+                      ? args.blockedReason
+                      : control.disabledReason,
+              }
+            : control;
+        case 'rehydrate':
+          return {
+            ...control,
+            enabled:
+              args.blockedAction === 'rehydrate'
+                ? false
+                : !args.enableRebuild && args.blockedAction === 'rebuild'
+                  ? false
+                  : control.enabled,
+            disabledReason:
+              args.blockedAction === 'rehydrate'
+                ? 'Rehydrate is unavailable because no recoverable working copy remains.'
+                : !args.enableRebuild && args.blockedAction === 'rebuild'
+                  ? args.blockedReason
+                  : control.disabledReason,
+          };
+        case 'rebuild':
+          return {
+            ...control,
+            enabled: args.enableRebuild,
+            disabledReason: args.enableRebuild ? null : args.blockedReason,
+          };
+        default:
+          return control;
+      }
+    });
+
+    return {
+      ...process,
+      controls: nextControls,
+      availableActions: nextControls
+        .filter((control) => control.enabled)
+        .map((control) => control.actionId),
+    };
+  };
+
   const applyProcessActionResponse = (
     projectId: string,
     processId: string,
@@ -356,7 +454,7 @@ export async function bootstrapApp(
       ...currentSurface,
       process: response.process,
       currentRequest: response.currentRequest,
-      environment: response.environment,
+      environment: mergeProcessSurfaceEnvironment(currentSurface.environment, response.environment),
       error: null,
       actionError: null,
     });
@@ -452,6 +550,70 @@ export async function bootstrapApp(
     });
   };
 
+  const applyRecoveryActionError = (
+    projectId: string,
+    processId: string,
+    error: RequestError,
+  ): void => {
+    const currentSurface = store.get().processSurface;
+
+    if (currentSurface.projectId !== projectId || currentSurface.processId !== processId) {
+      return;
+    }
+
+    let nextEnvironment = currentSurface.environment;
+    let nextProcess = currentSurface.process;
+
+    if (
+      error.code === 'PROCESS_ENVIRONMENT_NOT_RECOVERABLE' &&
+      currentSurface.environment !== null
+    ) {
+      nextEnvironment = {
+        ...currentSurface.environment,
+        state: 'lost',
+        statusLabel: deriveEnvironmentStatusLabel('lost'),
+        blockedReason: error.message,
+      } satisfies EnvironmentSummary;
+      nextProcess = patchRecoveryControls(currentSurface.process, {
+        blockedAction: 'rehydrate',
+        blockedReason: error.message,
+        enableRebuild: true,
+      });
+    }
+
+    if (
+      error.code === 'PROCESS_ENVIRONMENT_PREREQUISITE_MISSING' &&
+      currentSurface.environment !== null
+    ) {
+      nextEnvironment = {
+        ...currentSurface.environment,
+        blockedReason: error.message,
+      } satisfies EnvironmentSummary;
+    }
+
+    if (error.code === 'PROCESS_ENVIRONMENT_UNAVAILABLE' && currentSurface.environment !== null) {
+      nextEnvironment = {
+        ...currentSurface.environment,
+        state: 'unavailable',
+        statusLabel: deriveEnvironmentStatusLabel('unavailable'),
+        blockedReason: error.message,
+      } satisfies EnvironmentSummary;
+      nextProcess = patchRecoveryControls(currentSurface.process, {
+        blockedAction: 'rebuild',
+        blockedReason: error.message,
+        enableRebuild: false,
+      });
+    }
+
+    store.patch('processSurface', {
+      ...currentSurface,
+      process: nextProcess,
+      environment: mergeProcessSurfaceEnvironment(currentSurface.environment, nextEnvironment),
+      error: null,
+      actionError: error,
+    });
+  };
+
   const handleProcessActionRequestError = (
     projectId: string,
     processId: string,
@@ -465,6 +627,11 @@ export async function bootstrapApp(
       case 'PROJECT_NOT_FOUND':
       case 'PROCESS_NOT_FOUND':
         setProcessSurfaceUnavailableError(projectId, processId, error.payload);
+        return;
+      case 'PROCESS_ENVIRONMENT_NOT_RECOVERABLE':
+      case 'PROCESS_ENVIRONMENT_PREREQUISITE_MISSING':
+      case 'PROCESS_ENVIRONMENT_UNAVAILABLE':
+        applyRecoveryActionError(projectId, processId, error.payload);
         return;
       case 'PROCESS_ACTION_NOT_AVAILABLE':
         setProcessActionError(projectId, processId, error.payload);

@@ -8,7 +8,8 @@ export interface HydrationResult {
 
 export interface EnsuredEnvironment {
   environmentId: string;
-  workspaceHandle: string;
+  createdAt?: string;
+  workspaceHandle?: string;
 }
 
 export interface ExecutionResult {
@@ -100,8 +101,8 @@ export class InMemoryProviderAdapter implements ProviderAdapter {
     plan: WorkingSetPlan;
   }): Promise<EnsuredEnvironment> {
     return {
-      environmentId: `env-mem-${args.processId}-rebuild`,
-      workspaceHandle: `workspace-mem-${args.processId}-rebuild`,
+      environmentId: `env-rebuilt-${args.processId}`,
+      createdAt: new Date().toISOString(),
     };
   }
 }

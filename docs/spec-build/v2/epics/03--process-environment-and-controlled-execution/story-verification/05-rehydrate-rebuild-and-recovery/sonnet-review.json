@@ -1,0 +1,7 @@
+{
+  "verdict": "APPROVED",
+  "story": "05-rehydrate-rebuild-and-recovery",
+  "gate_result": "PASSED — 31 test files, 247 tests (12 Convex + 101 server + 146 client + 19 client files), all passing",
+  "blocking_findings_count": 0,
+  "summary": "All 13 Story 5 RED tests turned green without assertion weakening. AC-5.1 through AC-5.5 satisfied. TDD integrity confirmed: only jsdom environment annotations added to 3 test files, no assertion changes. Fire-and-forget recovery correct, live publish includes recomputed process summary, lastCheckpointResult preserved across rehydrating/rebuilding transitions. HTTP codes 409/422/503 match spec. Scope clean — no Story 6 code, no real HTTP."
+}
