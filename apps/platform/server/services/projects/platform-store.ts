@@ -131,6 +131,15 @@ export interface PlatformStore {
   listProjectArtifacts(args: { projectId: string }): Promise<ArtifactSummary[]>;
   listProjectSourceAttachments(args: { projectId: string }): Promise<SourceAttachmentSummary[]>;
   listProcessHistoryItems(args: { processId: string }): Promise<ProcessHistoryItem[]>;
+  appendProcessHistoryItem(args: {
+    processId: string;
+    kind: ProcessHistoryItem['kind'];
+    lifecycleState?: ProcessHistoryItem['lifecycleState'];
+    text: string;
+    relatedSideWorkId?: string | null;
+    relatedArtifactId?: string | null;
+    clientRequestId?: string | null;
+  }): Promise<ProcessHistoryItem>;
   getCurrentProcessRequest(args: { processId: string }): Promise<CurrentProcessRequest | null>;
   getProcessEnvironmentSummary(args: { processId: string }): Promise<EnvironmentSummary>;
   upsertProcessEnvironmentState(args: {
@@ -286,6 +295,20 @@ const listProcessHistoryItemsQuery = makeFunctionReference<
   ProcessHistoryItem[]
 >('processHistoryItems:listProcessHistoryItems');
 
+const appendProcessHistoryItemMutation = makeFunctionReference<
+  'mutation',
+  {
+    processId: string;
+    kind: ProcessHistoryItem['kind'];
+    lifecycleState?: ProcessHistoryItem['lifecycleState'];
+    text: string;
+    relatedSideWorkId?: string | null;
+    relatedArtifactId?: string | null;
+    clientRequestId?: string | null;
+  },
+  ProcessHistoryItem
+>('processHistoryItems:appendProcessHistoryItem');
+
 const getCurrentProcessRequestQuery = makeFunctionReference<
   'query',
   { processId: string },
@@ -328,6 +351,18 @@ const setCurrentProcessMaterialRefsMutation = makeFunctionReference<
   },
   CurrentProcessMaterialRefs
 >('processes:setCurrentProcessMaterialRefs');
+
+const getProcessHydrationPlanQuery = makeFunctionReference<
+  'query',
+  { processId: string },
+  WorkingSetPlan | null
+>('processEnvironmentStates:getProcessHydrationPlan');
+
+const setProcessHydrationPlanMutation = makeFunctionReference<
+  'mutation',
+  { processId: string; plan: WorkingSetPlan },
+  WorkingSetPlan
+>('processEnvironmentStates:setProcessHydrationPlan');
 
 const listProcessOutputsQuery = makeFunctionReference<
   'query',
@@ -533,6 +568,28 @@ export class NullPlatformStore implements PlatformStore {
 
   async listProcessHistoryItems(): Promise<ProcessHistoryItem[]> {
     return [];
+  }
+
+  async appendProcessHistoryItem(args: {
+    processId: string;
+    kind: ProcessHistoryItem['kind'];
+    lifecycleState?: ProcessHistoryItem['lifecycleState'];
+    text: string;
+    relatedSideWorkId?: string | null;
+    relatedArtifactId?: string | null;
+    clientRequestId?: string | null;
+  }): Promise<ProcessHistoryItem> {
+    const now = new Date().toISOString();
+
+    return {
+      historyItemId: `${args.processId}:history:${args.kind}:${now}`,
+      kind: args.kind,
+      lifecycleState: args.lifecycleState ?? 'finalized',
+      text: args.text,
+      createdAt: now,
+      relatedSideWorkId: args.relatedSideWorkId ?? null,
+      relatedArtifactId: args.relatedArtifactId ?? null,
+    };
   }
 
   async getCurrentProcessRequest(): Promise<CurrentProcessRequest | null> {
@@ -753,6 +810,20 @@ export class ConvexPlatformStore implements PlatformStore {
     return this.client.query(listProcessHistoryItemsQuery, args);
   }
 
+  async appendProcessHistoryItem(args: {
+    processId: string;
+    kind: ProcessHistoryItem['kind'];
+    lifecycleState?: ProcessHistoryItem['lifecycleState'];
+    text: string;
+    relatedSideWorkId?: string | null;
+    relatedArtifactId?: string | null;
+    clientRequestId?: string | null;
+  }): Promise<ProcessHistoryItem> {
+    return this.client.mutation(appendProcessHistoryItemMutation, args, {
+      skipQueue: true,
+    });
+  }
+
   async getCurrentProcessRequest(args: {
     processId: string;
   }): Promise<CurrentProcessRequest | null> {
@@ -796,15 +867,17 @@ export class ConvexPlatformStore implements PlatformStore {
     });
   }
 
-  async getProcessHydrationPlan(): Promise<WorkingSetPlan | null> {
-    return null;
+  async getProcessHydrationPlan(args: { processId: string }): Promise<WorkingSetPlan | null> {
+    return this.client.query(getProcessHydrationPlanQuery, args);
   }
 
   async setProcessHydrationPlan(args: {
     processId: string;
     plan: WorkingSetPlan;
   }): Promise<WorkingSetPlan> {
-    return args.plan;
+    return this.client.mutation(setProcessHydrationPlanMutation, args, {
+      skipQueue: true,
+    });
   }
 
   async listProcessOutputs(args: { processId: string }): Promise<PlatformProcessOutputSummary[]> {
@@ -873,9 +946,12 @@ export class ConvexPlatformStore implements PlatformStore {
     });
   }
 
-  async hasCanonicalRecoveryMaterials(): Promise<boolean> {
-    // Stub: real canonical-material availability check deferred to integration hardening
-    return true;
+  async hasCanonicalRecoveryMaterials(args: { processId: string }): Promise<boolean> {
+    const refs = await this.getCurrentProcessMaterialRefs({
+      processId: args.processId,
+    });
+
+    return refs.artifactIds.length > 0 || refs.sourceAttachmentIds.length > 0;
   }
 }
 
@@ -1241,6 +1317,33 @@ export class InMemoryPlatformStore implements PlatformStore {
 
   async listProcessHistoryItems(args: { processId: string }): Promise<ProcessHistoryItem[]> {
     return this.processHistoryItemsByProcessId.get(args.processId) ?? [];
+  }
+
+  async appendProcessHistoryItem(args: {
+    processId: string;
+    kind: ProcessHistoryItem['kind'];
+    lifecycleState?: ProcessHistoryItem['lifecycleState'];
+    text: string;
+    relatedSideWorkId?: string | null;
+    relatedArtifactId?: string | null;
+    clientRequestId?: string | null;
+  }): Promise<ProcessHistoryItem> {
+    const existingHistory = this.processHistoryItemsByProcessId.get(args.processId) ?? [];
+    const historyItem: ProcessHistoryItem = {
+      historyItemId: `${args.processId}:history-${args.kind}-${existingHistory.length + 1}`,
+      kind: args.kind,
+      lifecycleState: args.lifecycleState ?? 'finalized',
+      text: args.text,
+      createdAt: new Date().toISOString(),
+      relatedSideWorkId: args.relatedSideWorkId ?? null,
+      relatedArtifactId: args.relatedArtifactId ?? null,
+    };
+    const nextHistory = [...existingHistory, historyItem].sort((left, right) =>
+      left.createdAt.localeCompare(right.createdAt),
+    );
+    this.processHistoryItemsByProcessId.set(args.processId, nextHistory);
+
+    return historyItem;
   }
 
   async getCurrentProcessRequest(args: {

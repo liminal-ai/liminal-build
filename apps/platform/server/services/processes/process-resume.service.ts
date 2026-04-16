@@ -15,6 +15,7 @@ export class ProcessResumeService {
     private readonly processAccessService: ProcessAccessService,
     private readonly processLiveHub: ProcessLiveHub,
     private readonly processEnvironmentService?: ProcessEnvironmentService,
+    private readonly defaultEnvironmentProviderKind: 'daytona' | 'local' = 'local',
   ) {}
 
   async resume(args: {
@@ -41,7 +42,7 @@ export class ProcessResumeService {
     const environment = requiresEnvironmentPreparation(result.process.status)
       ? await this.platformStore.upsertProcessEnvironmentState({
           processId: access.process.processId,
-          providerKind: null,
+          providerKind: this.defaultEnvironmentProviderKind,
           state: 'preparing',
           environmentId: existingEnvironment.environmentId,
           blockedReason: null,

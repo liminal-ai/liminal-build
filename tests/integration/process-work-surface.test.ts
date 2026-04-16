@@ -17,7 +17,11 @@ import {
 } from '../fixtures/process-environment.js';
 import { readyProcessHistoryFixture } from '../fixtures/process-history.js';
 import { writableProcessMaterialsFixture } from '../fixtures/materials.js';
-import { pausedProcessFixture, waitingProcessFixture } from '../fixtures/processes.js';
+import {
+  draftProcessFixture,
+  pausedProcessFixture,
+  waitingProcessFixture,
+} from '../fixtures/processes.js';
 import { currentProcessRequestFixture } from '../fixtures/process-surface.js';
 import { buildApp } from '../utils/build-app.js';
 
@@ -97,6 +101,21 @@ async function fetchProcessBootstrap(args: {
     response,
     body: await response.json(),
   };
+}
+
+async function waitFor(
+  predicate: () => Promise<boolean> | boolean,
+  timeoutMs = 2000,
+): Promise<void> {
+  const startedAt = Date.now();
+
+  while (!(await predicate())) {
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error('Timed out while waiting for integration condition.');
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 }
 
 function buildDurableCheckpointStore(args: {
@@ -482,6 +501,176 @@ describe('process work surface integration', () => {
     );
 
     await server.app.close();
+  });
+
+  it('drives the full start-to-checkpoint, loss, rebuild, and reopen chain without duplicating history', async () => {
+    const projectSummary = projectSummarySchema.parse({
+      projectId: 'project-story4-integration-001',
+      name: 'Liminal Build Platform',
+      ownerDisplayName: 'Lee Moore',
+      role: 'owner',
+      processCount: 1,
+      artifactCount: 0,
+      sourceAttachmentCount: 1,
+      lastUpdatedAt: '2026-04-15T12:00:00.000Z',
+    });
+    const draftProcessSummary = processSummarySchema.parse({
+      ...draftProcessFixture,
+      processId: 'process-story4-integration-001',
+      displayLabel: 'Feature Specification #4',
+      updatedAt: '2026-04-15T12:00:00.000Z',
+    });
+    const writableSource = {
+      sourceAttachmentId: `${draftProcessSummary.processId}:source-checkpoint-1`,
+      displayName: 'liminal-build',
+      purpose: 'implementation' as const,
+      accessMode: 'read_write' as const,
+      targetRef: 'main',
+      hydrationState: 'hydrated' as const,
+      attachmentScope: 'project' as const,
+      processId: null,
+      processDisplayLabel: null,
+      updatedAt: '2026-04-15T12:00:00.000Z',
+    };
+    const store = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectSummary.projectId]: [draftProcessSummary],
+      },
+      sourceAttachmentsByProjectId: {
+        [projectSummary.projectId]: [writableSource],
+      },
+      currentMaterialRefsByProcessId: {
+        [draftProcessSummary.processId]: {
+          artifactIds: [],
+          sourceAttachmentIds: [writableSource.sourceAttachmentId],
+        },
+      },
+    });
+
+    const firstServer = await startApp(store);
+    const startResponse = await fetch(
+      `${firstServer.baseUrl}/api/projects/${projectSummary.projectId}/processes/${draftProcessSummary.processId}/start`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: 'lb_session=integration-story4-start',
+        },
+      },
+    );
+
+    expect(startResponse.status).toBe(200);
+    expect((await startResponse.json()).environment.state).toBe('preparing');
+
+    await waitFor(async () => {
+      const environment = await store.getProcessEnvironmentSummary({
+        processId: draftProcessSummary.processId,
+      });
+
+      return environment.state === 'ready' && environment.lastCheckpointResult !== null;
+    });
+
+    const checkpointedEnvironment = await store.getProcessEnvironmentSummary({
+      processId: draftProcessSummary.processId,
+    });
+    const historyAfterCheckpoint = await store.listProcessHistoryItems({
+      processId: draftProcessSummary.processId,
+    });
+
+    expect(checkpointedEnvironment.lastCheckpointResult).not.toBeNull();
+    expect(historyAfterCheckpoint).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'process_event',
+          text: 'Environment preparation started.',
+        }),
+        expect.objectContaining({
+          kind: 'process_event',
+          text: 'Checkpoint succeeded.',
+        }),
+      ]),
+    );
+
+    await store.upsertProcessEnvironmentState({
+      processId: draftProcessSummary.processId,
+      providerKind: 'local',
+      state: 'lost',
+      environmentId: null,
+      blockedReason: 'The previous working copy could no longer be recovered.',
+      lastHydratedAt: checkpointedEnvironment.lastHydratedAt,
+    });
+
+    const rebuildResponse = await fetch(
+      `${firstServer.baseUrl}/api/projects/${projectSummary.projectId}/processes/${draftProcessSummary.processId}/rebuild`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: 'lb_session=integration-story4-rebuild',
+        },
+      },
+    );
+
+    expect(rebuildResponse.status).toBe(200);
+    expect((await rebuildResponse.json()).environment.state).toBe('rebuilding');
+
+    await waitFor(async () => {
+      const environment = await store.getProcessEnvironmentSummary({
+        processId: draftProcessSummary.processId,
+      });
+
+      return (
+        environment.state === 'ready' &&
+        environment.environmentId === `env-rebuilt-${draftProcessSummary.processId}`
+      );
+    });
+
+    await firstServer.app.close();
+
+    const reopenedServer = await startApp(store);
+    const reopenedBootstrap = await fetchProcessBootstrap({
+      baseUrl: reopenedServer.baseUrl,
+      projectId: projectSummary.projectId,
+      processId: draftProcessSummary.processId,
+      cookie: 'lb_session=integration-story4-reopen',
+    });
+    const reopenedHistoryIds = reopenedBootstrap.body.history.items.map(
+      (item: { historyItemId: string }) => item.historyItemId,
+    );
+
+    expect(reopenedBootstrap.response.status).toBe(200);
+    expect(reopenedBootstrap.body.environment).toMatchObject({
+      state: 'ready',
+      environmentId: `env-rebuilt-${draftProcessSummary.processId}`,
+      lastCheckpointResult: checkpointedEnvironment.lastCheckpointResult,
+    });
+    expect(reopenedBootstrap.body.history.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'process_event',
+          text: 'Environment preparation started.',
+        }),
+        expect.objectContaining({
+          kind: 'process_event',
+          text: 'Environment rebuild started.',
+        }),
+        expect.objectContaining({
+          kind: 'process_event',
+          text: 'Checkpoint succeeded.',
+        }),
+      ]),
+    );
+    expect(reopenedBootstrap.body.history.items).toHaveLength(reopenedHistoryIds.length);
+    expect(new Set(reopenedHistoryIds).size).toBe(reopenedHistoryIds.length);
+
+    await reopenedServer.app.close();
   });
 
   it('TC-3.3b submitted responses remain visible after reload and return', async () => {

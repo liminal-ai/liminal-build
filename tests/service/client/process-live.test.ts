@@ -720,6 +720,45 @@ describe('process live foundation', () => {
     );
   });
 
+  it('refreshes materials after an artifact checkpoint publishes a new current artifact', () => {
+    const checkpointArtifactMessage = buildLiveProcessMessageFixture({
+      messageType: 'upsert',
+      entityType: 'materials',
+      entityId: 'materials',
+      sequenceNumber: 21,
+      payload: {
+        ...readyProcessMaterialsFixture,
+        status: 'ready',
+        currentArtifacts: [
+          {
+            artifactId: 'artifact-checkpoint-live-001',
+            displayName: 'Generated artifact checkpoint',
+            currentVersionLabel: null,
+            roleLabel: 'Current working artifact',
+            updatedAt: '2026-04-15T12:21:00.000Z',
+          },
+          ...readyProcessMaterialsFixture.currentArtifacts,
+        ],
+      },
+    });
+    const nextState = applyLiveProcessMessage({
+      state: buildConnectedMaterialsState(checkpointArtifactMessage.sequenceNumber - 1),
+      message: checkpointArtifactMessage,
+    });
+
+    expect(nextState.materials?.currentArtifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          artifactId: 'artifact-checkpoint-live-001',
+          displayName: 'Generated artifact checkpoint',
+        }),
+      ]),
+    );
+    expect(nextState.materials?.currentArtifacts).toHaveLength(
+      readyProcessMaterialsFixture.currentArtifacts.length + 1,
+    );
+  });
+
   it('TC-4.3b output revision updates replace the current output context', () => {
     const nextState = applyLiveProcessMessage({
       state: buildConnectedMaterialsState(materialsRevisionUpsertLiveFixture.sequenceNumber - 1),

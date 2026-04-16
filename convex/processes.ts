@@ -269,6 +269,7 @@ export const createProcess = mutation({
       lastHydratedAt: null,
       lastCheckpointAt: null,
       lastCheckpointResult: null,
+      workingSetPlan: null,
       workingSetFingerprint: null,
       createdAt: now,
       updatedAt: now,

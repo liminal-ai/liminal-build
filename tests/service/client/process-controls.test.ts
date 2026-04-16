@@ -3,8 +3,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildProcessSurfaceSummary } from '../../../apps/platform/server/services/processes/process-work-surface.service.js';
 import { renderProcessControls } from '../../../apps/platform/client/features/processes/process-controls.js';
-import { buildEnvironmentSummaryFixture } from '../../fixtures/process-environment.js';
-import { pausedProcessFixture } from '../../fixtures/processes.js';
+import {
+  buildEnvironmentSummaryFixture,
+  failedEnvironmentFixture,
+} from '../../fixtures/process-environment.js';
+import { pausedProcessFixture, waitingProcessFixture } from '../../fixtures/processes.js';
 import {
   checkpointingEnvironmentProcessControlsFixture,
   failedProcessControlsFixture,
@@ -127,6 +130,25 @@ describe('process controls', () => {
     expect(getControlButton(view, 'rehydrate')?.disabled).toBe(false);
     expect(getControlButton(view, 'rebuild')?.disabled).toBe(false);
     expect(getControlButton(view, 'restart')?.disabled).toBe(false);
+  });
+
+  it('review stays explicitly enabled in the running control matrix state', () => {
+    const view = renderControls(runningProcessControlsFixture);
+
+    expect(getControlButton(view, 'review')?.disabled).toBe(false);
+  });
+
+  it('review stays explicitly enabled in the failed control matrix state', () => {
+    const view = renderControls(failedProcessControlsFixture);
+
+    expect(getControlButton(view, 'review')?.disabled).toBe(false);
+  });
+
+  it('respond stays explicitly enabled when a waiting process is paired with a failed environment', () => {
+    const summary = buildProcessSurfaceSummary(waitingProcessFixture, failedEnvironmentFixture);
+    const view = renderControls(summary.controls);
+
+    expect(getControlButton(view, 'respond')?.disabled).toBe(false);
   });
 
   it('TC-1.1j rebuilding state disables lifecycle controls during rebuild', () => {

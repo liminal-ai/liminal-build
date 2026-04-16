@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  getProcessHydrationPlan,
   getProcessEnvironmentSummary,
+  setProcessHydrationPlan,
   upsertProcessEnvironmentState,
 } from './processEnvironmentStates.js';
 import { createFakeConvexContext } from './test_helpers/fake_convex_context.js';
@@ -18,6 +20,7 @@ const upsertProcessEnvironmentStateHandler = getHandler<
     state:
       | 'absent'
       | 'preparing'
+      | 'rehydrating'
       | 'ready'
       | 'running'
       | 'checkpointing'
@@ -58,6 +61,31 @@ const upsertProcessEnvironmentStateHandler = getHandler<
     } | null;
   }
 >(upsertProcessEnvironmentState);
+
+const getProcessHydrationPlanHandler = getHandler<
+  { processId: string },
+  {
+    artifactIds: string[];
+    sourceAttachmentIds: string[];
+    outputIds: string[];
+  } | null
+>(getProcessHydrationPlan);
+
+const setProcessHydrationPlanHandler = getHandler<
+  {
+    processId: string;
+    plan: {
+      artifactIds: string[];
+      sourceAttachmentIds: string[];
+      outputIds: string[];
+    };
+  },
+  {
+    artifactIds: string[];
+    sourceAttachmentIds: string[];
+    outputIds: string[];
+  }
+>(setProcessHydrationPlan);
 
 const getProcessEnvironmentSummaryHandler = getHandler<
   { processId: string },
@@ -233,5 +261,27 @@ describe('convex/processEnvironmentStates checkpoint durability', () => {
       outcome: 'succeeded',
       targetLabel: 'Checkpointed output',
     });
+  });
+
+  it('stores and returns the hydration working set plan on the environment row', async () => {
+    const { ctx } = createFakeConvexContext(buildSeed());
+    const stored = await setProcessHydrationPlanHandler(ctx, {
+      processId: 'process-1',
+      plan: {
+        artifactIds: ['artifact-1'],
+        sourceAttachmentIds: ['source-1', 'source-2'],
+        outputIds: ['output-1'],
+      },
+    });
+    const readBack = await getProcessHydrationPlanHandler(ctx, {
+      processId: 'process-1',
+    });
+
+    expect(stored).toEqual({
+      artifactIds: ['artifact-1'],
+      sourceAttachmentIds: ['source-1', 'source-2'],
+      outputIds: ['output-1'],
+    });
+    expect(readBack).toEqual(stored);
   });
 });

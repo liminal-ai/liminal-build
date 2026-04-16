@@ -16,6 +16,7 @@ import {
 import { waitingProcessControlsFixture } from '../../fixtures/process-controls.js';
 import {
   buildEnvironmentSummaryFixture,
+  failedEnvironmentFixture,
   lostEnvironmentFixture,
   readyEnvironmentFixture,
   staleEnvironmentFixture,
@@ -305,6 +306,48 @@ describe('process actions api', () => {
       environment: {
         state: 'preparing',
         statusLabel: 'Preparing environment',
+      },
+      currentRequest: null,
+    });
+
+    await app.close();
+  });
+
+  it('start recomputes an env-aware process summary in the same session when a prior environment exists', async () => {
+    const { app } = await buildAuthenticatedApp({
+      processEnvironmentSummariesByProcessId: {
+        [draftProcessSummary.processId]: readyEnvironmentFixture,
+      },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${draftProcessSummary.processId}/start`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      process: {
+        processId: draftProcessSummary.processId,
+        status: 'draft',
+        hasEnvironment: true,
+        controls: expect.arrayContaining([
+          expect.objectContaining({
+            actionId: 'start',
+            enabled: false,
+            disabledReason: 'Start is unavailable while the environment is preparing.',
+          }),
+          expect.objectContaining({
+            actionId: 'rehydrate',
+            enabled: false,
+            disabledReason: 'Rehydrate is unavailable while the environment is preparing.',
+          }),
+        ]),
+      },
+      environment: {
+        state: 'preparing',
       },
       currentRequest: null,
     });
@@ -626,6 +669,56 @@ describe('process actions api', () => {
     ).toMatchObject({
       kind: 'user_message',
       text: 'Let us focus on technical founders first.',
+    });
+
+    await app.close();
+  });
+
+  it('respond recomputes an env-aware process summary in the same session when a failed environment still exists', async () => {
+    const { app } = await buildAuthenticatedApp({
+      currentRequestsByProcessId: {
+        [waitingProcessSummary.processId]: waitingCurrentRequest,
+      },
+      processEnvironmentSummariesByProcessId: {
+        [waitingProcessSummary.processId]: failedEnvironmentFixture,
+      },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}/responses`,
+      payload: {
+        clientRequestId: 'client-request-story3-env-aware-001',
+        message: 'Proceed with the current outline.',
+      },
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      accepted: true,
+      process: {
+        processId: waitingProcessSummary.processId,
+        status: 'running',
+        hasEnvironment: true,
+        availableActions: expect.arrayContaining(['review', 'rehydrate', 'rebuild']),
+        controls: expect.arrayContaining([
+          expect.objectContaining({
+            actionId: 'review',
+            enabled: true,
+          }),
+          expect.objectContaining({
+            actionId: 'rehydrate',
+            enabled: true,
+          }),
+          expect.objectContaining({
+            actionId: 'rebuild',
+            enabled: true,
+          }),
+        ]),
+      },
+      currentRequest: null,
     });
 
     await app.close();

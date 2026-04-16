@@ -462,6 +462,17 @@ describe('auth routes', () => {
       async listProcessHistoryItems() {
         return [];
       },
+      async appendProcessHistoryItem(args) {
+        return {
+          historyItemId: `history:${args.processId}:${args.kind}`,
+          kind: args.kind,
+          lifecycleState: args.lifecycleState ?? 'finalized',
+          text: args.text,
+          createdAt: '2026-04-13T12:06:00.000Z',
+          relatedSideWorkId: args.relatedSideWorkId ?? null,
+          relatedArtifactId: args.relatedArtifactId ?? null,
+        };
+      },
       async getCurrentProcessRequest() {
         return null;
       },

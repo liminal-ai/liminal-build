@@ -19,7 +19,7 @@ level summaries or process-surface visibility.
 be prepared, hydrated, used, rebuilt, and discarded by the system when needed.
 The real source of truth for process outputs lives outside that working copy."
 **Key Constraint:** The environment must be useful for real work, including
-artifact outputs and code work against already-attached writable repositories,
+artifact outputs and code work against already-attached writable sources,
 without turning the platform into a generic terminal host or requiring a
 separate source-management product surface in the same epic.
 
@@ -106,7 +106,7 @@ This epic required three clarifications in
 
 | PRD Area | Backfill | Why |
 |----------|----------|-----|
-| Feature 3 overview, scope, and AC-24 | Feature 3 now states that the first environment epic includes real checkpointing for artifact outputs and for code work against already-attached writable repositories | This epic includes a usable end-to-end environment loop rather than stopping at an in-environment draft state |
+| Feature 3 overview, scope, and AC-24 | Feature 3 now states that the first environment epic includes real checkpointing for artifact outputs and for code work against sources with `accessMode: read_write` | This epic includes a usable end-to-end environment loop rather than stopping at an in-environment draft state |
 | Feature 5 overview and scope | Feature 5 now states that it owns source-attachment lifecycle, source classification, provenance-facing workflows, freshness workflows beyond the minimal environment loop, and the broader canonical-source model | This epic consumes already-attached sources and defers the source-management product surface rather than silently omitting it |
 | Milestones and sequencing rationale | Milestone and sequencing language now distinguishes the first usable environment slice from the later broader source-management and canonical-source slice | The next epic needs an explicit boundary instead of inferring it from partial overlap between Feature 3 and Feature 5 |
 
@@ -164,6 +164,7 @@ to the current state.
 | TC | Environment state | Expected surface behavior | Expected control behavior |
 |----|-------------------|---------------------------|---------------------------|
 | TC-1.1c | `preparing` | Surface identifies the environment as being prepared and not yet ready for active work | `start`, `resume`, `rehydrate`, `rebuild`, and `restart` are disabled while preparation is in progress; `respond` and `review` continue to follow process state |
+| TC-1.1c.1 | `rehydrating` | Surface identifies the environment as being refreshed from canonical truth and not yet ready for active work | `start`, `resume`, `rehydrate`, `rebuild`, and `restart` are disabled while rehydrate is in progress; `respond` and `review` continue to follow process state |
 | TC-1.1d | `ready` | Surface identifies the environment as prepared and ready for process work | `rehydrate` and `rebuild` are disabled; `start` or `resume` may be enabled if the process state allows them; `respond`, `review`, and `restart` continue to follow process state |
 | TC-1.1e | `running` | Surface identifies the environment as actively executing process work | Recovery controls remain disabled during active execution; other visible controls continue to follow process state |
 | TC-1.1f | `checkpointing` | Surface identifies the environment as persisting durable work rather than preparing or actively executing | `start`, `resume`, `rehydrate`, `rebuild`, and `restart` are disabled until checkpointing settles; `respond` and `review` continue to follow process state when relevant |
@@ -580,7 +581,7 @@ contracts in documentation tables rather than implementation syntax.
 | Field | Type | Required | Validation | Description |
 |-------|------|----------|------------|-------------|
 | environmentId | string | no | non-empty when present | Stable environment identifier for the current working copy |
-| state | enum | yes | `absent`, `preparing`, `ready`, `running`, `checkpointing`, `stale`, `failed`, `lost`, `rebuilding`, or `unavailable` | Current environment state shown on the process surface |
+| state | enum | yes | `absent`, `preparing`, `rehydrating`, `ready`, `running`, `checkpointing`, `stale`, `failed`, `lost`, `rebuilding`, or `unavailable` | Current environment state shown on the process surface |
 | statusLabel | string | yes | non-empty | User-visible label for the current environment state |
 | blockedReason | string | no | non-empty when present | Current reason the environment cannot proceed to the next expected action |
 | lastHydratedAt | string | no | ISO 8601 UTC when present | Time the working set was last hydrated into the environment |

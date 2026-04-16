@@ -1479,7 +1479,7 @@ describe('process work surface page', () => {
     ).toBe(1);
   });
 
-  it('TC-2.6a shows preparing environment state in the environment panel immediately after Start without a manual refresh', async () => {
+  it('shows preparing environment state in the environment panel immediately after Start without a manual refresh', async () => {
     installInteractiveFetchMock({
       surface: earlyProcessWorkSurfaceFixture,
       actionPayload: startedProcessResponseFixture,
@@ -1507,7 +1507,7 @@ describe('process work surface page', () => {
     expect(dom.window.document.body.textContent).toContain('Running');
   });
 
-  it('TC-2.6b shows preparing environment state in the environment panel immediately after Resume from paused without a manual refresh', async () => {
+  it('shows preparing environment state in the environment panel immediately after Resume from paused without a manual refresh', async () => {
     installInteractiveFetchMock({
       surface: pausedProcessWorkSurfaceFixture,
       actionPayload: resumedPausedProcessResponseFixture,
@@ -1535,7 +1535,7 @@ describe('process work surface page', () => {
     expect(dom.window.document.body.textContent).toContain('Running');
   });
 
-  it('TC-2.6c shows preparing environment state in the environment panel immediately after Resume from interrupted without a manual refresh', async () => {
+  it('shows preparing environment state in the environment panel immediately after Resume from interrupted without a manual refresh', async () => {
     installInteractiveFetchMock({
       surface: interruptedProcessWorkSurfaceFixture,
       actionPayload: resumedInterruptedProcessResponseFixture,

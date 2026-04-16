@@ -15,7 +15,7 @@ Create the shared environment-summary, control-state, checkpoint-result, error, 
 
 **Objective**
 
-Establish the shared contract vocabulary, fixtures, error classes, and test helpers required by Stories 1 through 6.
+Establish the shared contract vocabulary, fixtures, error-code vocabulary on `AppError`, and test helpers required by Stories 1 through 6.
 
 **Scope**
 
@@ -172,6 +172,6 @@ See the tech design document for full architecture, implementation targets, and 
 <!-- Jira: Definition of Done or Acceptance Criteria footer -->
 - Shared environment, control, checkpoint, and source-access vocabulary is defined once and referenced by later stories
 - Reusable fixtures cover absent, preparing, ready, stale, failed, lost, rebuilding, checkpointing, and unavailable environment states
-- Recovery and checkpoint error classes exist for action rejection and later asynchronous failure reporting
+- Recovery and checkpoint error-code vocabulary on `AppError` exists for action rejection and later asynchronous failure reporting
 - Live-update fixtures include `environment` entity snapshots, upserts, completion markers, and transport errors
 - Story files and coverage artifact can reference Story 0 without redefining shared environment vocabulary

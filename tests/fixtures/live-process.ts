@@ -197,6 +197,15 @@ export const environmentRunningUpsertLiveFixture = buildLiveProcessMessageFixtur
   payload: runningEnvironmentFixture,
 });
 
+export const environmentCompleteLiveFixture = buildLiveProcessMessageFixture({
+  messageType: 'complete',
+  entityType: 'environment',
+  entityId: 'environment',
+  sequenceNumber: 20,
+  completedAt: readyEnvironmentFixture.lastHydratedAt ?? '2026-04-13T12:20:00.000Z',
+  payload: readyEnvironmentFixture,
+});
+
 export const environmentCheckpointingUpsertLiveFixture = buildLiveProcessMessageFixture({
   messageType: 'upsert',
   entityType: 'environment',

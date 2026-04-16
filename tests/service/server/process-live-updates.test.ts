@@ -566,6 +566,87 @@ describe('server-driven environment preparation', () => {
     socket.close();
     await app.close();
   });
+
+  it('publishes failed preparation with a null environmentId when provisioning never returned an id', async () => {
+    const failReason = 'Hydration failed before an environment id was assigned';
+    const processLiveHub = new InMemoryProcessLiveHub();
+    const platformStore = buildEnvPrepStore();
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+      processLiveHub,
+      providerAdapter: new FailingProviderAdapter(failReason),
+    });
+
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const address = app.server.address();
+
+    if (address === null || typeof address === 'string') {
+      throw new Error('Expected an ephemeral address for websocket tests.');
+    }
+
+    const messages: Array<ReturnType<typeof liveProcessUpdateMessageSchema.parse>> = [];
+    const socket = new WebSocket(
+      `ws://127.0.0.1:${address.port}/ws/projects/${envPrepProjectId}/processes/${envPrepProcessId}`,
+    );
+
+    socket.addEventListener('message', (event) => {
+      messages.push(liveProcessUpdateMessageSchema.parse(JSON.parse(String(event.data))));
+    });
+
+    await waitFor(() =>
+      messages.some((m) => m.messageType === 'snapshot' && m.entityType === 'process'),
+    );
+
+    const startResponse = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${envPrepProjectId}/processes/${envPrepProcessId}/start`,
+      cookies: { [sessionCookieName]: 'valid-session-cookie' },
+    });
+
+    expect(startResponse.statusCode).toBe(200);
+
+    await waitFor(() =>
+      messages.some(
+        (m) =>
+          m.entityType === 'environment' &&
+          m.payload !== null &&
+          (m.payload as { state: string }).state === 'failed',
+      ),
+    );
+
+    const failedMessage = [...messages]
+      .reverse()
+      .find(
+        (m) =>
+          m.entityType === 'environment' &&
+          m.payload !== null &&
+          (m.payload as { state: string }).state === 'failed',
+      );
+
+    socket.close();
+    await app.close();
+
+    expect(failedMessage).toMatchObject({
+      messageType: 'upsert',
+      entityType: 'environment',
+      entityId: 'environment',
+      payload: {
+        state: 'failed',
+        environmentId: null,
+        blockedReason: failReason,
+      },
+    });
+  });
 });
 
 describe('server-driven environment execution', () => {
@@ -867,10 +948,34 @@ describe('server-driven environment execution', () => {
         m.payload !== null &&
         (m.payload as { state: string }).state === 'failed',
     );
+    const failedProcessMessage = [...messages]
+      .reverse()
+      .find((message) => message.entityType === 'process' && message.payload !== null);
 
     socket.close();
     await app.close();
 
+    expect(failedProcessMessage).toMatchObject({
+      messageType: 'upsert',
+      entityType: 'process',
+      payload: {
+        hasEnvironment: true,
+        controls: expect.arrayContaining([
+          expect.objectContaining({
+            actionId: 'review',
+            enabled: true,
+          }),
+          expect.objectContaining({
+            actionId: 'rehydrate',
+            enabled: true,
+          }),
+          expect.objectContaining({
+            actionId: 'rebuild',
+            enabled: true,
+          }),
+        ]),
+      },
+    });
     expect(failedMessage).toMatchObject({
       messageType: 'upsert',
       entityType: 'environment',
@@ -880,6 +985,9 @@ describe('server-driven environment execution', () => {
         blockedReason: executionFailureReason,
       },
     });
+    expect((failedMessage?.payload as { blockedReason?: string } | null)?.blockedReason).toEqual(
+      expect.any(String),
+    );
   });
 
   it('TC-3.4b execution failure with no failureReason falls back to "Execution failed."', async () => {

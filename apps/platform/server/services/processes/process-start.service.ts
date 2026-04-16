@@ -15,6 +15,7 @@ export class ProcessStartService {
     private readonly processAccessService: ProcessAccessService,
     private readonly processLiveHub: ProcessLiveHub,
     private readonly processEnvironmentService?: ProcessEnvironmentService,
+    private readonly defaultEnvironmentProviderKind: 'daytona' | 'local' = 'local',
   ) {}
 
   async start(args: {
@@ -38,7 +39,7 @@ export class ProcessStartService {
     const environment = requiresEnvironmentPreparation(result.process.status)
       ? await this.platformStore.upsertProcessEnvironmentState({
           processId: access.process.processId,
-          providerKind: null,
+          providerKind: this.defaultEnvironmentProviderKind,
           state: 'preparing',
           environmentId: null,
           blockedReason: null,

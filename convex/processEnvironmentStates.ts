@@ -6,6 +6,7 @@ import type {
 import { deriveEnvironmentStatusLabel } from '../apps/platform/shared/contracts/index.js';
 import type { Doc, Id } from './_generated/dataModel.js';
 import { mutation, query } from './_generated/server.js';
+import type { WorkingSetPlan } from '../apps/platform/server/services/projects/platform-store.js';
 
 export const checkpointKindValidator = v.union(
   v.literal('artifact'),
@@ -39,6 +40,12 @@ export const checkpointResultValidator = v.object({
   failureReason: v.union(v.string(), v.null()),
 });
 
+export const workingSetPlanValidator = v.object({
+  artifactIds: v.array(v.string()),
+  sourceAttachmentIds: v.array(v.string()),
+  outputIds: v.array(v.string()),
+});
+
 export const processEnvironmentStatesTableFields = {
   processId: v.id('processes'),
   providerKind: v.union(v.literal('daytona'), v.literal('local'), v.null()),
@@ -48,6 +55,7 @@ export const processEnvironmentStatesTableFields = {
   lastHydratedAt: v.union(v.string(), v.null()),
   lastCheckpointAt: v.union(v.string(), v.null()),
   lastCheckpointResult: v.union(checkpointResultValidator, v.null()),
+  workingSetPlan: v.union(workingSetPlanValidator, v.null()),
   workingSetFingerprint: v.union(v.string(), v.null()),
   createdAt: v.string(),
   updatedAt: v.string(),
@@ -98,6 +106,20 @@ function buildEnvironmentSummary(
     lastHydratedAt: state.lastHydratedAt,
     lastCheckpointAt: state.lastCheckpointAt,
     lastCheckpointResult: buildCheckpointResult(state.lastCheckpointResult),
+  };
+}
+
+function buildWorkingSetPlan(
+  plan: Doc<'processEnvironmentStates'>['workingSetPlan'],
+): WorkingSetPlan | null {
+  if (plan === null) {
+    return null;
+  }
+
+  return {
+    artifactIds: [...plan.artifactIds],
+    sourceAttachmentIds: [...plan.sourceAttachmentIds],
+    outputIds: [...plan.outputIds],
   };
 }
 
@@ -167,6 +189,7 @@ export const upsertProcessEnvironmentState = mutation({
         lastHydratedAt: args.lastHydratedAt,
         lastCheckpointAt: args.lastCheckpointAt ?? null,
         lastCheckpointResult: args.lastCheckpointResult ?? null,
+        workingSetPlan: null,
         workingSetFingerprint: null,
         createdAt: now,
         updatedAt: now,
@@ -194,5 +217,85 @@ export const upsertProcessEnvironmentState = mutation({
       .unique();
 
     return buildEnvironmentSummary(updated);
+  },
+});
+
+export const getProcessHydrationPlan = query({
+  args: {
+    processId: v.string(),
+  },
+  handler: async (ctx, args): Promise<WorkingSetPlan | null> => {
+    let processRecord: Doc<'processes'> | null = null;
+
+    try {
+      processRecord = await ctx.db.get(args.processId as Id<'processes'>);
+    } catch {
+      return null;
+    }
+
+    if (processRecord === null) {
+      return null;
+    }
+
+    const state = await ctx.db
+      .query('processEnvironmentStates')
+      .withIndex('by_processId', (indexQuery) => indexQuery.eq('processId', processRecord._id))
+      .unique();
+
+    return buildWorkingSetPlan(state?.workingSetPlan ?? null);
+  },
+});
+
+export const setProcessHydrationPlan = mutation({
+  args: {
+    processId: v.string(),
+    plan: workingSetPlanValidator,
+  },
+  handler: async (ctx, args): Promise<WorkingSetPlan> => {
+    let processRecord: Doc<'processes'> | null = null;
+
+    try {
+      processRecord = await ctx.db.get(args.processId as Id<'processes'>);
+    } catch {
+      throw new Error('Process not found.');
+    }
+
+    if (processRecord === null) {
+      throw new Error('Process not found.');
+    }
+
+    const now = new Date().toISOString();
+    const existing = await ctx.db
+      .query('processEnvironmentStates')
+      .withIndex('by_processId', (indexQuery) => indexQuery.eq('processId', processRecord._id))
+      .unique();
+
+    if (existing === null) {
+      await ctx.db.insert('processEnvironmentStates', {
+        processId: processRecord._id,
+        providerKind: null,
+        environmentId: null,
+        state: 'absent',
+        blockedReason: null,
+        lastHydratedAt: null,
+        lastCheckpointAt: null,
+        lastCheckpointResult: null,
+        workingSetPlan: args.plan,
+        workingSetFingerprint: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.patch(existing._id, {
+        workingSetPlan: args.plan,
+        updatedAt: now,
+      });
+    }
+
+    return {
+      artifactIds: [...args.plan.artifactIds],
+      sourceAttachmentIds: [...args.plan.sourceAttachmentIds],
+      outputIds: [...args.plan.outputIds],
+    };
   },
 });

@@ -221,6 +221,26 @@ class RecordingPlatformStore implements PlatformStore {
     return [];
   }
 
+  async appendProcessHistoryItem(args: {
+    processId: string;
+    kind: ProcessHistoryItem['kind'];
+    lifecycleState?: ProcessHistoryItem['lifecycleState'];
+    text: string;
+    relatedSideWorkId?: string | null;
+    relatedArtifactId?: string | null;
+    clientRequestId?: string | null;
+  }): Promise<ProcessHistoryItem> {
+    return {
+      historyItemId: `history:${args.processId}:${args.kind}`,
+      kind: args.kind,
+      lifecycleState: args.lifecycleState ?? 'finalized',
+      text: args.text,
+      createdAt: new Date().toISOString(),
+      relatedSideWorkId: args.relatedSideWorkId ?? null,
+      relatedArtifactId: args.relatedArtifactId ?? null,
+    };
+  }
+
   async getCurrentProcessRequest(): Promise<CurrentProcessRequest | null> {
     return null;
   }

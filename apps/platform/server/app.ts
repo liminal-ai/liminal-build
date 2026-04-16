@@ -142,6 +142,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       scriptExecutionService,
       checkpointPlanner,
       codeCheckpointWriter,
+      env.DEFAULT_ENVIRONMENT_PROVIDER_KIND,
     );
   const processStartService =
     options.processStartService ??
@@ -150,6 +151,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       processAccessService,
       processLiveHub,
       processEnvironmentService,
+      env.DEFAULT_ENVIRONMENT_PROVIDER_KIND,
     );
   const processResumeService =
     options.processResumeService ??
@@ -158,6 +160,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       processAccessService,
       processLiveHub,
       processEnvironmentService,
+      env.DEFAULT_ENVIRONMENT_PROVIDER_KIND,
     );
   const processWorkSurfaceService =
     options.processWorkSurfaceService ??

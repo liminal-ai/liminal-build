@@ -1,6 +1,8 @@
 import type {
   EnvironmentSummary,
   LastCheckpointResult,
+  ProcessHistoryItem,
+  ProcessMaterialsSectionEnvelope,
   ProcessSummary,
   RebuildProcessResponse,
   RehydrateProcessResponse,
@@ -21,6 +23,7 @@ import type { PlatformStore, WorkingSetPlan } from '../../projects/platform-stor
 import type { ProcessLiveHub } from '../live/process-live-hub.js';
 import type { ProcessAccessService } from '../process-access.service.js';
 import { buildProcessSurfaceSummary } from '../process-work-surface.service.js';
+import { MaterialsSectionReader } from '../readers/materials-section.reader.js';
 import type { CheckpointPlanner } from './checkpoint-planner.js';
 import type { CodeCheckpointTarget } from './checkpoint-types.js';
 import type { CodeCheckpointWriter } from './code-checkpoint-writer.js';
@@ -37,6 +40,7 @@ export class ProcessEnvironmentService {
     private readonly scriptExecutionService?: ScriptExecutionService,
     private readonly checkpointPlanner?: CheckpointPlanner,
     private readonly codeCheckpointWriter?: CodeCheckpointWriter,
+    private readonly defaultEnvironmentProviderKind: 'daytona' | 'local' = 'local',
     private readonly artifactCheckpointPersistence: Pick<
       PlatformStore,
       'persistCheckpointArtifacts'
@@ -74,7 +78,7 @@ export class ProcessEnvironmentService {
 
     const environment = await this.platformStore.upsertProcessEnvironmentState({
       processId: access.process.processId,
-      providerKind: null,
+      providerKind: this.defaultEnvironmentProviderKind,
       state: 'rehydrating',
       environmentId: existingEnvironment.environmentId,
       blockedReason: 'Rehydrate is in progress.',
@@ -137,11 +141,15 @@ export class ProcessEnvironmentService {
     const rebuildingEnvironmentId = buildRebuildingEnvironmentId(access.process.processId);
     const environment = await this.platformStore.upsertProcessEnvironmentState({
       processId: access.process.processId,
-      providerKind: null,
+      providerKind: this.defaultEnvironmentProviderKind,
       state: 'rebuilding',
       environmentId: rebuildingEnvironmentId,
       blockedReason: 'Rebuild is in progress.',
       lastHydratedAt: existingEnvironment.lastHydratedAt,
+    });
+    const rebuildHistoryItem = await this.appendProcessEvent({
+      processId: access.process.processId,
+      text: 'Environment rebuild started.',
     });
 
     this.publishEnvironmentUpsert({
@@ -149,6 +157,7 @@ export class ProcessEnvironmentService {
       processId: access.process.processId,
       process: access.process,
       environment,
+      historyItems: [rebuildHistoryItem],
     });
 
     this.runRebuildAsync({
@@ -191,6 +200,15 @@ export class ProcessEnvironmentService {
     ]);
 
     const resolvedPlan = plan ?? { artifactIds: [], sourceAttachmentIds: [], outputIds: [] };
+    const preparationHistoryItem = await this.appendProcessEvent({
+      processId: args.processId,
+      text: 'Environment preparation started.',
+    });
+    this.publishHistoryUpsert({
+      projectId: args.projectId,
+      processId: args.processId,
+      historyItems: [preparationHistoryItem],
+    });
 
     let hydratedEnvironment: EnvironmentSummary | null = null;
     let hydrationError: string | null = null;
@@ -202,7 +220,7 @@ export class ProcessEnvironmentService {
       });
       hydratedEnvironment = await this.platformStore.upsertProcessEnvironmentState({
         processId: args.processId,
-        providerKind: null,
+        providerKind: this.defaultEnvironmentProviderKind,
         state: 'ready',
         environmentId: result.environmentId,
         blockedReason: null,
@@ -235,7 +253,7 @@ export class ProcessEnvironmentService {
     } else {
       const failedEnvironment = await this.platformStore.upsertProcessEnvironmentState({
         processId: args.processId,
-        providerKind: null,
+        providerKind: this.defaultEnvironmentProviderKind,
         state: 'failed',
         environmentId: existing.environmentId,
         blockedReason: hydrationError,
@@ -279,7 +297,7 @@ export class ProcessEnvironmentService {
       });
       const readyEnvironment = await this.platformStore.upsertProcessEnvironmentState({
         processId: args.processId,
-        providerKind: null,
+        providerKind: this.defaultEnvironmentProviderKind,
         state: 'ready',
         environmentId: result.environmentId,
         blockedReason: null,
@@ -313,7 +331,7 @@ export class ProcessEnvironmentService {
       });
       const readyEnvironment = await this.platformStore.upsertProcessEnvironmentState({
         processId: args.processId,
-        providerKind: null,
+        providerKind: this.defaultEnvironmentProviderKind,
         state: 'ready',
         environmentId: result.environmentId,
         blockedReason: null,
@@ -348,6 +366,7 @@ export class ProcessEnvironmentService {
     const environmentId = args.environmentId;
 
     setTimeout(() => {
+      // Deferred one tick so Story 2 bootstrap reads observe durable `ready` before execution advances the env state.
       void this.executeExecution({
         ...args,
         environmentId,
@@ -379,7 +398,7 @@ export class ProcessEnvironmentService {
       lastHydratedAt = existingEnvironment.lastHydratedAt;
       const runningEnvironment = await this.platformStore.upsertProcessEnvironmentState({
         processId: args.processId,
-        providerKind: null,
+        providerKind: this.defaultEnvironmentProviderKind,
         state: 'running',
         environmentId: args.environmentId,
         blockedReason: null,
@@ -400,24 +419,29 @@ export class ProcessEnvironmentService {
       if (executionResult.outcome === 'failed') {
         const failedEnvironment = await this.platformStore.upsertProcessEnvironmentState({
           processId: args.processId,
-          providerKind: null,
+          providerKind: this.defaultEnvironmentProviderKind,
           state: 'failed',
           environmentId: args.environmentId,
           blockedReason: executionResult.failureReason ?? 'Execution failed.',
           lastHydratedAt: runningEnvironment.lastHydratedAt,
+        });
+        const executionFailedHistoryItem = await this.appendProcessEvent({
+          processId: args.processId,
+          text: 'Execution failed.',
         });
         this.publishEnvironmentUpsert({
           projectId: args.projectId,
           processId: args.processId,
           process: currentProcess,
           environment: failedEnvironment,
+          historyItems: [executionFailedHistoryItem],
         });
         return;
       }
 
       const checkpointingEnvironment = await this.platformStore.upsertProcessEnvironmentState({
         processId: args.processId,
-        providerKind: null,
+        providerKind: this.defaultEnvironmentProviderKind,
         state: 'checkpointing',
         environmentId: args.environmentId,
         blockedReason: null,
@@ -445,17 +469,22 @@ export class ProcessEnvironmentService {
       try {
         const failedEnvironment = await this.platformStore.upsertProcessEnvironmentState({
           processId: args.processId,
-          providerKind: null,
+          providerKind: this.defaultEnvironmentProviderKind,
           state: 'failed',
           environmentId: args.environmentId,
           blockedReason: error instanceof Error ? error.message : 'Unknown execution error',
           lastHydratedAt,
+        });
+        const executionFailedHistoryItem = await this.appendProcessEvent({
+          processId: args.processId,
+          text: 'Execution failed.',
         });
         this.publishEnvironmentUpsert({
           projectId: args.projectId,
           processId: args.processId,
           process: currentProcess,
           environment: failedEnvironment,
+          historyItems: [executionFailedHistoryItem],
         });
       } catch {
         // Execution failures must not escape the fire-and-forget path.
@@ -551,7 +580,7 @@ export class ProcessEnvironmentService {
 
         const artifactEnvironment = await this.platformStore.upsertProcessEnvironmentState({
           processId: args.processId,
-          providerKind: null,
+          providerKind: this.defaultEnvironmentProviderKind,
           state: 'checkpointing',
           environmentId: args.environmentId,
           blockedReason: null,
@@ -559,11 +588,16 @@ export class ProcessEnvironmentService {
           lastCheckpointAt: artifactCheckpointResult.completedAt,
           lastCheckpointResult: artifactCheckpointResult,
         });
+        const materials = await this.readMaterials({
+          projectId: currentProcess.projectId,
+          processId: args.processId,
+        });
         this.publishEnvironmentUpsert({
           projectId: args.projectId,
           processId: args.processId,
           process: currentProcess,
           environment: artifactEnvironment,
+          materials,
         });
       }
 
@@ -589,7 +623,7 @@ export class ProcessEnvironmentService {
           });
           const failedEnvironment = await this.platformStore.upsertProcessEnvironmentState({
             processId: args.processId,
-            providerKind: null,
+            providerKind: this.defaultEnvironmentProviderKind,
             state: 'failed',
             environmentId: args.environmentId,
             blockedReason: failedCodeResult.failureReason,
@@ -597,11 +631,16 @@ export class ProcessEnvironmentService {
             lastCheckpointAt: failedCodeResult.completedAt,
             lastCheckpointResult: failedCodeResult,
           });
+          const checkpointFailedHistoryItem = await this.appendProcessEvent({
+            processId: args.processId,
+            text: 'Checkpoint failed.',
+          });
           this.publishEnvironmentUpsert({
             projectId: args.projectId,
             processId: args.processId,
             process: currentProcess,
             environment: failedEnvironment,
+            historyItems: [checkpointFailedHistoryItem],
           });
           return;
         }
@@ -620,7 +659,7 @@ export class ProcessEnvironmentService {
         });
         const readyEnvironment = await this.platformStore.upsertProcessEnvironmentState({
           processId: args.processId,
-          providerKind: null,
+          providerKind: this.defaultEnvironmentProviderKind,
           state: 'ready',
           environmentId: args.environmentId,
           blockedReason: null,
@@ -628,11 +667,16 @@ export class ProcessEnvironmentService {
           lastCheckpointAt: finalCheckpointResult.completedAt,
           lastCheckpointResult: finalCheckpointResult,
         });
+        const checkpointSucceededHistoryItem = await this.appendProcessEvent({
+          processId: args.processId,
+          text: 'Checkpoint succeeded.',
+        });
         this.publishEnvironmentUpsert({
           projectId: args.projectId,
           processId: args.processId,
           process: currentProcess,
           environment: readyEnvironment,
+          historyItems: [checkpointSucceededHistoryItem],
         });
         return;
       }
@@ -653,7 +697,7 @@ export class ProcessEnvironmentService {
         });
         const failedEnvironment = await this.platformStore.upsertProcessEnvironmentState({
           processId: args.processId,
-          providerKind: null,
+          providerKind: this.defaultEnvironmentProviderKind,
           state: 'failed',
           environmentId: args.environmentId,
           blockedReason: failedReadOnlyResult.failureReason,
@@ -661,18 +705,23 @@ export class ProcessEnvironmentService {
           lastCheckpointAt: failedReadOnlyResult.completedAt,
           lastCheckpointResult: failedReadOnlyResult,
         });
+        const checkpointFailedHistoryItem = await this.appendProcessEvent({
+          processId: args.processId,
+          text: 'Checkpoint failed.',
+        });
         this.publishEnvironmentUpsert({
           projectId: args.projectId,
           processId: args.processId,
           process: currentProcess,
           environment: failedEnvironment,
+          historyItems: [checkpointFailedHistoryItem],
         });
         return;
       }
 
       const readyEnvironment = await this.platformStore.upsertProcessEnvironmentState({
         processId: args.processId,
-        providerKind: null,
+        providerKind: this.defaultEnvironmentProviderKind,
         state: 'ready',
         environmentId: args.environmentId,
         blockedReason: null,
@@ -680,11 +729,20 @@ export class ProcessEnvironmentService {
         lastCheckpointAt: artifactCheckpointResult?.completedAt,
         lastCheckpointResult: artifactCheckpointResult ?? undefined,
       });
+      const checkpointSucceededHistoryItem =
+        artifactCheckpointResult === null
+          ? null
+          : await this.appendProcessEvent({
+              processId: args.processId,
+              text: 'Checkpoint succeeded.',
+            });
       this.publishEnvironmentUpsert({
         projectId: args.projectId,
         processId: args.processId,
         process: currentProcess,
         environment: readyEnvironment,
+        historyItems:
+          checkpointSucceededHistoryItem === null ? undefined : [checkpointSucceededHistoryItem],
       });
     } catch (error) {
       const failureReason = error instanceof Error ? error.message : 'Unknown checkpoint error';
@@ -698,7 +756,7 @@ export class ProcessEnvironmentService {
       });
       const failedEnvironment = await this.platformStore.upsertProcessEnvironmentState({
         processId: args.processId,
-        providerKind: null,
+        providerKind: this.defaultEnvironmentProviderKind,
         state: 'failed',
         environmentId: args.environmentId,
         blockedReason: failureReason,
@@ -706,11 +764,16 @@ export class ProcessEnvironmentService {
         lastCheckpointAt: failedCheckpointResult.completedAt,
         lastCheckpointResult: failedCheckpointResult,
       });
+      const checkpointFailedHistoryItem = await this.appendProcessEvent({
+        processId: args.processId,
+        text: 'Checkpoint failed.',
+      });
       this.publishEnvironmentUpsert({
         projectId: args.projectId,
         processId: args.processId,
         process: currentProcess,
         environment: failedEnvironment,
+        historyItems: [checkpointFailedHistoryItem],
       });
     }
   }
@@ -720,6 +783,8 @@ export class ProcessEnvironmentService {
     processId: string;
     process: ProcessSummary | null;
     environment: EnvironmentSummary;
+    historyItems?: ProcessHistoryItem[];
+    materials?: ProcessMaterialsSectionEnvelope;
   }): void {
     if (args.process === null) {
       return;
@@ -731,6 +796,8 @@ export class ProcessEnvironmentService {
       publication: {
         messageType: 'upsert',
         process: buildProcessSurfaceSummary(args.process, args.environment),
+        historyItems: args.historyItems,
+        materials: args.materials,
         environment: args.environment,
       },
     });
@@ -765,7 +832,7 @@ export class ProcessEnvironmentService {
       });
       const failedEnvironment = await this.platformStore.upsertProcessEnvironmentState({
         processId: args.processId,
-        providerKind: null,
+        providerKind: this.defaultEnvironmentProviderKind,
         state: 'failed',
         environmentId: args.environmentId,
         blockedReason: args.failureReason,
@@ -791,6 +858,43 @@ export class ProcessEnvironmentService {
       ...materialRefs,
       outputIds: currentOutputs.map((output) => output.outputId),
     });
+  }
+
+  private async appendProcessEvent(args: {
+    processId: string;
+    text: string;
+  }): Promise<ProcessHistoryItem> {
+    return this.platformStore.appendProcessHistoryItem({
+      processId: args.processId,
+      kind: 'process_event',
+      lifecycleState: 'finalized',
+      text: args.text,
+      relatedSideWorkId: null,
+      relatedArtifactId: null,
+      clientRequestId: null,
+    });
+  }
+
+  private publishHistoryUpsert(args: {
+    projectId: string;
+    processId: string;
+    historyItems: ProcessHistoryItem[];
+  }): void {
+    this.processLiveHub.publish({
+      projectId: args.projectId,
+      processId: args.processId,
+      publication: {
+        messageType: 'upsert',
+        historyItems: args.historyItems,
+      },
+    });
+  }
+
+  private async readMaterials(args: {
+    projectId: string;
+    processId: string;
+  }): Promise<ProcessMaterialsSectionEnvelope> {
+    return new MaterialsSectionReader(this.platformStore).read(args);
   }
 
   private assertRehydrateAvailable(environment: EnvironmentSummary): void {
