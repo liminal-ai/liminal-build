@@ -5,7 +5,7 @@ import type {
 } from '../apps/platform/shared/contracts/index.js';
 import { deriveEnvironmentStatusLabel } from '../apps/platform/shared/contracts/index.js';
 import type { Doc, Id } from './_generated/dataModel.js';
-import { mutation, query } from './_generated/server.js';
+import { type MutationCtx, mutation, type QueryCtx, query } from './_generated/server.js';
 import type { WorkingSetPlan } from '../apps/platform/server/services/projects/platform-store.js';
 
 export const checkpointKindValidator = v.union(
@@ -61,6 +61,29 @@ export const processEnvironmentStatesTableFields = {
   updatedAt: v.string(),
 };
 
+/**
+ * Environment states that mean a working environment exists (or is being
+ * prepared / recovered against). When the env state is one of these, the
+ * companion `processes.hasEnvironment` flag must be `true`.
+ *
+ * `absent` and `lost` mean no working environment exists; in those cases
+ * `hasEnvironment` must be `false`.
+ */
+const ENV_STATES_WITH_ENVIRONMENT: ReadonlyArray<Doc<'processEnvironmentStates'>['state']> = [
+  'preparing',
+  'ready',
+  'running',
+  'checkpointing',
+  'rehydrating',
+  'rebuilding',
+  'stale',
+  'failed',
+];
+
+function deriveHasEnvironment(state: Doc<'processEnvironmentStates'>['state']): boolean {
+  return ENV_STATES_WITH_ENVIRONMENT.includes(state);
+}
+
 function buildAbsentEnvironmentSummary(): EnvironmentSummary {
   return {
     environmentId: null,
@@ -93,15 +116,18 @@ function buildCheckpointResult(
 
 function buildEnvironmentSummary(
   state: Doc<'processEnvironmentStates'> | null,
+  options: { stateOverride?: Doc<'processEnvironmentStates'>['state'] } = {},
 ): EnvironmentSummary {
   if (state === null) {
     return buildAbsentEnvironmentSummary();
   }
 
+  const projectedState = options.stateOverride ?? state.state;
+
   return {
     environmentId: state.environmentId,
-    state: state.state,
-    statusLabel: deriveEnvironmentStatusLabel(state.state),
+    state: projectedState,
+    statusLabel: deriveEnvironmentStatusLabel(projectedState),
     blockedReason: state.blockedReason,
     lastHydratedAt: state.lastHydratedAt,
     lastCheckpointAt: state.lastCheckpointAt,
@@ -121,6 +147,206 @@ function buildWorkingSetPlan(
     sourceAttachmentIds: [...plan.sourceAttachmentIds],
     outputIds: [...plan.outputIds],
   };
+}
+
+/**
+ * Bytes -> lowercase hex string. Used to format the SHA-256 digest below.
+ */
+function bytesToHex(buffer: ArrayBuffer): string {
+  const view = new Uint8Array(buffer);
+  let hex = '';
+  for (let i = 0; i < view.length; i += 1) {
+    const byte = view[i] as number;
+    hex += byte.toString(16).padStart(2, '0');
+  }
+  return hex;
+}
+
+interface FingerprintArtifactInput {
+  artifactId: string;
+  versionLabel: string | null;
+}
+
+interface FingerprintOutputInput {
+  outputId: string;
+  revisionLabel: string | null;
+}
+
+interface FingerprintSourceInput {
+  sourceAttachmentId: string;
+  targetRef: string | null;
+  hydrationState: string;
+}
+
+interface FingerprintInputs {
+  artifacts: FingerprintArtifactInput[];
+  outputs: FingerprintOutputInput[];
+  sources: FingerprintSourceInput[];
+  providerKind: 'daytona' | 'local' | null;
+}
+
+/**
+ * Build the canonical, sort-stable JSON for the working-set fingerprint and
+ * return its lowercase SHA-256 hex digest. Sorting each collection by id keeps
+ * the digest order-independent so equivalent inputs always hash equal.
+ */
+async function computeFingerprintHex(inputs: FingerprintInputs): Promise<string> {
+  const sortedArtifacts = [...inputs.artifacts].sort((left, right) =>
+    left.artifactId.localeCompare(right.artifactId),
+  );
+  const sortedOutputs = [...inputs.outputs].sort((left, right) =>
+    left.outputId.localeCompare(right.outputId),
+  );
+  const sortedSources = [...inputs.sources].sort((left, right) =>
+    left.sourceAttachmentId.localeCompare(right.sourceAttachmentId),
+  );
+
+  // Fixed key order in the outer object; ordered arrays inside.
+  const canonical = {
+    artifacts: sortedArtifacts.map((artifact) => ({
+      artifactId: artifact.artifactId,
+      versionLabel: artifact.versionLabel,
+    })),
+    outputs: sortedOutputs.map((output) => ({
+      outputId: output.outputId,
+      revisionLabel: output.revisionLabel,
+    })),
+    providerKind: inputs.providerKind,
+    sources: sortedSources.map((source) => ({
+      hydrationState: source.hydrationState,
+      sourceAttachmentId: source.sourceAttachmentId,
+      targetRef: source.targetRef,
+    })),
+  };
+
+  const stableJson = JSON.stringify(canonical);
+  const digest = await globalThis.crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(stableJson),
+  );
+  return bytesToHex(digest);
+}
+
+/**
+ * Read the canonical inputs for the working-set fingerprint from the database
+ * and compute the current fingerprint hex digest for the given process.
+ */
+export async function computeWorkingSetFingerprint(
+  ctx: MutationCtx | QueryCtx,
+  processId: Id<'processes'>,
+): Promise<string> {
+  const processRecord = await ctx.db.get(processId);
+
+  if (processRecord === null) {
+    throw new Error('Process not found.');
+  }
+
+  const materialRefs = await readCurrentProcessMaterialRefs(ctx, processRecord);
+  const envState = await ctx.db
+    .query('processEnvironmentStates')
+    .withIndex('by_processId', (indexQuery) => indexQuery.eq('processId', processRecord._id))
+    .unique();
+
+  const artifactInputs: FingerprintArtifactInput[] = [];
+  for (const artifactId of materialRefs.artifactIds) {
+    const artifact = await ctx.db.get(artifactId as Id<'artifacts'>);
+    if (artifact === null) {
+      continue;
+    }
+    artifactInputs.push({
+      artifactId: artifact._id,
+      versionLabel: artifact.currentVersionLabel,
+    });
+  }
+
+  const outputs = await ctx.db
+    .query('processOutputs')
+    .withIndex('by_processId_and_updatedAt', (indexQuery) =>
+      indexQuery.eq('processId', processRecord._id),
+    )
+    .take(200);
+  const outputInputs: FingerprintOutputInput[] = outputs.map((output) => ({
+    outputId: output._id,
+    revisionLabel: output.revisionLabel,
+  }));
+
+  const sourceInputs: FingerprintSourceInput[] = [];
+  for (const sourceAttachmentId of materialRefs.sourceAttachmentIds) {
+    const source = await ctx.db.get(sourceAttachmentId as Id<'sourceAttachments'>);
+    if (source === null) {
+      continue;
+    }
+    sourceInputs.push({
+      sourceAttachmentId: source._id,
+      targetRef: source.targetRef,
+      hydrationState: source.hydrationState,
+    });
+  }
+
+  return computeFingerprintHex({
+    artifacts: artifactInputs,
+    outputs: outputInputs,
+    sources: sourceInputs,
+    providerKind: envState?.providerKind ?? null,
+  });
+}
+
+async function readCurrentProcessMaterialRefs(
+  ctx: MutationCtx | QueryCtx,
+  processRecord: Doc<'processes'>,
+): Promise<{ artifactIds: string[]; sourceAttachmentIds: string[] }> {
+  switch (processRecord.processType) {
+    case 'ProductDefinition': {
+      const state = await ctx.db
+        .query('processProductDefinitionStates')
+        .withIndex('by_processId', (indexQuery) => indexQuery.eq('processId', processRecord._id))
+        .unique();
+      return {
+        artifactIds: state?.currentArtifactIds ?? [],
+        sourceAttachmentIds: state?.currentSourceAttachmentIds ?? [],
+      };
+    }
+    case 'FeatureSpecification': {
+      const state = await ctx.db
+        .query('processFeatureSpecificationStates')
+        .withIndex('by_processId', (indexQuery) => indexQuery.eq('processId', processRecord._id))
+        .unique();
+      return {
+        artifactIds: state?.currentArtifactIds ?? [],
+        sourceAttachmentIds: state?.currentSourceAttachmentIds ?? [],
+      };
+    }
+    case 'FeatureImplementation': {
+      const state = await ctx.db
+        .query('processFeatureImplementationStates')
+        .withIndex('by_processId', (indexQuery) => indexQuery.eq('processId', processRecord._id))
+        .unique();
+      return {
+        artifactIds: state?.currentArtifactIds ?? [],
+        sourceAttachmentIds: state?.currentSourceAttachmentIds ?? [],
+      };
+    }
+    default:
+      return {
+        artifactIds: [],
+        sourceAttachmentIds: [],
+      };
+  }
+}
+
+/**
+ * Cross-table write: keep `processes.hasEnvironment` aligned with the env state
+ * row's `state` value. Called from every mutation that touches the env state.
+ */
+async function maintainProcessHasEnvironment(
+  ctx: MutationCtx,
+  processRecord: Doc<'processes'>,
+  state: Doc<'processEnvironmentStates'>['state'],
+): Promise<void> {
+  const nextHasEnvironment = deriveHasEnvironment(state);
+  if (processRecord.hasEnvironment !== nextHasEnvironment) {
+    await ctx.db.patch(processRecord._id, { hasEnvironment: nextHasEnvironment });
+  }
 }
 
 export const getProcessEnvironmentSummary = query({
@@ -144,6 +370,21 @@ export const getProcessEnvironmentSummary = query({
       .query('processEnvironmentStates')
       .withIndex('by_processId', (indexQuery) => indexQuery.eq('processId', processRecord._id))
       .unique();
+
+    if (state === null) {
+      return buildAbsentEnvironmentSummary();
+    }
+
+    // Read-time stale projection: if stored fingerprint diverges from the
+    // current canonical fingerprint AND the stored state would otherwise be
+    // `ready`, project as `stale`. The next mutation that touches env state
+    // recomputes the fingerprint and the projection becomes consistent.
+    if (state.state === 'ready' && state.workingSetFingerprint !== null) {
+      const currentFingerprint = await computeWorkingSetFingerprint(ctx, processRecord._id);
+      if (currentFingerprint !== state.workingSetFingerprint) {
+        return buildEnvironmentSummary(state, { stateOverride: 'stale' });
+      }
+    }
 
     return buildEnvironmentSummary(state);
   },
@@ -210,6 +451,19 @@ export const upsertProcessEnvironmentState = mutation({
         updatedAt: now,
       });
     }
+
+    // Compute the fingerprint AFTER the env state row is in its final state so
+    // the digest sees the correct providerKind for the current row.
+    const fingerprint = await computeWorkingSetFingerprint(ctx, processRecord._id);
+    const writtenRow = await ctx.db
+      .query('processEnvironmentStates')
+      .withIndex('by_processId', (indexQuery) => indexQuery.eq('processId', processRecord._id))
+      .unique();
+    if (writtenRow !== null) {
+      await ctx.db.patch(writtenRow._id, { workingSetFingerprint: fingerprint });
+    }
+
+    await maintainProcessHasEnvironment(ctx, processRecord, args.state);
 
     const updated = await ctx.db
       .query('processEnvironmentStates')
@@ -285,11 +539,23 @@ export const setProcessHydrationPlan = mutation({
         createdAt: now,
         updatedAt: now,
       });
+      await maintainProcessHasEnvironment(ctx, processRecord, 'absent');
     } else {
       await ctx.db.patch(existing._id, {
         workingSetPlan: args.plan,
         updatedAt: now,
       });
+      await maintainProcessHasEnvironment(ctx, processRecord, existing.state);
+    }
+
+    // Compute fingerprint after the row is in its final state.
+    const fingerprint = await computeWorkingSetFingerprint(ctx, processRecord._id);
+    const writtenRow = await ctx.db
+      .query('processEnvironmentStates')
+      .withIndex('by_processId', (indexQuery) => indexQuery.eq('processId', processRecord._id))
+      .unique();
+    if (writtenRow !== null) {
+      await ctx.db.patch(writtenRow._id, { workingSetFingerprint: fingerprint });
     }
 
     return {

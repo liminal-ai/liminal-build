@@ -1,16 +1,26 @@
+import { makeFunctionReference } from 'convex/server';
 import { v } from 'convex/values';
 import type {
   ArtifactSummary,
   ProcessOutputReference,
 } from '../apps/platform/shared/contracts/index.js';
 import type { Doc, Id } from './_generated/dataModel.js';
-import { type MutationCtx, mutation, type QueryCtx, query } from './_generated/server.js';
+import {
+  type ActionCtx,
+  internalAction,
+  internalMutation,
+  type MutationCtx,
+  mutation,
+  type QueryCtx,
+  query,
+} from './_generated/server.js';
 
 export const artifactsTableFields = {
   projectId: v.string(),
   processId: v.union(v.string(), v.null()),
   displayName: v.string(),
   currentVersionLabel: v.union(v.string(), v.null()),
+  contentStorageId: v.id('_storage'),
   updatedAt: v.string(),
 };
 
@@ -18,6 +28,13 @@ const checkpointArtifactInputValidator = v.object({
   artifactId: v.optional(v.string()),
   producedAt: v.string(),
   contents: v.string(),
+  targetLabel: v.string(),
+});
+
+const checkpointArtifactWithStorageValidator = v.object({
+  artifactId: v.optional(v.string()),
+  producedAt: v.string(),
+  contentStorageId: v.id('_storage'),
   targetLabel: v.string(),
 });
 
@@ -55,10 +72,75 @@ export const listProjectArtifactSummaries = query({
   },
 });
 
-export const persistCheckpointArtifacts = mutation({
+/**
+ * Public action that persists checkpoint artifacts via Convex File Storage.
+ *
+ * Convex mutations cannot call `ctx.storage.store`, so each artifact's contents
+ * are uploaded as a Blob from this action and the resulting storageIds are
+ * handed off to `recordCheckpointArtifactsInternal` which writes the artifact
+ * rows transactionally.
+ */
+export const persistCheckpointArtifacts = internalAction({
   args: {
     processId: v.string(),
     artifacts: v.array(checkpointArtifactInputValidator),
+  },
+  handler: async (
+    ctx: ActionCtx,
+    args,
+  ): Promise<Array<ProcessOutputReference & { linkedArtifactId: string | null }>> => {
+    const artifactsWithStorage: Array<{
+      artifactId?: string;
+      producedAt: string;
+      contentStorageId: Id<'_storage'>;
+      targetLabel: string;
+    }> = [];
+
+    for (const artifact of args.artifacts) {
+      const blob = new Blob([artifact.contents]);
+      const contentStorageId = await ctx.storage.store(blob);
+      artifactsWithStorage.push({
+        artifactId: artifact.artifactId,
+        producedAt: artifact.producedAt,
+        contentStorageId,
+        targetLabel: artifact.targetLabel,
+      });
+    }
+
+    const result: Array<ProcessOutputReference & { linkedArtifactId: string | null }> =
+      await ctx.runMutation(recordCheckpointArtifactsInternalRef, {
+        processId: args.processId,
+        artifacts: artifactsWithStorage,
+      });
+
+    return result;
+  },
+});
+
+/**
+ * Stable, named reference to the internal mutation. Using
+ * `makeFunctionReference` (rather than `internal.X.Y`) means the value carries
+ * `Symbol(functionName) === 'artifacts:recordCheckpointArtifactsInternal'`,
+ * which the FakeConvexContext can resolve back to the registered handler.
+ */
+const recordCheckpointArtifactsInternalRef = makeFunctionReference<
+  'mutation',
+  {
+    processId: string;
+    artifacts: Array<{
+      artifactId?: string;
+      producedAt: string;
+      contentStorageId: Id<'_storage'>;
+      targetLabel: string;
+    }>;
+  },
+  Array<ProcessOutputReference & { linkedArtifactId: string | null }>
+>('artifacts:recordCheckpointArtifactsInternal');
+
+export const recordCheckpointArtifactsInternal = internalMutation({
+  args: {
+    processId: v.string(),
+    artifacts: v.array(checkpointArtifactWithStorageValidator),
   },
   handler: async (
     ctx,
@@ -68,13 +150,12 @@ export const persistCheckpointArtifacts = mutation({
     const existingMaterialRefs = await resolveCurrentProcessMaterialRefs(ctx, processRecord);
 
     for (const artifact of args.artifacts) {
-      void artifact.contents;
-
       const persistedArtifactId = await upsertArtifactCheckpoint(ctx, {
         processRecord,
         artifactId: artifact.artifactId,
         targetLabel: artifact.targetLabel,
         producedAt: artifact.producedAt,
+        contentStorageId: artifact.contentStorageId,
       });
 
       await upsertProcessOutputCheckpoint(ctx, {
@@ -107,6 +188,28 @@ export const persistCheckpointArtifacts = mutation({
   },
 });
 
+/**
+ * Deletes an artifact row and its associated storage blob in the same
+ * transaction. Use this from any mutation that removes artifact rows so that
+ * file-storage entries do not orphan.
+ */
+export const deleteArtifactWithContent = mutation({
+  args: {
+    artifactId: v.id('artifacts'),
+  },
+  handler: async (ctx, args): Promise<null> => {
+    const artifact = await ctx.db.get(args.artifactId);
+
+    if (artifact === null) {
+      return null;
+    }
+
+    await ctx.storage.delete(artifact.contentStorageId);
+    await ctx.db.delete(args.artifactId);
+    return null;
+  },
+});
+
 async function getProcessRecordOrThrow(
   ctx: MutationCtx,
   processIdValue: string,
@@ -133,6 +236,7 @@ async function upsertArtifactCheckpoint(
     artifactId?: string;
     targetLabel: string;
     producedAt: string;
+    contentStorageId: Id<'_storage'>;
   },
 ): Promise<Id<'artifacts'>> {
   const nextFields = {
@@ -140,6 +244,7 @@ async function upsertArtifactCheckpoint(
     processId: args.processRecord._id,
     displayName: args.targetLabel,
     currentVersionLabel: null,
+    contentStorageId: args.contentStorageId,
     updatedAt: args.producedAt,
   };
 
@@ -147,6 +252,10 @@ async function upsertArtifactCheckpoint(
     const existingArtifact = await ctx.db.get(args.artifactId as Id<'artifacts'>);
 
     if (existingArtifact !== null && existingArtifact.projectId === args.processRecord.projectId) {
+      // Replace prior content blob with the new revision so storage stays clean.
+      if (existingArtifact.contentStorageId !== args.contentStorageId) {
+        await ctx.storage.delete(existingArtifact.contentStorageId);
+      }
       await ctx.db.patch(existingArtifact._id, nextFields);
       return existingArtifact._id;
     }

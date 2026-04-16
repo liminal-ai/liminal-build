@@ -1356,6 +1356,12 @@ describe('checkpoint planner', () => {
       processEnvironmentSummariesByProcessId: {
         [interruptedProcessSummary.processId]: lostEnvironmentFixture,
       },
+      currentMaterialRefsByProcessId: {
+        [interruptedProcessSummary.processId]: {
+          artifactIds: ['artifact-rebuild-source-1'],
+          sourceAttachmentIds: [],
+        },
+      },
     });
     const response = await app.inject({
       method: 'POST',
@@ -1386,6 +1392,12 @@ describe('checkpoint planner', () => {
           ...lostEnvironmentFixture,
           environmentId: null,
         }),
+      },
+      currentMaterialRefsByProcessId: {
+        [interruptedProcessSummary.processId]: {
+          artifactIds: ['artifact-rebuild-source-1'],
+          sourceAttachmentIds: [],
+        },
       },
     });
     const response = await app.inject({

@@ -174,13 +174,136 @@ class FakeDb {
   }
 }
 
+/**
+ * In-memory Convex storage stub. Stores `Blob`s keyed by a synthetic
+ * storageId. Mirrors the runtime `ctx.storage.*` interface enough for unit
+ * tests that exercise file storage round-trip semantics.
+ */
+class FakeStorage {
+  private readonly blobsByStorageId = new Map<string, Blob>();
+  private nextStorageId = 1;
+
+  async store(blob: Blob): Promise<string> {
+    const storageId = `kg-${this.nextStorageId++}`;
+    this.blobsByStorageId.set(storageId, blob);
+    return storageId;
+  }
+
+  async get(storageId: string): Promise<Blob | null> {
+    return this.blobsByStorageId.get(storageId) ?? null;
+  }
+
+  async delete(storageId: string): Promise<void> {
+    this.blobsByStorageId.delete(storageId);
+  }
+
+  async getUrl(storageId: string): Promise<string | null> {
+    if (!this.blobsByStorageId.has(storageId)) {
+      return null;
+    }
+    return `fake://storage/${storageId}`;
+  }
+
+  list(): string[] {
+    return [...this.blobsByStorageId.keys()];
+  }
+}
+
+export interface FakeConvexFunctionRegistry {
+  /**
+   * Register an internal mutation / query / action handler under its canonical
+   * Convex reference name (`module:function`). The fake `ctx.runMutation` /
+   * `ctx.runQuery` then resolves `makeFunctionReference(name)` calls back to
+   * this handler by reading `Symbol(functionName)` on the reference.
+   */
+  register(functionName: string, handler: (ctx: unknown, args: unknown) => Promise<unknown>): void;
+}
+
+const FUNCTION_NAME_SYMBOL = Symbol.for('functionName');
+
+function readFunctionName(ref: unknown): string | undefined {
+  if (ref === null || typeof ref !== 'object') {
+    return undefined;
+  }
+  // Convex's `makeFunctionReference` stores the canonical name on a symbol
+  // keyed by the literal string "functionName". Look it up directly first,
+  // then fall back to scanning own symbols (in case the symbol identity drifts
+  // across versions or module boundaries).
+  const direct = (ref as Record<symbol, unknown>)[FUNCTION_NAME_SYMBOL];
+  if (typeof direct === 'string') {
+    return direct;
+  }
+  for (const symbol of Object.getOwnPropertySymbols(ref)) {
+    if (symbol.description === 'functionName') {
+      const value = (ref as Record<symbol, unknown>)[symbol];
+      if (typeof value === 'string') {
+        return value;
+      }
+    }
+  }
+  return undefined;
+}
+
 export function createFakeConvexContext(seed: SeedTables = {}) {
   const db = new FakeDb(seed);
+  const storage = new FakeStorage();
+  const handlersByName = new Map<string, (ctx: unknown, args: unknown) => Promise<unknown>>();
+
+  function resolveHandler(
+    ref: unknown,
+  ): ((ctx: unknown, args: unknown) => Promise<unknown>) | undefined {
+    // Most registered Convex functions expose `_handler` directly when imported
+    // as the source binding (e.g. `import { foo } from './module'`).
+    const handler = (ref as { _handler?: (ctx: unknown, args: unknown) => Promise<unknown> })
+      ._handler;
+    if (typeof handler === 'function') {
+      return handler;
+    }
+
+    // FunctionReference objects carry their canonical name on a symbol.
+    const functionName = readFunctionName(ref);
+    if (functionName !== undefined) {
+      return handlersByName.get(functionName);
+    }
+
+    return undefined;
+  }
+
+  async function runMutation(ref: unknown, args: unknown): Promise<unknown> {
+    const handler = resolveHandler(ref);
+    if (handler === undefined) {
+      throw new Error(
+        'Fake runMutation could not resolve a handler — register the internal binding with createFakeConvexContext().registry.register(name, handler).',
+      );
+    }
+    return handler({ db, storage, runMutation, runQuery }, args);
+  }
+
+  async function runQuery(ref: unknown, args: unknown): Promise<unknown> {
+    const handler = resolveHandler(ref);
+    if (handler === undefined) {
+      throw new Error(
+        'Fake runQuery could not resolve a handler — register the internal binding with createFakeConvexContext().registry.register(name, handler).',
+      );
+    }
+    return handler({ db, storage, runMutation, runQuery }, args);
+  }
+
+  const registry: FakeConvexFunctionRegistry = {
+    register(functionName, handler) {
+      handlersByName.set(functionName, handler);
+    },
+  };
 
   return {
     ctx: {
       db,
+      storage,
+      runMutation,
+      runQuery,
     },
     db,
+    storage,
+    registry,
   };
 }

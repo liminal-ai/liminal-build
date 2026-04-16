@@ -386,8 +386,8 @@ const replaceCurrentProcessOutputsMutation = makeFunctionReference<
   PlatformProcessOutputSummary[]
 >('processOutputs:replaceCurrentProcessOutputs');
 
-const persistCheckpointArtifactsMutation = makeFunctionReference<
-  'mutation',
+const persistCheckpointArtifactsAction = makeFunctionReference<
+  'action',
   {
     processId: string;
     artifacts: ArtifactCheckpointTarget[];
@@ -905,21 +905,15 @@ export class ConvexPlatformStore implements PlatformStore {
     processId: string;
     artifacts: ArtifactCheckpointTarget[];
   }): Promise<PlatformProcessOutputSummary[]> {
-    return this.client.mutation(
-      persistCheckpointArtifactsMutation,
-      {
-        processId: args.processId,
-        artifacts: args.artifacts.map((artifact) => ({
-          artifactId: artifact.artifactId,
-          producedAt: artifact.producedAt,
-          contents: artifact.contents,
-          targetLabel: artifact.targetLabel,
-        })),
-      },
-      {
-        skipQueue: true,
-      },
-    );
+    return this.client.action(persistCheckpointArtifactsAction, {
+      processId: args.processId,
+      artifacts: args.artifacts.map((artifact) => ({
+        artifactId: artifact.artifactId,
+        producedAt: artifact.producedAt,
+        contents: artifact.contents,
+        targetLabel: artifact.targetLabel,
+      })),
+    });
   }
 
   async listProcessSideWorkItems(args: { processId: string }): Promise<SideWorkItem[]> {
@@ -944,11 +938,16 @@ export class ConvexPlatformStore implements PlatformStore {
   }
 
   async hasCanonicalRecoveryMaterials(args: { processId: string }): Promise<boolean> {
-    const refs = await this.getCurrentProcessMaterialRefs({
-      processId: args.processId,
-    });
+    const [refs, outputs] = await Promise.all([
+      this.getCurrentProcessMaterialRefs({
+        processId: args.processId,
+      }),
+      this.listProcessOutputs({
+        processId: args.processId,
+      }),
+    ]);
 
-    return refs.artifactIds.length > 0 || refs.sourceAttachmentIds.length > 0;
+    return refs.artifactIds.length > 0 || refs.sourceAttachmentIds.length > 0 || outputs.length > 0;
   }
 }
 
@@ -965,6 +964,7 @@ export class InMemoryPlatformStore implements PlatformStore {
   private readonly currentMaterialRefsByProcessId = new Map<string, CurrentProcessMaterialRefs>();
   private readonly processHydrationPlansByProcessId = new Map<string, WorkingSetPlan>();
   private readonly processOutputsByProcessId = new Map<string, PlatformProcessOutputSummary[]>();
+  private readonly artifactContentsByArtifactId = new Map<string, string>();
   private readonly processSideWorkItemsByProcessId = new Map<string, SideWorkItem[]>();
   private readonly startProcessResultsByProcessId = new Map<string, ProcessActionStoreResult>();
   private readonly resumeProcessResultsByProcessId = new Map<string, ProcessActionStoreResult>();
@@ -1477,6 +1477,10 @@ export class InMemoryPlatformStore implements PlatformStore {
         (output) => output.linkedArtifactId === artifactId,
       );
 
+      // Retain content in-memory; in-memory has no separate File Storage layer,
+      // but the durability path must not silently drop the contents either.
+      this.artifactContentsByArtifactId.set(artifactId, artifact.contents);
+
       return {
         artifact: {
           artifactId,
@@ -1590,18 +1594,22 @@ export class InMemoryPlatformStore implements PlatformStore {
   }
 
   async hasCanonicalRecoveryMaterials(args: { processId: string }): Promise<boolean> {
-    const materialRefs = this.currentMaterialRefsByProcessId.get(args.processId);
-    const outputs = this.processOutputsByProcessId.get(args.processId);
+    const refs = this.currentMaterialRefsByProcessId.get(args.processId) ?? {
+      artifactIds: [],
+      sourceAttachmentIds: [],
+    };
+    const outputs = this.processOutputsByProcessId.get(args.processId) ?? [];
 
-    // If neither map has an entry, we have no explicit signal — treat as present.
-    if (materialRefs === undefined && outputs === undefined) {
-      return true;
-    }
+    return refs.artifactIds.length > 0 || refs.sourceAttachmentIds.length > 0 || outputs.length > 0;
+  }
 
-    const refs = materialRefs ?? { artifactIds: [], sourceAttachmentIds: [] };
-    const outs = outputs ?? [];
-
-    return refs.artifactIds.length > 0 || refs.sourceAttachmentIds.length > 0 || outs.length > 0;
+  /**
+   * Test seam: read back artifact content captured by `persistCheckpointArtifacts`.
+   * Mirrors the durable Convex `_storage` path so tests can verify content
+   * round-trips rather than being silently dropped.
+   */
+  getArtifactContentForTesting(artifactId: string): string | null {
+    return this.artifactContentsByArtifactId.get(artifactId) ?? null;
   }
 
   private updateProjectSummary(

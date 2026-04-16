@@ -1335,6 +1335,12 @@ describe('server-driven environment execution', () => {
       processEnvironmentSummariesByProcessId: {
         [interruptedRecoveryProcess.processId]: lostEnvironmentFixture,
       },
+      currentMaterialRefsByProcessId: {
+        [interruptedRecoveryProcess.processId]: {
+          artifactIds: ['artifact-rebuild-source-1'],
+          sourceAttachmentIds: [],
+        },
+      },
     });
     const app = await buildApp({
       authSessionService: createTestAuthSessionService({
