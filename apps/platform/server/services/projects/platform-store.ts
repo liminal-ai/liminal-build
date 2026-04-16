@@ -912,10 +912,7 @@ export class ConvexPlatformStore implements PlatformStore {
         artifacts: args.artifacts.map((artifact) => ({
           artifactId: artifact.artifactId,
           producedAt: artifact.producedAt,
-          contents:
-            typeof artifact.contents === 'string'
-              ? artifact.contents
-              : Buffer.from(artifact.contents).toString('base64'),
+          contents: artifact.contents,
           targetLabel: artifact.targetLabel,
         })),
       },

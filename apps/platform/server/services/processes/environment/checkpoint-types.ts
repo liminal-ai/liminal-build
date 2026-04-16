@@ -3,7 +3,7 @@ import type { SourceAccessMode } from '../../../../shared/contracts/index.js';
 export type CheckpointArtifact = {
   artifactId?: string;
   producedAt: string;
-  contents: string | Buffer;
+  contents: string;
   targetLabel: string;
 };
 
