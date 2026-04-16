@@ -513,6 +513,7 @@ describe('process execution orchestrator', () => {
     'running',
     'waiting',
     'completed',
+    'failed',
     'interrupted',
   ] as const)('consumes processStatus=%s by durably transitioning the process and publishing the new live status', async (processStatus) => {
     const processLiveHub = new InMemoryProcessLiveHub();
@@ -546,6 +547,15 @@ describe('process execution orchestrator', () => {
       `Timed out waiting for durable status ${processStatus}.`,
     );
 
+    if (processStatus === 'failed') {
+      await waitFor(
+        async () =>
+          (await platformStore.getProcessEnvironmentSummary({ processId })).state === 'failed',
+        2000,
+        'Timed out waiting for failed environment state.',
+      );
+    }
+
     await waitFor(
       () =>
         subscription.messages.some(
@@ -557,6 +567,20 @@ describe('process execution orchestrator', () => {
       2000,
       `Timed out waiting for live process status ${processStatus}.`,
     );
+
+    if (processStatus === 'failed') {
+      await waitFor(
+        () =>
+          subscription.messages.some(
+            (message) =>
+              message.entityType === 'environment' &&
+              message.payload !== null &&
+              (message.payload as { state?: string }).state === 'failed',
+          ),
+        2000,
+        'Timed out waiting for failed environment live publication.',
+      );
+    }
 
     subscription.close();
     await app.close();

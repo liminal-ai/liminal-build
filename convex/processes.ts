@@ -387,6 +387,15 @@ export const markProcessCompleted = mutation({
   },
 });
 
+export const markProcessFailed = mutation({
+  args: {
+    processId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return transitionProcessToFailed(ctx, args.processId);
+  },
+});
+
 export const markProcessInterrupted = mutation({
   args: {
     processId: v.string(),
@@ -823,6 +832,17 @@ async function transitionProcessToCompleted(
   });
 }
 
+async function transitionProcessToFailed(
+  ctx: MutationCtx,
+  processIdValue: string,
+): Promise<{ process: ProcessSummary; currentRequest: CurrentProcessRequest | null }> {
+  return transitionProcessLifecycle(ctx, processIdValue, {
+    status: 'failed',
+    nextActionLabel: 'Investigate failure',
+    preserveCurrentRequestHistoryItem: false,
+  });
+}
+
 async function transitionProcessToInterrupted(
   ctx: MutationCtx,
   processIdValue: string,
@@ -838,7 +858,7 @@ async function transitionProcessLifecycle(
   ctx: MutationCtx,
   processIdValue: string,
   args: {
-    status: 'running' | 'waiting' | 'completed' | 'interrupted';
+    status: 'running' | 'waiting' | 'completed' | 'failed' | 'interrupted';
     nextActionLabel: string | null;
     preserveCurrentRequestHistoryItem: boolean;
   },
@@ -859,9 +879,12 @@ async function transitionProcessLifecycle(
   const nextProcessFields = {
     status: args.status,
     phaseLabel:
-      processRecord.phaseLabel === 'Draft' || processRecord.phaseLabel === 'Preparing environment'
-        ? 'Working'
-        : processRecord.phaseLabel,
+      args.status === 'failed'
+        ? 'Failed'
+        : processRecord.phaseLabel === 'Draft' ||
+            processRecord.phaseLabel === 'Preparing environment'
+          ? 'Working'
+          : processRecord.phaseLabel,
     nextActionLabel: args.nextActionLabel,
     currentRequestHistoryItemId: args.preserveCurrentRequestHistoryItem
       ? processRecord.currentRequestHistoryItemId

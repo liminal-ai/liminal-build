@@ -450,6 +450,22 @@ describe('auth routes', () => {
           currentRequest: null,
         };
       },
+      async transitionProcessToFailed(args) {
+        return {
+          process: {
+            processId: args.processId,
+            displayLabel: 'Feature Specification #1',
+            processType: 'FeatureSpecification',
+            status: 'failed',
+            phaseLabel: 'Failed',
+            nextActionLabel: 'Investigate failure',
+            availableActions: ['review', 'restart'],
+            hasEnvironment: false,
+            updatedAt: '2026-04-13T12:05:00.000Z',
+          },
+          currentRequest: null,
+        };
+      },
       async transitionProcessToInterrupted(args) {
         return {
           process: {

@@ -117,6 +117,7 @@ export interface PlatformStore {
   transitionProcessToRunning(args: { processId: string }): Promise<ProcessActionStoreResult>;
   transitionProcessToWaiting(args: { processId: string }): Promise<ProcessActionStoreResult>;
   transitionProcessToCompleted(args: { processId: string }): Promise<ProcessActionStoreResult>;
+  transitionProcessToFailed(args: { processId: string }): Promise<ProcessActionStoreResult>;
   transitionProcessToInterrupted(args: { processId: string }): Promise<ProcessActionStoreResult>;
   getSubmittedProcessResponse(args: {
     processId: string;
@@ -269,6 +270,12 @@ const markProcessCompletedMutation = makeFunctionReference<
   { processId: string },
   ProcessActionStoreResult
 >('processes:markProcessCompleted');
+
+const markProcessFailedMutation = makeFunctionReference<
+  'mutation',
+  { processId: string },
+  ProcessActionStoreResult
+>('processes:markProcessFailed');
 
 const markProcessInterruptedMutation = makeFunctionReference<
   'mutation',
@@ -595,6 +602,25 @@ export class NullPlatformStore implements PlatformStore {
     };
   }
 
+  async transitionProcessToFailed(args: { processId: string }): Promise<ProcessActionStoreResult> {
+    const now = new Date().toISOString();
+
+    return {
+      process: {
+        processId: args.processId,
+        displayLabel: 'Unavailable process',
+        processType: 'FeatureSpecification',
+        status: 'failed',
+        phaseLabel: 'Failed',
+        nextActionLabel: 'Investigate failure',
+        availableActions: ['review', 'restart'],
+        hasEnvironment: false,
+        updatedAt: now,
+      },
+      currentRequest: null,
+    };
+  }
+
   async transitionProcessToInterrupted(args: {
     processId: string;
   }): Promise<ProcessActionStoreResult> {
@@ -901,6 +927,12 @@ export class ConvexPlatformStore implements PlatformStore {
     processId: string;
   }): Promise<ProcessActionStoreResult> {
     return this.client.mutation(markProcessCompletedMutation, args, {
+      skipQueue: true,
+    });
+  }
+
+  async transitionProcessToFailed(args: { processId: string }): Promise<ProcessActionStoreResult> {
+    return this.client.mutation(markProcessFailedMutation, args, {
       skipQueue: true,
     });
   }
@@ -1406,6 +1438,10 @@ export class InMemoryPlatformStore implements PlatformStore {
     processId: string;
   }): Promise<ProcessActionStoreResult> {
     return this.transitionProcessLifecycleInternal(args.processId, 'completed');
+  }
+
+  async transitionProcessToFailed(args: { processId: string }): Promise<ProcessActionStoreResult> {
+    return this.transitionProcessLifecycleInternal(args.processId, 'failed');
   }
 
   async transitionProcessToInterrupted(args: {
@@ -2009,7 +2045,7 @@ export class InMemoryPlatformStore implements PlatformStore {
 
   private transitionProcessLifecycleInternal(
     processId: string,
-    status: 'running' | 'waiting' | 'completed' | 'interrupted',
+    status: 'running' | 'waiting' | 'completed' | 'failed' | 'interrupted',
   ): ProcessActionStoreResult {
     for (const [projectId, processes] of this.processesByProjectId.entries()) {
       const index = processes.findIndex((process) => process.processId === processId);
@@ -2030,7 +2066,7 @@ export class InMemoryPlatformStore implements PlatformStore {
       const nextProcess = processSummarySchema.parse({
         ...existing,
         status,
-        phaseLabel: resolveLifecyclePhaseLabel(existing.phaseLabel),
+        phaseLabel: resolveLifecyclePhaseLabel(existing.phaseLabel, status),
         nextActionLabel: resolveLifecycleNextActionLabel(status),
         availableActions: resolveLifecycleAvailableActions(status),
         updatedAt: now,
@@ -2060,7 +2096,7 @@ export class InMemoryPlatformStore implements PlatformStore {
         displayLabel: 'Unavailable process',
         processType: 'FeatureSpecification',
         status,
-        phaseLabel: 'Working',
+        phaseLabel: status === 'failed' ? 'Failed' : 'Working',
         nextActionLabel: resolveLifecycleNextActionLabel(status),
         availableActions: resolveLifecycleAvailableActions(status),
         hasEnvironment: false,
@@ -2071,12 +2107,19 @@ export class InMemoryPlatformStore implements PlatformStore {
   }
 }
 
-function resolveLifecyclePhaseLabel(phaseLabel: string): string {
+function resolveLifecyclePhaseLabel(
+  phaseLabel: string,
+  status: 'running' | 'waiting' | 'completed' | 'failed' | 'interrupted',
+): string {
+  if (status === 'failed') {
+    return 'Failed';
+  }
+
   return phaseLabel === 'Draft' || phaseLabel === 'Preparing environment' ? 'Working' : phaseLabel;
 }
 
 function resolveLifecycleNextActionLabel(
-  status: 'running' | 'waiting' | 'completed' | 'interrupted',
+  status: 'running' | 'waiting' | 'completed' | 'failed' | 'interrupted',
 ): string | null {
   switch (status) {
     case 'running':
@@ -2085,13 +2128,15 @@ function resolveLifecycleNextActionLabel(
       return 'Waiting for user response';
     case 'completed':
       return null;
+    case 'failed':
+      return 'Investigate failure';
     case 'interrupted':
       return 'Choose resume, review, rehydrate, or restart';
   }
 }
 
 function resolveLifecycleAvailableActions(
-  status: 'running' | 'waiting' | 'completed' | 'interrupted',
+  status: 'running' | 'waiting' | 'completed' | 'failed' | 'interrupted',
 ): ProcessSummary['availableActions'] {
   switch (status) {
     case 'running':
@@ -2100,6 +2145,8 @@ function resolveLifecycleAvailableActions(
       return ['respond'];
     case 'completed':
       return ['review'];
+    case 'failed':
+      return ['review', 'restart'];
     case 'interrupted':
       return ['resume', 'review', 'rehydrate', 'restart'];
   }

@@ -169,6 +169,10 @@ class RecordingPlatformStore implements PlatformStore {
     return this._applyLifecycleTransition(args.processId, 'completed');
   }
 
+  async transitionProcessToFailed(args: { processId: string }): Promise<ProcessActionStoreResult> {
+    return this._applyLifecycleTransition(args.processId, 'failed');
+  }
+
   async transitionProcessToInterrupted(args: {
     processId: string;
   }): Promise<ProcessActionStoreResult> {
@@ -411,7 +415,7 @@ class RecordingPlatformStore implements PlatformStore {
 
   private _applyLifecycleTransition(
     processId: string,
-    status: 'running' | 'waiting' | 'completed' | 'interrupted',
+    status: 'running' | 'waiting' | 'completed' | 'failed' | 'interrupted',
   ): ProcessActionStoreResult {
     for (const [projectId, processes] of this.processesByProjectId.entries()) {
       const index = processes.findIndex((process) => process.processId === processId);
@@ -431,9 +435,11 @@ class RecordingPlatformStore implements PlatformStore {
         ...existing,
         status,
         phaseLabel:
-          existing.phaseLabel === 'Draft' || existing.phaseLabel === 'Preparing environment'
-            ? 'Working'
-            : existing.phaseLabel,
+          status === 'failed'
+            ? 'Failed'
+            : existing.phaseLabel === 'Draft' || existing.phaseLabel === 'Preparing environment'
+              ? 'Working'
+              : existing.phaseLabel,
         nextActionLabel: resolveLifecycleNextActionLabel(status),
         availableActions: resolveLifecycleAvailableActions(status),
         updatedAt: now,
@@ -453,7 +459,7 @@ class RecordingPlatformStore implements PlatformStore {
 }
 
 function resolveLifecycleNextActionLabel(
-  status: 'running' | 'waiting' | 'completed' | 'interrupted',
+  status: 'running' | 'waiting' | 'completed' | 'failed' | 'interrupted',
 ): string | null {
   switch (status) {
     case 'running':
@@ -462,13 +468,15 @@ function resolveLifecycleNextActionLabel(
       return 'Waiting for user response';
     case 'completed':
       return null;
+    case 'failed':
+      return 'Investigate failure';
     case 'interrupted':
       return 'Choose resume, review, rehydrate, or restart';
   }
 }
 
 function resolveLifecycleAvailableActions(
-  status: 'running' | 'waiting' | 'completed' | 'interrupted',
+  status: 'running' | 'waiting' | 'completed' | 'failed' | 'interrupted',
 ): ProcessSummary['availableActions'] {
   switch (status) {
     case 'running':
@@ -477,6 +485,8 @@ function resolveLifecycleAvailableActions(
       return ['respond'];
     case 'completed':
       return ['review'];
+    case 'failed':
+      return ['review', 'restart'];
     case 'interrupted':
       return ['resume', 'review', 'rehydrate', 'restart'];
   }

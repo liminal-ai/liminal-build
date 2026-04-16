@@ -548,6 +548,9 @@ export class ProcessEnvironmentService {
 
       if (executionResult.processStatus === 'failed') {
         const failureReason = extractExecutionFailureReason(executionResult);
+        const lifecycleResult = await this.platformStore.transitionProcessToFailed({
+          processId: args.processId,
+        });
         const failedEnvironment = await this.upsertEnvironmentState({
           processId: args.processId,
           providerKind,
@@ -563,10 +566,10 @@ export class ProcessEnvironmentService {
         this.publishEnvironmentUpsert({
           projectId: args.projectId,
           processId: args.processId,
-          process: currentProcess,
+          process: lifecycleResult.process,
           environment: failedEnvironment,
           historyItems: [...sideEffects.historyItems, executionFailedHistoryItem],
-          currentRequest: null,
+          currentRequest: lifecycleResult.currentRequest,
           materials,
           sideWork,
         });
