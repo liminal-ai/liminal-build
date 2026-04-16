@@ -1,0 +1,36 @@
+{
+  "session_id": "8821ce94-dbd1-4643-96b4-e70244215139",
+  "result": "All 19 tests pass. Summary of what changed in `process-live.test.ts`:\n\n**Renamed (no logic change):**\n- `'applies environment upserts...'` → `TC-2.3a hydration progress becomes visible through environment live updates`\n- `'preserves checkpoint-result visibility...'` → `TC-2.3b hydration failure becomes visible through environment live updates`\n- Stripped incorrect `TC-2.3a/b` labels from history-ordering tests\n- Stripped incorrect `TC-2.4a/b` labels from process-state transition tests\n\n**Added (2 new tests):**\n- `TC-2.4a running begins after readiness` — state with `readyEnvironmentFixture`, applies `environmentRunningUpsertLiveFixture`, asserts `env.state === 'running'`\n- `TC-2.4b running does not begin after failed preparation` — state with `preparingEnvironmentFixture`, applies `environmentCheckpointFailureUpsertLiveFixture`, asserts `env.state === 'failed'` with `blockedReason` set\n\nNo production code changes needed — existing implementation already handles all four paths.",
+  "model": "claude-sonnet-4-6",
+  "usage": {
+    "input_tokens": 139,
+    "cache_creation_input_tokens": 50697,
+    "cache_read_input_tokens": 786979,
+    "output_tokens": 18660,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 50697,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 8,
+        "output_tokens": 300,
+        "cache_read_input_tokens": 61996,
+        "cache_creation_input_tokens": 996,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 996
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "session_file": "/Users/leemoore/.claude/projects/-Users-leemoore-code-liminal-build/8821ce94-dbd1-4643-96b4-e70244215139.jsonl"
+}

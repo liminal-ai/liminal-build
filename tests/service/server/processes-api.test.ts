@@ -20,6 +20,7 @@ import {
   defaultEnvironmentSummary,
   type ArtifactSummary,
   type CurrentProcessRequest,
+  type EnvironmentSummary,
   type ProcessHistoryItem,
   type ProcessSummary,
   type ProjectSummary,
@@ -147,11 +148,15 @@ class RecordingPlatformStore implements PlatformStore {
   }
 
   async startProcess(args: { processId: string }) {
-    return this.transitionProcessToRunning(args.processId);
+    return this._applyRunningTransition(args.processId);
   }
 
   async resumeProcess(args: { processId: string }) {
-    return this.transitionProcessToRunning(args.processId);
+    return this._applyRunningTransition(args.processId);
+  }
+
+  async transitionProcessToRunning(args: { processId: string }): Promise<ProcessActionStoreResult> {
+    return this._applyRunningTransition(args.processId);
   }
 
   async getSubmittedProcessResponse() {
@@ -176,7 +181,7 @@ class RecordingPlatformStore implements PlatformStore {
         relatedSideWorkId: null,
         relatedArtifactId: null,
       },
-      process: this.transitionProcessToRunning(args.processId).process,
+      process: this._applyRunningTransition(args.processId).process,
       currentRequest: null,
     };
   }
@@ -223,6 +228,42 @@ class RecordingPlatformStore implements PlatformStore {
   async getProcessEnvironmentSummary() {
     return {
       ...defaultEnvironmentSummary,
+    };
+  }
+
+  async upsertProcessEnvironmentState(args: {
+    processId: string;
+    providerKind: 'daytona' | 'local' | null;
+    state: EnvironmentSummary['state'];
+    environmentId: string | null;
+    blockedReason: string | null;
+    lastHydratedAt: string | null;
+  }): Promise<EnvironmentSummary> {
+    return {
+      ...defaultEnvironmentSummary,
+      state: args.state,
+      environmentId: args.environmentId,
+      blockedReason: args.blockedReason,
+      lastHydratedAt: args.lastHydratedAt,
+    };
+  }
+
+  async getProcessHydrationPlan(): Promise<{
+    artifactIds: string[];
+    sourceAttachmentIds: string[];
+    outputIds: string[];
+  } | null> {
+    return null;
+  }
+
+  async setProcessHydrationPlan(args: {
+    processId: string;
+    plan: { artifactIds: string[]; sourceAttachmentIds: string[]; outputIds: string[] };
+  }): Promise<{ artifactIds: string[]; sourceAttachmentIds: string[]; outputIds: string[] }> {
+    return {
+      artifactIds: args.plan.artifactIds,
+      sourceAttachmentIds: args.plan.sourceAttachmentIds,
+      outputIds: args.plan.outputIds,
     };
   }
 
@@ -312,7 +353,7 @@ class RecordingPlatformStore implements PlatformStore {
     }
   }
 
-  private transitionProcessToRunning(processId: string): ProcessActionStoreResult {
+  private _applyRunningTransition(processId: string): ProcessActionStoreResult {
     for (const [projectId, processes] of this.processesByProjectId.entries()) {
       const index = processes.findIndex((process) => process.processId === processId);
 

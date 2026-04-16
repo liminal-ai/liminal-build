@@ -1,0 +1,36 @@
+{
+  "session_id": "fdfc40a1-7d4e-44ed-aebc-92b7d7d54e12",
+  "result": "Prompt is too long",
+  "model": "claude-sonnet-4-6",
+  "usage": {
+    "input_tokens": 636,
+    "cache_creation_input_tokens": 162468,
+    "cache_read_input_tokens": 10001589,
+    "output_tokens": 45706,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 162468,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 8,
+        "output_tokens": 4136,
+        "cache_read_input_tokens": 171737,
+        "cache_creation_input_tokens": 185,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 185
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "session_file": "/Users/leemoore/.claude/projects/-Users-leemoore-code-liminal-build/fdfc40a1-7d4e-44ed-aebc-92b7d7d54e12.jsonl"
+}

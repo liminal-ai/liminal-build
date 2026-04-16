@@ -3,14 +3,15 @@ import { makeFunctionReference } from 'convex/server';
 import {
   type ArtifactSummary,
   type CurrentProcessRequest,
+  defaultEnvironmentSummary,
+  deriveEnvironmentStatusLabel,
   type EnvironmentSummary,
+  environmentSummarySchema,
   type ProcessHistoryItem,
   type ProcessOutputReference,
   type ProcessSummary,
   type ProjectShellResponse,
   type ProjectSummary,
-  defaultEnvironmentSummary,
-  environmentSummarySchema,
   processSummarySchema,
   type SideWorkItem,
   type SourceAttachmentSummary,
@@ -64,6 +65,12 @@ export interface CurrentProcessMaterialRefs {
   sourceAttachmentIds: string[];
 }
 
+export interface WorkingSetPlan {
+  artifactIds: string[];
+  sourceAttachmentIds: string[];
+  outputIds: string[];
+}
+
 export type PlatformProcessOutputSummary = ProcessOutputReference & {
   linkedArtifactId: string | null;
 };
@@ -106,6 +113,7 @@ export interface PlatformStore {
   }): Promise<ProcessCreateResult>;
   startProcess(args: { processId: string }): Promise<ProcessActionStoreResult>;
   resumeProcess(args: { processId: string }): Promise<ProcessActionStoreResult>;
+  transitionProcessToRunning(args: { processId: string }): Promise<ProcessActionStoreResult>;
   getSubmittedProcessResponse(args: {
     processId: string;
     clientRequestId: string;
@@ -124,12 +132,25 @@ export interface PlatformStore {
   listProcessHistoryItems(args: { processId: string }): Promise<ProcessHistoryItem[]>;
   getCurrentProcessRequest(args: { processId: string }): Promise<CurrentProcessRequest | null>;
   getProcessEnvironmentSummary(args: { processId: string }): Promise<EnvironmentSummary>;
+  upsertProcessEnvironmentState(args: {
+    processId: string;
+    providerKind: 'daytona' | 'local' | null;
+    state: EnvironmentSummary['state'];
+    environmentId: string | null;
+    blockedReason: string | null;
+    lastHydratedAt: string | null;
+  }): Promise<EnvironmentSummary>;
   getCurrentProcessMaterialRefs(args: { processId: string }): Promise<CurrentProcessMaterialRefs>;
   setCurrentProcessMaterialRefs(args: {
     processId: string;
     artifactIds: string[];
     sourceAttachmentIds: string[];
   }): Promise<CurrentProcessMaterialRefs>;
+  getProcessHydrationPlan(args: { processId: string }): Promise<WorkingSetPlan | null>;
+  setProcessHydrationPlan(args: {
+    processId: string;
+    plan: WorkingSetPlan;
+  }): Promise<WorkingSetPlan>;
   listProcessOutputs(args: { processId: string }): Promise<PlatformProcessOutputSummary[]>;
   replaceCurrentProcessOutputs(args: {
     processId: string;
@@ -202,6 +223,12 @@ const resumeProcessMutation = makeFunctionReference<
   ProcessActionStoreResult
 >('processes:resumeProcess');
 
+const markProcessRunningMutation = makeFunctionReference<
+  'mutation',
+  { processId: string },
+  ProcessActionStoreResult
+>('processes:markProcessRunning');
+
 const submitProcessResponseMutation = makeFunctionReference<
   'mutation',
   {
@@ -262,6 +289,19 @@ const getProcessEnvironmentSummaryQuery = makeFunctionReference<
   { processId: string },
   EnvironmentSummary
 >('processEnvironmentStates:getProcessEnvironmentSummary');
+
+const upsertProcessEnvironmentStateMutation = makeFunctionReference<
+  'mutation',
+  {
+    processId: string;
+    providerKind: 'daytona' | 'local' | null;
+    state: EnvironmentSummary['state'];
+    environmentId: string | null;
+    blockedReason: string | null;
+    lastHydratedAt: string | null;
+  },
+  EnvironmentSummary
+>('processEnvironmentStates:upsertProcessEnvironmentState');
 
 const getCurrentProcessMaterialRefsQuery = makeFunctionReference<
   'query',
@@ -385,10 +425,10 @@ export class NullPlatformStore implements PlatformStore {
         processId: args.processId,
         displayLabel: 'Unavailable process',
         processType: 'FeatureSpecification',
-        status: 'running',
-        phaseLabel: 'Working',
-        nextActionLabel: 'Monitor progress in the work surface',
-        availableActions: ['open', 'review'],
+        status: 'draft',
+        phaseLabel: 'Preparing environment',
+        nextActionLabel: 'Waiting for environment to be ready',
+        availableActions: [],
         hasEnvironment: false,
         updatedAt: now,
       },
@@ -398,6 +438,25 @@ export class NullPlatformStore implements PlatformStore {
 
   async resumeProcess(args: { processId: string }): Promise<ProcessActionStoreResult> {
     return this.startProcess(args);
+  }
+
+  async transitionProcessToRunning(args: { processId: string }): Promise<ProcessActionStoreResult> {
+    const now = new Date().toISOString();
+
+    return {
+      process: {
+        processId: args.processId,
+        displayLabel: 'Unavailable process',
+        processType: 'FeatureSpecification',
+        status: 'running',
+        phaseLabel: 'Working',
+        nextActionLabel: 'Monitor progress in the work surface',
+        availableActions: ['open', 'review'],
+        hasEnvironment: false,
+        updatedAt: now,
+      },
+      currentRequest: null,
+    };
   }
 
   async submitProcessResponse(args: {
@@ -465,6 +524,25 @@ export class NullPlatformStore implements PlatformStore {
     return buildDefaultEnvironmentSummary();
   }
 
+  async upsertProcessEnvironmentState(args: {
+    processId: string;
+    providerKind: 'daytona' | 'local' | null;
+    state: EnvironmentSummary['state'];
+    environmentId: string | null;
+    blockedReason: string | null;
+    lastHydratedAt: string | null;
+  }): Promise<EnvironmentSummary> {
+    return environmentSummarySchema.parse({
+      environmentId: args.environmentId,
+      state: args.state,
+      statusLabel: deriveEnvironmentStatusLabel(args.state),
+      blockedReason: args.blockedReason,
+      lastHydratedAt: args.lastHydratedAt,
+      lastCheckpointAt: null,
+      lastCheckpointResult: null,
+    });
+  }
+
   async getCurrentProcessMaterialRefs(): Promise<CurrentProcessMaterialRefs> {
     return {
       artifactIds: [],
@@ -480,6 +558,21 @@ export class NullPlatformStore implements PlatformStore {
     return {
       artifactIds: args.artifactIds,
       sourceAttachmentIds: args.sourceAttachmentIds,
+    };
+  }
+
+  async getProcessHydrationPlan(): Promise<WorkingSetPlan | null> {
+    return null;
+  }
+
+  async setProcessHydrationPlan(args: {
+    processId: string;
+    plan: WorkingSetPlan;
+  }): Promise<WorkingSetPlan> {
+    return {
+      artifactIds: [...args.plan.artifactIds],
+      sourceAttachmentIds: [...args.plan.sourceAttachmentIds],
+      outputIds: [...args.plan.outputIds],
     };
   }
 
@@ -574,6 +667,12 @@ export class ConvexPlatformStore implements PlatformStore {
     });
   }
 
+  async transitionProcessToRunning(args: { processId: string }): Promise<ProcessActionStoreResult> {
+    return this.client.mutation(markProcessRunningMutation, args, {
+      skipQueue: true,
+    });
+  }
+
   async submitProcessResponse(args: {
     processId: string;
     clientRequestId: string;
@@ -625,6 +724,19 @@ export class ConvexPlatformStore implements PlatformStore {
     return this.client.query(getProcessEnvironmentSummaryQuery, args);
   }
 
+  async upsertProcessEnvironmentState(args: {
+    processId: string;
+    providerKind: 'daytona' | 'local' | null;
+    state: EnvironmentSummary['state'];
+    environmentId: string | null;
+    blockedReason: string | null;
+    lastHydratedAt: string | null;
+  }): Promise<EnvironmentSummary> {
+    return this.client.mutation(upsertProcessEnvironmentStateMutation, args, {
+      skipQueue: true,
+    });
+  }
+
   async getCurrentProcessMaterialRefs(args: {
     processId: string;
   }): Promise<CurrentProcessMaterialRefs> {
@@ -641,6 +753,17 @@ export class ConvexPlatformStore implements PlatformStore {
       artifactIds: args.artifactIds,
       sourceAttachmentIds: args.sourceAttachmentIds,
     });
+  }
+
+  async getProcessHydrationPlan(): Promise<WorkingSetPlan | null> {
+    return null;
+  }
+
+  async setProcessHydrationPlan(args: {
+    processId: string;
+    plan: WorkingSetPlan;
+  }): Promise<WorkingSetPlan> {
+    return args.plan;
   }
 
   async listProcessOutputs(args: { processId: string }): Promise<PlatformProcessOutputSummary[]> {
@@ -697,6 +820,7 @@ export class InMemoryPlatformStore implements PlatformStore {
   private readonly currentRequestsByProcessId = new Map<string, CurrentProcessRequest | null>();
   private readonly processEnvironmentSummariesByProcessId = new Map<string, EnvironmentSummary>();
   private readonly currentMaterialRefsByProcessId = new Map<string, CurrentProcessMaterialRefs>();
+  private readonly processHydrationPlansByProcessId = new Map<string, WorkingSetPlan>();
   private readonly processOutputsByProcessId = new Map<string, PlatformProcessOutputSummary[]>();
   private readonly processSideWorkItemsByProcessId = new Map<string, SideWorkItem[]>();
   private readonly startProcessResultsByProcessId = new Map<string, ProcessActionStoreResult>();
@@ -948,7 +1072,7 @@ export class InMemoryPlatformStore implements PlatformStore {
       return this.applyStoredProcessActionResult(args.processId, override);
     }
 
-    return this.transitionProcessToRunning(args.processId);
+    return this.acceptProcessForPreparation(args.processId);
   }
 
   async resumeProcess(args: { processId: string }): Promise<ProcessActionStoreResult> {
@@ -958,7 +1082,11 @@ export class InMemoryPlatformStore implements PlatformStore {
       return this.applyStoredProcessActionResult(args.processId, override);
     }
 
-    return this.transitionProcessToRunning(args.processId);
+    return this.acceptProcessForPreparation(args.processId);
+  }
+
+  async transitionProcessToRunning(args: { processId: string }): Promise<ProcessActionStoreResult> {
+    return this.transitionProcessToRunningInternal(args.processId);
   }
 
   async submitProcessResponse(args: {
@@ -1058,6 +1186,30 @@ export class InMemoryPlatformStore implements PlatformStore {
     );
   }
 
+  async upsertProcessEnvironmentState(args: {
+    processId: string;
+    providerKind: 'daytona' | 'local' | null;
+    state: EnvironmentSummary['state'];
+    environmentId: string | null;
+    blockedReason: string | null;
+    lastHydratedAt: string | null;
+  }): Promise<EnvironmentSummary> {
+    const existing =
+      this.processEnvironmentSummariesByProcessId.get(args.processId) ??
+      buildDefaultEnvironmentSummary();
+    const next = environmentSummarySchema.parse({
+      environmentId: args.environmentId,
+      state: args.state,
+      statusLabel: deriveEnvironmentStatusLabel(args.state),
+      blockedReason: args.blockedReason,
+      lastHydratedAt: args.lastHydratedAt ?? existing.lastHydratedAt,
+      lastCheckpointAt: existing.lastCheckpointAt,
+      lastCheckpointResult: existing.lastCheckpointResult,
+    });
+    this.processEnvironmentSummariesByProcessId.set(args.processId, next);
+    return cloneEnvironmentSummary(next);
+  }
+
   async getCurrentProcessMaterialRefs(args: {
     processId: string;
   }): Promise<CurrentProcessMaterialRefs> {
@@ -1080,6 +1232,23 @@ export class InMemoryPlatformStore implements PlatformStore {
     };
     this.currentMaterialRefsByProcessId.set(args.processId, nextRefs);
     return nextRefs;
+  }
+
+  async getProcessHydrationPlan(args: { processId: string }): Promise<WorkingSetPlan | null> {
+    return this.processHydrationPlansByProcessId.get(args.processId) ?? null;
+  }
+
+  async setProcessHydrationPlan(args: {
+    processId: string;
+    plan: WorkingSetPlan;
+  }): Promise<WorkingSetPlan> {
+    const next: WorkingSetPlan = {
+      artifactIds: [...args.plan.artifactIds],
+      sourceAttachmentIds: [...args.plan.sourceAttachmentIds],
+      outputIds: [...args.plan.outputIds],
+    };
+    this.processHydrationPlansByProcessId.set(args.processId, next);
+    return next;
   }
 
   async listProcessOutputs(args: { processId: string }): Promise<PlatformProcessOutputSummary[]> {
@@ -1273,7 +1442,62 @@ export class InMemoryPlatformStore implements PlatformStore {
     this.responseResultsByProcessId.set(processId, responsesByClientRequestId);
   }
 
-  private transitionProcessToRunning(processId: string): ProcessActionStoreResult {
+  private acceptProcessForPreparation(processId: string): ProcessActionStoreResult {
+    for (const [projectId, processes] of this.processesByProjectId.entries()) {
+      const index = processes.findIndex((process) => process.processId === processId);
+
+      if (index === -1) {
+        continue;
+      }
+
+      const existing = processes[index];
+
+      if (existing === undefined) {
+        continue;
+      }
+
+      const now = new Date().toISOString();
+      const nextProcess = processSummarySchema.parse({
+        ...existing,
+        phaseLabel: 'Preparing environment',
+        nextActionLabel: 'Waiting for environment to be ready',
+        availableActions: [],
+        updatedAt: now,
+      });
+      const nextProcesses = [...processes];
+      nextProcesses[index] = nextProcess;
+      this.processesByProjectId.set(projectId, nextProcesses);
+      this.currentRequestsByProcessId.set(processId, null);
+      this.updateProjectSummary(projectId, (project) => ({
+        ...project,
+        lastUpdatedAt: now,
+      }));
+
+      return {
+        process: nextProcess,
+        currentRequest: null,
+      };
+    }
+
+    const now = new Date().toISOString();
+
+    return {
+      process: processSummarySchema.parse({
+        processId,
+        displayLabel: 'Unavailable process',
+        processType: 'FeatureSpecification',
+        status: 'draft',
+        phaseLabel: 'Preparing environment',
+        nextActionLabel: 'Waiting for environment to be ready',
+        availableActions: [],
+        hasEnvironment: false,
+        updatedAt: now,
+      }),
+      currentRequest: null,
+    };
+  }
+
+  private transitionProcessToRunningInternal(processId: string): ProcessActionStoreResult {
     for (const [projectId, processes] of this.processesByProjectId.entries()) {
       const index = processes.findIndex((process) => process.processId === processId);
 
@@ -1291,7 +1515,8 @@ export class InMemoryPlatformStore implements PlatformStore {
       const nextProcess = processSummarySchema.parse({
         ...existing,
         status: 'running',
-        phaseLabel: existing.phaseLabel === 'Draft' ? 'Working' : existing.phaseLabel,
+        phaseLabel:
+          existing.phaseLabel === 'Preparing environment' ? 'Working' : existing.phaseLabel,
         nextActionLabel: 'Monitor progress in the work surface',
         availableActions: ['open', 'review'],
         updatedAt: now,

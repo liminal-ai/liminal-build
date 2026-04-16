@@ -5,7 +5,7 @@ import type {
 } from '../apps/platform/shared/contracts/index.js';
 import { deriveEnvironmentStatusLabel } from '../apps/platform/shared/contracts/index.js';
 import type { Doc, Id } from './_generated/dataModel.js';
-import { query } from './_generated/server.js';
+import { mutation, query } from './_generated/server.js';
 
 export const checkpointKindValidator = v.union(
   v.literal('artifact'),
@@ -123,5 +123,67 @@ export const getProcessEnvironmentSummary = query({
       .unique();
 
     return buildEnvironmentSummary(state);
+  },
+});
+
+export const upsertProcessEnvironmentState = mutation({
+  args: {
+    processId: v.string(),
+    providerKind: v.union(v.literal('daytona'), v.literal('local'), v.null()),
+    state: environmentStateValidator,
+    environmentId: v.union(v.string(), v.null()),
+    blockedReason: v.union(v.string(), v.null()),
+    lastHydratedAt: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args): Promise<EnvironmentSummary> => {
+    let processRecord: Doc<'processes'> | null = null;
+
+    try {
+      processRecord = await ctx.db.get(args.processId as Id<'processes'>);
+    } catch {
+      return buildAbsentEnvironmentSummary();
+    }
+
+    if (processRecord === null) {
+      return buildAbsentEnvironmentSummary();
+    }
+
+    const now = new Date().toISOString();
+    const existing = await ctx.db
+      .query('processEnvironmentStates')
+      .withIndex('by_processId', (indexQuery) => indexQuery.eq('processId', processRecord._id))
+      .unique();
+
+    if (existing === null) {
+      await ctx.db.insert('processEnvironmentStates', {
+        processId: processRecord._id,
+        providerKind: args.providerKind,
+        environmentId: args.environmentId,
+        state: args.state,
+        blockedReason: args.blockedReason,
+        lastHydratedAt: args.lastHydratedAt,
+        lastCheckpointAt: null,
+        lastCheckpointResult: null,
+        workingSetFingerprint: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.patch(existing._id, {
+        providerKind: args.providerKind ?? existing.providerKind,
+        environmentId: args.environmentId,
+        state: args.state,
+        blockedReason: args.blockedReason,
+        lastHydratedAt: args.lastHydratedAt ?? existing.lastHydratedAt,
+        updatedAt: now,
+      });
+    }
+
+    const updated = await ctx.db
+      .query('processEnvironmentStates')
+      .withIndex('by_processId', (indexQuery) => indexQuery.eq('processId', processRecord._id))
+      .unique();
+
+    return buildEnvironmentSummary(updated);
   },
 });

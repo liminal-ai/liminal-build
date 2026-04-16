@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   AuthSessionService,
   type SessionResolution,
+  sessionCookieName,
 } from '../../../apps/platform/server/services/auth/auth-session.service.js';
 import { AuthUserSyncService } from '../../../apps/platform/server/services/auth/auth-user-sync.service.js';
+import { FailingProviderAdapter } from '../../../apps/platform/server/services/processes/environment/provider-adapter.js';
 import { InMemoryProcessLiveHub } from '../../../apps/platform/server/services/processes/live/process-live-hub.js';
 import { buildProcessSurfaceSummary } from '../../../apps/platform/server/services/processes/process-work-surface.service.js';
 import { InMemoryPlatformStore } from '../../../apps/platform/server/services/projects/platform-store.js';
@@ -22,7 +24,7 @@ import {
   readyProcessWorkSurfaceFixture,
 } from '../../fixtures/process-surface.js';
 import { readyEnvironmentFixture } from '../../fixtures/process-environment.js';
-import { runningProcessFixture } from '../../fixtures/processes.js';
+import { draftProcessFixture, runningProcessFixture } from '../../fixtures/processes.js';
 import { readySideWorkFixture } from '../../fixtures/side-work.js';
 import { buildApp } from '../../utils/build-app.js';
 
@@ -352,6 +354,199 @@ describe('process live updates websocket', () => {
 
     expect(opened.value).toBe(false);
 
+    await app.close();
+  });
+});
+
+describe('server-driven environment preparation', () => {
+  const envPrepProjectId = 'project-env-prep-ws-001';
+  const envPrepProcessId = 'process-draft-env-prep-ws-001';
+
+  const envPrepProject = projectSummarySchema.parse({
+    projectId: envPrepProjectId,
+    name: 'Env Prep Test Project',
+    ownerDisplayName: 'Lee Moore',
+    role: 'owner',
+    processCount: 1,
+    artifactCount: 0,
+    sourceAttachmentCount: 0,
+    lastUpdatedAt: '2026-04-15T10:00:00.000Z',
+  });
+
+  const envPrepDraftProcess = processSummarySchema.parse({
+    ...draftProcessFixture,
+    processId: envPrepProcessId,
+    displayLabel: 'Env Prep Test Process',
+    updatedAt: '2026-04-15T10:00:00.000Z',
+  });
+
+  function buildEnvPrepStore() {
+    return new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [envPrepProject],
+      },
+      projectAccessByProjectId: {
+        [envPrepProjectId]: { kind: 'accessible', project: envPrepProject },
+      },
+      processesByProjectId: {
+        [envPrepProjectId]: [envPrepDraftProcess],
+      },
+    });
+  }
+
+  it('start a draft process drives preparing then ready environment state', async () => {
+    const processLiveHub = new InMemoryProcessLiveHub();
+    const platformStore = buildEnvPrepStore();
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+      processLiveHub,
+    });
+
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const address = app.server.address();
+
+    if (address === null || typeof address === 'string') {
+      throw new Error('Expected an ephemeral address for websocket tests.');
+    }
+
+    const messages: Array<ReturnType<typeof liveProcessUpdateMessageSchema.parse>> = [];
+    const socket = new WebSocket(
+      `ws://127.0.0.1:${address.port}/ws/projects/${envPrepProjectId}/processes/${envPrepProcessId}`,
+    );
+
+    socket.addEventListener('message', (event) => {
+      messages.push(liveProcessUpdateMessageSchema.parse(JSON.parse(String(event.data))));
+    });
+
+    await waitFor(() =>
+      messages.some((m) => m.messageType === 'snapshot' && m.entityType === 'process'),
+    );
+
+    const startResponse = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${envPrepProjectId}/processes/${envPrepProcessId}/start`,
+      cookies: { [sessionCookieName]: 'valid-session-cookie' },
+    });
+
+    expect(startResponse.statusCode).toBe(200);
+    expect(startResponse.json().environment.state).toBe('preparing');
+
+    await waitFor(() =>
+      messages.some(
+        (m) =>
+          m.entityType === 'environment' &&
+          m.payload !== null &&
+          (m.payload as { state: string }).state === 'ready',
+      ),
+    );
+
+    const readyMessage = messages.find(
+      (m) =>
+        m.entityType === 'environment' &&
+        m.payload !== null &&
+        (m.payload as { state: string }).state === 'ready',
+    );
+
+    expect(readyMessage).toMatchObject({
+      messageType: 'upsert',
+      entityType: 'environment',
+      entityId: 'environment',
+      payload: {
+        state: 'ready',
+        environmentId: `env-mem-${envPrepProcessId}`,
+      },
+    });
+
+    socket.close();
+    await app.close();
+  });
+
+  it('start with a failing provider drives preparing then failed environment state', async () => {
+    const failReason = 'Hydration test failure: provider unavailable';
+    const processLiveHub = new InMemoryProcessLiveHub();
+    const platformStore = buildEnvPrepStore();
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+      processLiveHub,
+      providerAdapter: new FailingProviderAdapter(failReason),
+    });
+
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const address = app.server.address();
+
+    if (address === null || typeof address === 'string') {
+      throw new Error('Expected an ephemeral address for websocket tests.');
+    }
+
+    const messages: Array<ReturnType<typeof liveProcessUpdateMessageSchema.parse>> = [];
+    const socket = new WebSocket(
+      `ws://127.0.0.1:${address.port}/ws/projects/${envPrepProjectId}/processes/${envPrepProcessId}`,
+    );
+
+    socket.addEventListener('message', (event) => {
+      messages.push(liveProcessUpdateMessageSchema.parse(JSON.parse(String(event.data))));
+    });
+
+    await waitFor(() =>
+      messages.some((m) => m.messageType === 'snapshot' && m.entityType === 'process'),
+    );
+
+    const startResponse = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${envPrepProjectId}/processes/${envPrepProcessId}/start`,
+      cookies: { [sessionCookieName]: 'valid-session-cookie' },
+    });
+
+    expect(startResponse.statusCode).toBe(200);
+    expect(startResponse.json().environment.state).toBe('preparing');
+
+    await waitFor(() =>
+      messages.some(
+        (m) =>
+          m.entityType === 'environment' &&
+          m.payload !== null &&
+          (m.payload as { state: string }).state === 'failed',
+      ),
+    );
+
+    const failedMessage = messages.find(
+      (m) =>
+        m.entityType === 'environment' &&
+        m.payload !== null &&
+        (m.payload as { state: string }).state === 'failed',
+    );
+
+    expect(failedMessage).toMatchObject({
+      messageType: 'upsert',
+      entityType: 'environment',
+      entityId: 'environment',
+      payload: {
+        state: 'failed',
+        blockedReason: failReason,
+      },
+    });
+
+    socket.close();
     await app.close();
   });
 });

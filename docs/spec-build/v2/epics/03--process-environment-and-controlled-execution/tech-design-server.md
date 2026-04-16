@@ -79,6 +79,28 @@ This draft therefore no longer treats those as completely open-ended. The
 remaining uncertainty is in exact wiring and policy, not in the broad package
 direction.
 
+### Provider Selection Policy
+
+Provider selection is global-config-driven on the first environment creation
+for a process, then durable per environment afterward.
+
+Rules:
+
+- if a `processEnvironmentStates` row already exists with `providerKind`, that
+  `providerKind` remains authoritative for resume, rehydrate, rebuild, and
+  later bootstrap of that process environment
+- if no environment-state row exists yet, the server uses one app-level
+  `defaultEnvironmentProviderKind` policy from config to choose the first
+  provider
+- in shared and remotely hosted environments, the default provider is
+  `daytona`
+- in trusted local development where the local provider is enabled, the default
+  provider may be `local`
+- the first accepted environment creation persists the chosen `providerKind`
+  into durable environment state so later recovery paths do not need to infer it
+- Epic 3 does not introduce per-process manual provider selection in the
+  browser; changing provider policy is a server/operator concern in this slice
+
 Provider selection should follow one server-owned default policy when a process
 has no existing environment state row:
 

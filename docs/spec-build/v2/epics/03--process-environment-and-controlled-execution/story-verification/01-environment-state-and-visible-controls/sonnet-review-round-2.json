@@ -1,0 +1,36 @@
+{
+  "session_id": "5f706f60-8de2-4524-b2fd-ad253a558808",
+  "result": "Review written to `story-verification/01-environment-state-and-visible-controls/sonnet-review-round-2.md`.\n\n---\n\n**VERDICT: PASS**\n\nGate: 30 test files, 198 tests, all green.\n\n**AC/TC Coverage: all 17 SATISFIED**\n\nThe full matrix (TC-1.1a through TC-1.1k, TC-1.2a-b, TC-1.3a-b, TC-1.4a, TC-1.5a) has passing test coverage. The `process-controls.test.ts` file is particularly clean — TC-labeled 1:1 with every matrix row.\n\n**Same-session fix: CLOSED**\n\nAll three action services (`start`, `resume`, `respond`) now fetch the current durable environment summary and pass it to `buildProcessSurfaceSummary` before building the HTTP response and the live hub publication. The inconsistency is gone at the code level. A dedicated regression test exists for `resume` but not for `start` or `respond` — the only non-blocking gap worth noting.\n\n**Blocking findings:** None.\n\n**Key non-blocking warnings:**\n1. `start` and `respond` same-session alignment tests are missing (code correct, evidence thin)\n2. `providerKind` stored as nullable in Convex — documented deviation, Story 2 must harden or update the tech design\n3. `deriveProcessSurfaceAvailableActions` may now be dead code — worth confirming before Story 2 adds to it\n4. No direct `convex/processEnvironmentStates.test.ts` exists yet — deferred but should land before Story 2 adds write paths",
+  "model": "claude-sonnet-4-6",
+  "usage": {
+    "input_tokens": 106,
+    "cache_creation_input_tokens": 82734,
+    "cache_read_input_tokens": 839736,
+    "output_tokens": 11512,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 82734,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 8,
+        "output_tokens": 420,
+        "cache_read_input_tokens": 86199,
+        "cache_creation_input_tokens": 8830,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 8830
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "session_file": "/Users/leemoore/.claude/projects/-Users-leemoore-code-liminal-build/5f706f60-8de2-4524-b2fd-ad253a558808.jsonl"
+}

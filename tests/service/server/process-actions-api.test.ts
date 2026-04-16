@@ -180,7 +180,7 @@ async function buildAuthenticatedApp(
 }
 
 describe('process actions api', () => {
-  it('TC-2.1a and TC-2.5a start a draft process and persist the running surface state', async () => {
+  it('TC-2.1a and TC-2.5a start a draft process — response shows preparing state, bootstrap shows running after hydration', async () => {
     const { app } = await buildAuthenticatedApp();
     const response = await app.inject({
       method: 'POST',
@@ -194,8 +194,8 @@ describe('process actions api', () => {
     expect(response.json()).toMatchObject({
       process: {
         processId: draftProcessSummary.processId,
-        status: 'running',
-        availableActions: ['review'],
+        status: 'draft',
+        availableActions: [],
       },
       currentRequest: null,
     });
@@ -221,7 +221,7 @@ describe('process actions api', () => {
     await app.close();
   });
 
-  it('TC-2.1b and TC-2.5b resume a paused process and persist the running surface state', async () => {
+  it('TC-2.1b and TC-2.5b resume a paused process — response shows preparing state, bootstrap shows running after hydration', async () => {
     const { app } = await buildAuthenticatedApp();
     const response = await app.inject({
       method: 'POST',
@@ -235,8 +235,8 @@ describe('process actions api', () => {
     expect(response.json()).toMatchObject({
       process: {
         processId: pausedProcessSummary.processId,
-        status: 'running',
-        availableActions: ['review'],
+        status: 'paused',
+        availableActions: [],
       },
       currentRequest: null,
     });
@@ -262,7 +262,7 @@ describe('process actions api', () => {
     await app.close();
   });
 
-  it('keeps resume responses aligned with the current durable environment summary', async () => {
+  it('resume always enters environment preparing state and the response reflects it', async () => {
     const { app } = await buildAuthenticatedApp({
       processEnvironmentSummariesByProcessId: {
         [pausedProcessSummary.processId]: readyEnvironmentFixture,
@@ -280,23 +280,24 @@ describe('process actions api', () => {
     expect(response.json()).toMatchObject({
       process: {
         processId: pausedProcessSummary.processId,
-        status: 'running',
-        availableActions: ['review'],
+        status: 'paused',
         hasEnvironment: true,
         controls: expect.arrayContaining([
           expect.objectContaining({
             actionId: 'rehydrate',
             enabled: false,
-            disabledReason:
-              'Rehydrate is only available when the environment is stale or recoverably failed.',
+            disabledReason: 'Rehydrate is unavailable while the environment is preparing.',
           }),
           expect.objectContaining({
             actionId: 'rebuild',
             enabled: false,
-            disabledReason:
-              'Rebuild is only available after the environment is lost or unrecoverable.',
+            disabledReason: 'Rebuild is unavailable while the environment is preparing.',
           }),
         ]),
+      },
+      environment: {
+        state: 'preparing',
+        statusLabel: 'Preparing environment',
       },
       currentRequest: null,
     });
@@ -304,7 +305,7 @@ describe('process actions api', () => {
     await app.close();
   });
 
-  it('TC-2.1c resumes an interrupted process and persists the running surface state', async () => {
+  it('TC-2.1c resumes an interrupted process — response shows preparing state, bootstrap shows running after hydration', async () => {
     const { app } = await buildAuthenticatedApp();
     const response = await app.inject({
       method: 'POST',
@@ -318,7 +319,7 @@ describe('process actions api', () => {
     expect(response.json()).toMatchObject({
       process: {
         processId: interruptedProcessSummary.processId,
-        status: 'running',
+        status: 'interrupted',
         availableActions: ['review'],
       },
       currentRequest: null,
@@ -798,6 +799,315 @@ describe('process actions api', () => {
         .json()
         .history.items.filter((item: { kind: string }) => item.kind === 'user_message'),
     ).toHaveLength(1);
+
+    await app.close();
+  });
+
+  it('S2-TC-2.1a: start returns environment.state = preparing in the same session', async () => {
+    const { app } = await buildAuthenticatedApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${draftProcessSummary.processId}/start`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      process: {
+        processId: draftProcessSummary.processId,
+        status: 'draft',
+        hasEnvironment: true,
+      },
+      environment: {
+        state: 'preparing',
+        statusLabel: 'Preparing environment',
+        blockedReason: null,
+        lastHydratedAt: null,
+      },
+      currentRequest: null,
+    });
+
+    await app.close();
+  });
+
+  it('S2-TC-2.1a: start hydration completes and the ready state is durable in the bootstrap', async () => {
+    const { app } = await buildAuthenticatedApp();
+    await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${draftProcessSummary.processId}/start`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    const bootstrap = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${draftProcessSummary.processId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(bootstrap.statusCode).toBe(200);
+    expect(bootstrap.json()).toMatchObject({
+      process: {
+        processId: draftProcessSummary.processId,
+        status: 'running',
+        hasEnvironment: true,
+      },
+      environment: {
+        state: 'ready',
+        statusLabel: 'Ready for work',
+        environmentId: `env-mem-${draftProcessSummary.processId}`,
+      },
+    });
+
+    await app.close();
+  });
+
+  it('S2-TC-2.1b: resume returns environment.state = preparing when environment work is required', async () => {
+    const { app } = await buildAuthenticatedApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${pausedProcessSummary.processId}/resume`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      process: {
+        processId: pausedProcessSummary.processId,
+        status: 'paused',
+        hasEnvironment: true,
+      },
+      environment: {
+        state: 'preparing',
+        statusLabel: 'Preparing environment',
+      },
+      currentRequest: null,
+    });
+
+    await app.close();
+  });
+
+  it('S2-TC-2.1b: resume preserves prior hydration context when entering preparing state', async () => {
+    const { app } = await buildAuthenticatedApp({
+      processEnvironmentSummariesByProcessId: {
+        [pausedProcessSummary.processId]: readyEnvironmentFixture,
+      },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${pausedProcessSummary.processId}/resume`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      environment: {
+        state: 'preparing',
+        environmentId: readyEnvironmentFixture.environmentId,
+        lastHydratedAt: readyEnvironmentFixture.lastHydratedAt,
+      },
+    });
+
+    await app.close();
+  });
+
+  it('S2-TC-2.4b: start does not enter preparation state when the action result is terminal', async () => {
+    const completedResult = {
+      process: {
+        ...draftProcessSummary,
+        status: 'completed' as const,
+        phaseLabel: 'Completed',
+        nextActionLabel: null,
+        availableActions: ['review' as const],
+        updatedAt: '2026-04-13T12:30:00.000Z',
+      },
+      currentRequest: null,
+    };
+    const { app } = await buildAuthenticatedApp({
+      startProcessResultsByProcessId: {
+        [draftProcessSummary.processId]: completedResult,
+      },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${draftProcessSummary.processId}/start`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      process: { status: 'completed' },
+      environment: { state: 'absent' },
+    });
+
+    await app.close();
+  });
+
+  it('S2-HC-1: start seeds hydration plan from current artifacts and sources', async () => {
+    const { app, platformStore } = await buildAuthenticatedApp({
+      currentMaterialRefsByProcessId: {
+        [draftProcessSummary.processId]: {
+          artifactIds: ['artifact-hydration-001', 'artifact-hydration-002'],
+          sourceAttachmentIds: ['source-hydration-001'],
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${draftProcessSummary.processId}/start`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const plan = await platformStore.getProcessHydrationPlan({
+      processId: draftProcessSummary.processId,
+    });
+    expect(plan).toEqual({
+      artifactIds: ['artifact-hydration-001', 'artifact-hydration-002'],
+      sourceAttachmentIds: ['source-hydration-001'],
+      outputIds: [],
+    });
+
+    await app.close();
+  });
+
+  it('S2-HC-2: partial working set with only artifacts omits source attachment ids cleanly', async () => {
+    const { app, platformStore } = await buildAuthenticatedApp({
+      currentMaterialRefsByProcessId: {
+        [draftProcessSummary.processId]: {
+          artifactIds: ['artifact-partial-001'],
+          sourceAttachmentIds: [],
+        },
+      },
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${draftProcessSummary.processId}/start`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    const plan = await platformStore.getProcessHydrationPlan({
+      processId: draftProcessSummary.processId,
+    });
+    expect(plan).toEqual({
+      artifactIds: ['artifact-partial-001'],
+      sourceAttachmentIds: [],
+      outputIds: [],
+    });
+
+    await app.close();
+  });
+
+  it('TC-2.2a: start seeds hydration plan with output ids when outputs are present', async () => {
+    const { app, platformStore } = await buildAuthenticatedApp({
+      processOutputsByProcessId: {
+        [draftProcessSummary.processId]: [
+          {
+            outputId: 'output-hydration-001',
+            displayName: 'Feature Spec',
+            revisionLabel: null,
+            state: 'draft',
+            updatedAt: '2026-04-13T12:00:00.000Z',
+            linkedArtifactId: null,
+          },
+          {
+            outputId: 'output-hydration-002',
+            displayName: 'Tech Design',
+            revisionLabel: null,
+            state: 'draft',
+            updatedAt: '2026-04-13T12:01:00.000Z',
+            linkedArtifactId: null,
+          },
+        ],
+      },
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${draftProcessSummary.processId}/start`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    const plan = await platformStore.getProcessHydrationPlan({
+      processId: draftProcessSummary.processId,
+    });
+    expect(plan).toEqual({
+      artifactIds: [],
+      sourceAttachmentIds: [],
+      outputIds: ['output-hydration-001', 'output-hydration-002'],
+    });
+
+    await app.close();
+  });
+
+  it('TC-2.2b: resume seeds hydration plan with empty outputIds when no outputs are present', async () => {
+    const { app, platformStore } = await buildAuthenticatedApp();
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${pausedProcessSummary.processId}/resume`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    const plan = await platformStore.getProcessHydrationPlan({
+      processId: pausedProcessSummary.processId,
+    });
+    expect(plan).toEqual({
+      artifactIds: [],
+      sourceAttachmentIds: [],
+      outputIds: [],
+    });
+
+    await app.close();
+  });
+
+  it('S2-HC-3: partial working set with only sources omits artifact ids cleanly', async () => {
+    const { app, platformStore } = await buildAuthenticatedApp({
+      currentMaterialRefsByProcessId: {
+        [pausedProcessSummary.processId]: {
+          artifactIds: [],
+          sourceAttachmentIds: ['source-partial-001', 'source-partial-002'],
+        },
+      },
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${pausedProcessSummary.processId}/resume`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    const plan = await platformStore.getProcessHydrationPlan({
+      processId: pausedProcessSummary.processId,
+    });
+    expect(plan).toEqual({
+      artifactIds: [],
+      sourceAttachmentIds: ['source-partial-001', 'source-partial-002'],
+      outputIds: [],
+    });
 
     await app.close();
   });

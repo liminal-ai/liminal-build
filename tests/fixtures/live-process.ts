@@ -21,6 +21,7 @@ import {
   absentEnvironmentFixture,
   checkpointFailedEnvironmentFixture,
   checkpointingEnvironmentFixture,
+  failedEnvironmentFixture,
   preparingEnvironmentFixture,
   readyEnvironmentFixture,
   runningEnvironmentFixture,
@@ -201,6 +202,14 @@ export const environmentCheckpointFailureUpsertLiveFixture = buildLiveProcessMes
   entityId: 'environment',
   sequenceNumber: 17,
   payload: checkpointFailedEnvironmentFixture,
+});
+
+export const environmentFailedUpsertLiveFixture = buildLiveProcessMessageFixture({
+  messageType: 'upsert',
+  entityType: 'environment',
+  entityId: 'environment',
+  sequenceNumber: 19,
+  payload: failedEnvironmentFixture,
 });
 
 export const historyErrorLiveFixture = buildLiveProcessMessageFixture({

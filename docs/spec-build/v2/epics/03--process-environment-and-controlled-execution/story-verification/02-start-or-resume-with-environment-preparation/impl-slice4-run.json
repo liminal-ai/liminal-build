@@ -1,0 +1,36 @@
+{
+  "session_id": "a3521c0b-4c6f-410d-b1fc-1dfa30b892c0",
+  "result": "Done. Here's the summary:\n\n**What changed**\n\n`tests/fixtures/process-surface.ts` — 4 fixtures updated:\n- `startedProcessResponseFixture` (running → preparing)\n- `startedWaitingProcessResponseFixture` (waiting → preparing)\n- `resumedPausedProcessResponseFixture` (running → preparing)\n- `resumedInterruptedProcessResponseFixture` (running → preparing)\n\n`tests/service/client/process-work-surface-page.test.ts` — 3 new tests added:\n- `TC-2.6a` — Start shows `State: Preparing environment` in-session\n- `TC-2.6b` — Resume from paused shows `State: Preparing environment` in-session\n- `TC-2.6c` — Resume from interrupted shows `State: Preparing environment` in-session\n\n**No production code changes needed.** The wiring was already complete: server sets `preparing`, client patches `environment` from the response, UI renders it. The gap was only the fixtures and test coverage.\n\n**Results**: 21 passed (was 18), 15 pre-existing failures unchanged (`document is not defined` — pre-existing env issue in synchronous unit tests, unrelated to this slice).",
+  "model": "claude-sonnet-4-6",
+  "usage": {
+    "input_tokens": 245,
+    "cache_creation_input_tokens": 93758,
+    "cache_read_input_tokens": 2454586,
+    "output_tokens": 18506,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 93758,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 8,
+        "output_tokens": 315,
+        "cache_read_input_tokens": 104802,
+        "cache_creation_input_tokens": 310,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 310
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "session_file": "/Users/leemoore/.claude/projects/-Users-leemoore-code-liminal-build/a3521c0b-4c6f-410d-b1fc-1dfa30b892c0.jsonl"
+}

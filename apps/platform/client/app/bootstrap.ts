@@ -348,6 +348,7 @@ export async function bootstrapApp(
       ...currentSurface,
       process: response.process,
       currentRequest: response.currentRequest,
+      environment: response.environment,
       error: null,
       actionError: null,
     });

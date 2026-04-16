@@ -1,0 +1,36 @@
+{
+  "session_id": "d451bc2b-e53c-4d29-b791-767db0a0ef22",
+  "result": "The slice is done. Here's what I found and verified:\n\n**What existed:** The full implementation was already in place from prior iterations — `environment/provider-adapter.ts`, `environment/process-environment.service.ts`, wiring in `app.ts`, env service injection in both start/resume services, and TC-2.3a/TC-2.3b in the live-updates test file.\n\n**What needed verification:** The initial test run showed a failing `S2-TC-2.1a` assertion — but reading the file confirmed it had already been updated to assert `ready` in the bootstrap (not `preparing`). The failing test shown in the initial run was from a stale cached run before the fix landed.\n\n**Final state:**\n\n| Suite | Result |\n|-------|--------|\n| `process-live-updates.test.ts` | 5/5 — 3 existing + TC-2.3a + TC-2.3b |\n| `process-actions-api.test.ts` | 25/25 |\n| Full `verify` | 220 tests, clean typecheck/lint/build |\n\n**The two new tests prove the server-driven path:**\n- `TC-2.3a`: HTTP start → start response shows `preparing` → WebSocket receives `ready` upsert from background preparation\n- `TC-2.3b`: HTTP start with `FailingProviderAdapter` → start response shows `preparing` → WebSocket receives `failed` upsert with the provider's error message as `blockedReason`\n\n**Design note for next slice:** `processEnvironmentService.executeHydration` passes `providerKind: null` to `upsertProcessEnvironmentState`. Fixing that to use a `providerKind` from the adapter is the natural first step of the provider-selection durability slice.",
+  "model": "claude-haiku-4-5-20251001",
+  "usage": {
+    "input_tokens": 461,
+    "cache_creation_input_tokens": 94538,
+    "cache_read_input_tokens": 4213612,
+    "output_tokens": 35903,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 94538,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 8,
+        "output_tokens": 664,
+        "cache_read_input_tokens": 106534,
+        "cache_creation_input_tokens": 299,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 299
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "session_file": "/Users/leemoore/.claude/projects/-Users-leemoore-code-liminal-build/d451bc2b-e53c-4d29-b791-767db0a0ef22.jsonl"
+}

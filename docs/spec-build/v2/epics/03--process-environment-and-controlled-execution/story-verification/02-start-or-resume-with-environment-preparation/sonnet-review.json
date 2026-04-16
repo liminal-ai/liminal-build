@@ -1,0 +1,36 @@
+{
+  "session_id": "417ed825-3ca3-4706-91ff-221d96610b90",
+  "result": "Review written to `story-verification/02-start-or-resume-with-environment-preparation/sonnet-review.md`.\n\n---\n\n**VERDICT: REVISE**\n\n**Gate:** `corepack pnpm run verify` passes clean — 9 convex / 77 server / 130 client, typecheck, lint, build all green.\n\n**Why REVISE and not PASS:**\n\n**B-1 (blocking): AC-2.2 is planning, not hydration.** The story's In-scope list and DefOD both say \"preparation *hydrates* current artifacts, current outputs, and current sources into the working copy.\" The test plan's TC-2.2a setup says \"provider stub,\" assert says \"adapter called with only current refs.\" The implementation stores a flat `{artifactIds, sourceAttachmentIds}` plan in PlatformStore and does nothing else — no provider call, no working copy, no files written. The environment stays `preparing` forever. This is the residual risk the verification bundle flags. Two paths to clear it: (a) scope-adjust the AC to say \"builds a hydration plan\" instead of \"hydrates,\" or (b) stub a call through to `provider.hydrateEnvironment()` (~2 hours).\n\n**What is solid:**\n- **AC-2.1 fully satisfied.** Start and resume enter `preparing` state in the same session, the response includes `environment`, the bootstrap reflects it durably. Two-call server test (action + GET) is stronger than typical.\n- **AC-2.5 fully satisfied.** Sources render `Access: read only` / `Access: read write` at both client and server layers, with correct test coverage.\n- **AC-2.3 and AC-2.4 satisfied at the client layer.** Live reconciliation of `preparing` → `failed`, `preparing` → `ready` → `running` sequences all tested correctly. The fixture rename (`environmentCheckpointFailureUpsertLiveFixture` → `environmentFailedUpsertLiveFixture`) is semantically correct.\n\n**Nonblocking warnings:**\n- TC-2.6a/b/c are undeclared TCs — should be labeled as non-TC decided tests.\n- `process-live-updates.test.ts` not extended for Story 2 (TC-2.3a/b server-side publication gap).\n- `S2-TC-2.4b` label covers terminal process status, not in-flight preparation failure — mislabeled relative to the AC scenario.\n- `WorkingSetPlan` vs. `HydrationPlan` schema divergence will constrain Story 3 design (missing fingerprint, display names, per-source accessMode/targetRef, outputs).",
+  "model": "claude-sonnet-4-6",
+  "usage": {
+    "input_tokens": 122,
+    "cache_creation_input_tokens": 122631,
+    "cache_read_input_tokens": 1220777,
+    "output_tokens": 26067,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 122631,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 8,
+        "output_tokens": 657,
+        "cache_read_input_tokens": 128702,
+        "cache_creation_input_tokens": 6224,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 6224
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "session_file": "/Users/leemoore/.claude/projects/-Users-leemoore-code-liminal-build/417ed825-3ca3-4706-91ff-221d96610b90.jsonl"
+}

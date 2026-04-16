@@ -402,6 +402,22 @@ describe('auth routes', () => {
           currentRequest: null,
         };
       },
+      async transitionProcessToRunning(args) {
+        return {
+          process: {
+            processId: args.processId,
+            displayLabel: 'Feature Specification #1',
+            processType: 'FeatureSpecification',
+            status: 'running',
+            phaseLabel: 'Working',
+            nextActionLabel: 'Monitor progress in the work surface',
+            availableActions: ['open', 'review'],
+            hasEnvironment: false,
+            updatedAt: '2026-04-13T12:05:00.000Z',
+          },
+          currentRequest: null,
+        };
+      },
       async getSubmittedProcessResponse() {
         return null;
       },
@@ -452,6 +468,25 @@ describe('auth routes', () => {
       async getProcessEnvironmentSummary() {
         return {
           ...defaultEnvironmentSummary,
+        };
+      },
+      async upsertProcessEnvironmentState(args) {
+        return {
+          ...defaultEnvironmentSummary,
+          state: args.state,
+          environmentId: args.environmentId,
+          blockedReason: args.blockedReason,
+          lastHydratedAt: args.lastHydratedAt,
+        };
+      },
+      async getProcessHydrationPlan() {
+        return null;
+      },
+      async setProcessHydrationPlan(args) {
+        return {
+          artifactIds: args.plan.artifactIds,
+          sourceAttachmentIds: args.plan.sourceAttachmentIds,
+          outputIds: args.plan.outputIds,
         };
       },
       async getCurrentProcessMaterialRefs() {

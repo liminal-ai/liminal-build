@@ -8,8 +8,10 @@ import {
 import {
   buildLiveProcessMessageFixture,
   connectedProcessSurfaceStateFixture,
-  environmentCheckpointFailureUpsertLiveFixture,
+  environmentFailedUpsertLiveFixture,
   environmentPreparingUpsertLiveFixture,
+  environmentReadyUpsertLiveFixture,
+  environmentRunningUpsertLiveFixture,
   historyUpsertLiveFixture,
   materialsClearedSnapshotLiveFixture,
   materialsPhaseChangeUpsertLiveFixture,
@@ -17,6 +19,7 @@ import {
   processSnapshotLiveFixture,
   sideWorkUpsertLiveFixture,
 } from '../../fixtures/live-process.js';
+
 import {
   emptyProcessMaterialsFixture,
   phaseChangedProcessMaterialsFixture,
@@ -82,7 +85,7 @@ function buildConnectedSideWorkState(lastSequenceNumber: number) {
 }
 
 describe('process live foundation', () => {
-  it('applies environment upserts as first-class current-object state', () => {
+  it('TC-2.3a hydration progress becomes visible through environment live updates', () => {
     const nextState = applyLiveProcessMessage({
       state: {
         ...connectedProcessSurfaceStateFixture,
@@ -103,27 +106,86 @@ describe('process live foundation', () => {
     expect(nextState.process).toEqual(connectedProcessSurfaceStateFixture.process);
   });
 
-  it('preserves checkpoint-result visibility on environment failure updates', () => {
+  it('TC-2.3b hydration failure becomes visible through environment live updates', () => {
     const nextState = applyLiveProcessMessage({
       state: {
         ...connectedProcessSurfaceStateFixture,
         live: {
           connectionState: 'connected',
           subscriptionId: 'subscription-001',
-          lastSequenceNumber: environmentCheckpointFailureUpsertLiveFixture.sequenceNumber - 1,
+          lastSequenceNumber: environmentFailedUpsertLiveFixture.sequenceNumber - 1,
           error: null,
         },
       },
-      message: environmentCheckpointFailureUpsertLiveFixture,
+      message: environmentFailedUpsertLiveFixture,
     });
 
     expect(nextState.environment).toMatchObject({
       state: 'failed',
-      lastCheckpointResult: expect.objectContaining({
-        outcome: 'failed',
-        checkpointKind: 'artifact',
-      }),
+      statusLabel: 'Environment failed',
+      blockedReason: expect.stringContaining('Preparation failed'),
+      lastCheckpointResult: null,
     });
+  });
+
+  it('TC-2.4a running begins after readiness', () => {
+    const baseState = {
+      ...connectedProcessSurfaceStateFixture,
+      live: {
+        connectionState: 'connected' as const,
+        subscriptionId: 'subscription-001',
+        lastSequenceNumber: environmentPreparingUpsertLiveFixture.sequenceNumber - 1,
+        error: null,
+      },
+    };
+
+    const preparingState = applyLiveProcessMessage({
+      state: baseState,
+      message: environmentPreparingUpsertLiveFixture,
+    });
+    expect(preparingState.environment?.state).toBe('preparing');
+
+    const readyState = applyLiveProcessMessage({
+      state: preparingState,
+      message: environmentReadyUpsertLiveFixture,
+    });
+    expect(readyState.environment?.state).toBe('ready');
+
+    const runningState = applyLiveProcessMessage({
+      state: readyState,
+      message: environmentRunningUpsertLiveFixture,
+    });
+    expect(runningState.environment).toMatchObject({
+      state: 'running',
+      statusLabel: 'Running in environment',
+      lastHydratedAt: expect.any(String),
+    });
+  });
+
+  it('TC-2.4b running does not begin after failed preparation', () => {
+    const baseState = {
+      ...connectedProcessSurfaceStateFixture,
+      live: {
+        connectionState: 'connected' as const,
+        subscriptionId: 'subscription-001',
+        lastSequenceNumber: environmentPreparingUpsertLiveFixture.sequenceNumber - 1,
+        error: null,
+      },
+    };
+
+    const preparingState = applyLiveProcessMessage({
+      state: baseState,
+      message: environmentPreparingUpsertLiveFixture,
+    });
+    expect(preparingState.environment?.state).toBe('preparing');
+
+    const failedState = applyLiveProcessMessage({
+      state: preparingState,
+      message: environmentFailedUpsertLiveFixture,
+    });
+    expect(failedState.environment?.state).toBe('failed');
+    expect(failedState.environment?.state).not.toBe('running');
+    expect(failedState.environment?.blockedReason).not.toBeNull();
   });
 
   it('TC-2.2a running state becomes visible during active work', () => {
@@ -201,7 +263,7 @@ describe('process live foundation', () => {
     expect(nextState).toBe(connectedProcessSurfaceStateFixture);
   });
 
-  it('TC-2.4a waiting transition is reflected in the visible process state', () => {
+  it('waiting transition is reflected in the visible process state', () => {
     const state = buildRunningSurfaceState();
     const waitingMessage = buildLiveProcessMessageFixture({
       messageType: 'upsert',
@@ -251,7 +313,7 @@ describe('process live foundation', () => {
     });
   });
 
-  it('TC-2.4b completed transition is reflected in the visible process state', () => {
+  it('completed transition is reflected in the visible process state', () => {
     const state = buildRunningSurfaceState();
     const completedMessage = buildLiveProcessMessageFixture({
       messageType: 'complete',
@@ -376,7 +438,7 @@ describe('process live foundation', () => {
     expect(nextState.sideWork?.items[1]?.status).toBe('completed');
   });
 
-  it('TC-2.3a progress updates appear as readable process-facing activity', () => {
+  it('progress updates appear as readable process-facing activity', () => {
     const nextState = applyLiveProcessMessage({
       state: {
         ...connectedProcessSurfaceStateFixture,
@@ -405,7 +467,7 @@ describe('process live foundation', () => {
     );
   });
 
-  it('TC-2.3b new history activity appears in chronological order', () => {
+  it('new history activity appears in chronological order', () => {
     const nextState = applyLiveProcessMessage({
       state: {
         ...connectedProcessSurfaceStateFixture,

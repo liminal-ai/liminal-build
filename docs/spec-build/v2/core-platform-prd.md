@@ -621,6 +621,12 @@ attached, classified, refreshed, explained, and managed across the broader
 process lifecycle, along with the archive-facing canonical-source model that
 depends on those durable records.
 
+Feature 5 is broad enough to land as more than one implementation epic. The
+first implementation epic may focus on repository attachment lifecycle,
+freshness, provenance, and canonical-source management. A later implementation
+epic may focus on the full-fidelity canonical archive and later derived
+turn/chunk views. Both are still part of Feature 5.
+
 ### Scope
 
 #### In Scope

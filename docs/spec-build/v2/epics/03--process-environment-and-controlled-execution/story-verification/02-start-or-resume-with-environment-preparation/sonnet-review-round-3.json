@@ -1,0 +1,9 @@
+{
+  "verdict": "BLOCK",
+  "story": "02-start-or-resume-with-environment-preparation",
+  "round": 3,
+  "gate_result": "failed",
+  "blocking_findings_count": 2,
+  "round_2_blockers_closed": true,
+  "summary": "All four round-2 blockers are confirmed closed: the server-driven preparation path exists and works correctly (start/resume → preparing → runHydrationAsync fire-and-forget → ready or failed), no code path transitions a process to running before environment.state reaches ready, live publication includes an environment-aware process payload on successful hydration, and the hydration plan correctly includes outputIds alongside artifactIds and sourceAttachmentIds. However the gate cannot pass: two blocking defects prevent completion. First, a Biome formatter violation in platform-store.ts line 1518 (ternary line too long) fails the red-verify format check before tests even run. Second, two tests in process-actions-api.test.ts have incorrect assertions: S2-TC-2.1b asserts process.status:'running' on the resume action response when the in-memory store preserves 'paused' (the correct value for an accepted-for-preparation process), and TC-2.1c asserts availableActions:[] for the interrupted resume path but receives ['review']. These are wrong test assertions introduced by the implementer, not production-code defects, but they break the gate. The TC-2.1a bootstrap timing correction (preparing on POST response, ready on follow-up GET) is a legitimate timing-aware fix given that InMemoryProviderAdapter resolves as a microtask. Client tests (130/130) and Convex tests (9/9) all pass."
+}

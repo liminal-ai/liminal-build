@@ -1,0 +1,36 @@
+{
+  "session_id": "b08dc942-adfb-4578-b3e7-6112acfc3098",
+  "result": "Review written to `story-verification/02.../sonnet-review-round-2.md`.\n\n---\n\n## VERDICT: REVISE\n\nThe tree is substantively correct but one story requirement is unmet.\n\n**SATISFIED strongly:**\n- **AC-2.1** — start/resume return `environment.state = preparing` in the same session; durable bootstrap reflects it immediately; client patches it to the environment panel without a reload. End-to-end coverage is solid.\n- **AC-2.5** — `accessMode` travels through bootstrap and materials projection; server and client tests cover both `read_write` and `read_only` with real store construction.\n\n**VIOLATED:**\n- **AC-2.2** — The hydration **plan** is correctly built (right IDs, partial sets handled cleanly, outputs included) and stored. But no provider adapter is ever called. `ensureEnvironment` and `hydrateEnvironment` don't exist yet. The story says \"hydrates...into the working copy\" — a stored plan is not hydration.\n\n**UNRESOLVED (depend on BF-1):**\n- **AC-2.3** — Client correctly handles `preparing`/`failed` live messages from fixtures. The server has no path to organically emit them.\n- **AC-2.4** — Client correctly handles the `preparing → ready → running` and `preparing → failed` sequences. `ready` can never be reached because no provider call completes.\n\n**Single blocking item (BF-1):** Wire the start/resume path to call a provider adapter after persisting `preparing` state. The interface is already defined (`EnvironmentProviderAdapter`). A `FakeProviderAdapter` stub (already called for in the test plan) is sufficient for the test layer. Everything else follows.\n\n**Secondary non-blocking findings:**\n- `S2-TC-2.4b` label mismatch — covers terminal action result, not preparation failure\n- TC-2.6a/b/c labels don't exist in the story spec — should be relabeled to TC-2.1a/b variants\n- Tests named TC-2.2a/b verify plan storage, not adapter invocation — need updating once BF-1 is resolved\n- Resume service doesn't forward `workingSetFingerprint` through the `preparing` upsert — will matter when recovery paths are built",
+  "model": "claude-sonnet-4-6",
+  "usage": {
+    "input_tokens": 82,
+    "cache_creation_input_tokens": 108267,
+    "cache_read_input_tokens": 725840,
+    "output_tokens": 13515,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 108267,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 8,
+        "output_tokens": 565,
+        "cache_read_input_tokens": 106113,
+        "cache_creation_input_tokens": 6359,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 6359
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "session_file": "/Users/leemoore/.claude/projects/-Users-leemoore-code-liminal-build/b08dc942-adfb-4578-b3e7-6112acfc3098.jsonl"
+}

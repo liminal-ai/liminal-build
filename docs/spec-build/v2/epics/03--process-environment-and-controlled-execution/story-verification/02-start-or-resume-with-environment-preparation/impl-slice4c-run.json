@@ -1,0 +1,36 @@
+{
+  "session_id": "a5ae5bce-6faf-49c3-9313-0bc13eefa981",
+  "result": "Done. Summary of what changed:\n\n**`tests/fixtures/process-surface.ts`** — `preparingEnvironmentFixture` was already imported. Three fixtures received `environment: preparingEnvironmentFixture`: `startedProcessResponseFixture`, `resumedPausedProcessResponseFixture`, and `resumedInterruptedProcessResponseFixture` (the first two had already been applied before this session; `resumedInterruptedProcessResponseFixture` was added here).\n\n**`tests/service/client/process-work-surface-page.test.ts`** — TC-2.1a/TC-2.5a now queries `[data-process-environment-panel=\"true\"]` after the click and asserts `'State: Preparing environment'`. TC-2.1b/TC-2.5b gets the same treatment.\n\nAll 36 tests pass.",
+  "model": "claude-sonnet-4-6",
+  "usage": {
+    "input_tokens": 131,
+    "cache_creation_input_tokens": 53801,
+    "cache_read_input_tokens": 848081,
+    "output_tokens": 6428,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 53801,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 8,
+        "output_tokens": 222,
+        "cache_read_input_tokens": 65299,
+        "cache_creation_input_tokens": 797,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 797
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "session_file": "/Users/leemoore/.claude/projects/-Users-leemoore-code-liminal-build/a5ae5bce-6faf-49c3-9313-0bc13eefa981.jsonl"
+}

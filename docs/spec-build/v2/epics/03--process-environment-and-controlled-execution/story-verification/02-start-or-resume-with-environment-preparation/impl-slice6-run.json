@@ -1,0 +1,36 @@
+{
+  "session_id": "a861e979-d38a-48eb-a425-1a4b954fe894",
+  "result": "Done. 23/23 tests pass (20 pre-existing + 3 new).\n\n**What was built:**\n\n- **`hydration-planner.ts`** (new) — `planHydrationWorkingSet(refs)` pure function that copies artifact and source IDs into a `WorkingSetPlan`. Empty categories are preserved as empty arrays, not omitted, so callers can distinguish \"no artifacts\" from \"not resolved yet.\"\n\n- **`platform-store.ts`** — Added `WorkingSetPlan` interface and `getProcessHydrationPlan`/`setProcessHydrationPlan` to the `PlatformStore` interface with full implementations in all three store classes (`Null`, `Convex` no-ops; `InMemory` with real storage).\n\n- **Start and resume services** — When transitioning to `preparing`, each service now reads the process's current material refs, runs them through `planHydrationWorkingSet`, and persists the plan via `setProcessHydrationPlan`.\n\n**New tests** (all pass, all watched fail first):\n- `S2-HC-1` — both artifact and source refs seed the plan\n- `S2-HC-2` — artifacts-only: `sourceAttachmentIds` is `[]` in the plan (not absent)\n- `S2-HC-3` — sources-only on resume: `artifactIds` is `[]` in the plan",
+  "model": "claude-sonnet-4-6",
+  "usage": {
+    "input_tokens": 277,
+    "cache_creation_input_tokens": 94027,
+    "cache_read_input_tokens": 2676508,
+    "output_tokens": 19599,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 94027,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 8,
+        "output_tokens": 356,
+        "cache_read_input_tokens": 96002,
+        "cache_creation_input_tokens": 322,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 322
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "session_file": "/Users/leemoore/.claude/projects/-Users-leemoore-code-liminal-build/a861e979-d38a-48eb-a425-1a4b954fe894.jsonl"
+}

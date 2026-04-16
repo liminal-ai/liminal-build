@@ -1,0 +1,1888 @@
+# Codex Implementation Log: Epic 03
+
+## Run State
+
+- `state`: `BETWEEN_STORIES`
+- `state`: `STORY_ACTIVE`
+- `phase`: `waiting-implementer`
+- `active_blocking_dependency`: `worker 019d92f8-2833-7160-908f-b0ec433ed9cc`
+- `created_at`: `2026-04-15`
+- `project_root`: `/Users/leemoore/code/liminal-build`
+- `epic_root`: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/03--process-environment-and-controlled-execution`
+- `current_head`: `326d8c9cc4ac6455f70bc9a9fe9c5c9ab1b81579`
+- `working_tree_status`: `process-artifacts-only`
+
+Setup completed from a cold start. No prior `codex-impl-log.md` existed in the
+epic directory, so this run initialized as `SETUP`. Story 0 dispatch is now in
+progress.
+
+Implementer launched:
+
+- worker id: `019d92ac-e2f9-7e61-b0f2-433ae88689bd`
+- lane: Codex `gpt-5.4` with reasoning `xhigh`
+- dispatch status: launched with one complete Story 0 implementation handoff
+
+### Waiting-State Recovery
+
+- Multiple wait windows elapsed while the implementer was still in the full
+  `verify` gate. No blocker signal surfaced during passive waits.
+- Recovery action taken:
+  orchestrator interrupted for an explicit status harvest rather than replacing
+  the worker.
+- Recovery outcome:
+  worker reported active progress, a nearly complete Story 0 implementation, and
+  a remaining full-gate confirmation step. The same worker was reused.
+
+### Implementer Return Summary
+
+- Implementer returned a complete change summary and a failing full-gate report.
+- Targeted Story 0 tests passed before the full gate:
+  - `corepack pnpm exec vitest run tests/service/server/process-foundation-contracts.test.ts tests/service/server/process-work-surface-api.test.ts tests/service/server/process-live-updates.test.ts --environment node`
+  - `corepack pnpm exec vitest run tests/service/client/process-live.test.ts --environment jsdom`
+- Full gate result:
+  `corepack pnpm run verify` failed during `typecheck`
+- Orchestrator assessment:
+  the failures are bounded integration fallout from Story 0's required fields
+  becoming mandatory, not a spec or architecture dispute
+
+### Fix Routing
+
+- Fix batch materialized to:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-00-fix-batch-01.md`
+- Fix worker:
+  reused implementer `019d92ac-e2f9-7e61-b0f2-433ae88689bd`
+- Routing reason:
+  the failures are concrete typecheck fallout in existing fixtures/exports and
+  should be cheaper to close with the same implementer than with a fresh read
+
+### Fix Batch 01 Result
+
+- Result:
+  previous typecheck fallout closed
+- Remaining failure count:
+  `1`
+- Remaining failure:
+  strict-equality expectation in
+  `tests/service/server/process-actions-api.test.ts`
+  still assumes the pre-Story-0 response shape and must be updated for
+  `process.controls` plus `process.hasEnvironment`
+
+### Fix Batch 02 Routing
+
+- Fix batch materialized to:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-00-fix-batch-02.md`
+- Fix worker:
+  reused implementer `019d92ac-e2f9-7e61-b0f2-433ae88689bd`
+- Routing reason:
+  one remaining strict-equality assertion is still pinned to the pre-Story-0
+  response shape
+
+### Fix Batch 02 Result
+
+- Remaining strict-equality assertion updated in
+  `tests/service/server/process-actions-api.test.ts`
+- Full story gate rerun:
+  `corepack pnpm run verify`
+- Result:
+  `passed`
+
+### Verification Launch
+
+- Verification bundle:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/00-foundation/verification-bundle.md`
+- Codex verifier worker:
+  `019d92bd-6e1b-7040-926b-34b4aeda6f6f`
+- Sonnet verifier exec session:
+  `43330`
+- Sonnet review artifact path:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/00-foundation/sonnet-review.md`
+- Sonnet structured result path:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/00-foundation/sonnet-review.json`
+
+### Codex Verification Result
+
+- Report path:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/00-foundation/codex-review.md`
+- Verdict:
+  `PASS`
+- Summary:
+  no supported blocking defects; shared vocabulary is centralized, additive, and
+  green on `corepack pnpm run verify`
+- Nonblocking warnings noted by verifier:
+  - shared action-contract groundwork is still partial for later
+    rehydrate/rebuild response shapes
+  - Story 0 language says `error classes` while the implementation currently
+    lands shared error-code vocabulary on top of generic `AppError`
+  - doc tension remains around source writability wording between epic and tech
+    design
+
+### Sonnet Verification Result
+
+- Report path:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/00-foundation/sonnet-review.md`
+- Structured result path:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/00-foundation/sonnet-review.json`
+- Verdict:
+  `PASS`
+- Summary:
+  all critical and major Story 0 foundation obligations satisfied, with only
+  minor completeness/documentation warnings
+
+### Verification Synthesis
+
+- Overlap:
+  both verifiers agree the shared Story 0 vocabulary is centralized, additive,
+  wired through the correct seams, and green on the full story gate
+- Meaningful disagreement:
+  none
+- Convergence rounds run:
+  `0`
+- Orchestrator decision:
+  no additional code change is required before Story 0 acceptance
+
+### Finding Dispositions
+
+- `environmentCompleteLiveFixture` missing despite DoD wording about completion
+  markers
+  - disposition: `defer`
+  - rationale: no current Story 0 producer emits an `environment` `complete`
+    event; add this when Story 3 or later stories introduce a real completion
+    path rather than inventing synthetic semantics now
+- matrix-level disabled-reason control fixtures are still partial
+  - disposition: `defer`
+  - rationale: Story 0 establishes the vocabulary and reusable builders; Story 1
+    and Story 5 will exercise the operational control-state matrix directly
+- `PROCESS_ACTION_NOT_AVAILABLE` is not covered by the new foundation test file
+  - disposition: `accepted-risk`
+  - rationale: pre-existing Epic 2 vocabulary, not a new Story 0 obligation
+- shared rehydrate/rebuild response groundwork is still partial
+  - disposition: `defer`
+  - rationale: owned by the later behavior stories that actually wire those
+    actions
+- Story 0 wording says `error classes` while implementation lands error-code
+  vocabulary on top of `AppError`
+  - disposition: `accepted-risk`
+  - rationale: matches the current app architecture; documentation can be
+    tightened later without blocking Story 0
+- source writability wording differs between epic and tech design
+  - disposition: `defer`
+  - rationale: documentation tension only; not a supported Story 0 code defect
+- environment error delivery model is not fully documented
+  - disposition: `accepted-risk`
+  - rationale: current implementation follows the tech design pattern of
+    surfacing environment problems through `environment.state` and
+    `blockedReason`
+- route-level `controls` assertion is lighter than service-level coverage
+  - disposition: `accepted-risk`
+  - rationale: service-level foundation test covers the contract and Story 1 can
+    add stronger route-level behavior assertions
+- default `absent` environment stub could hide forgotten Story 1 reader wiring
+  - disposition: `defer`
+  - rationale: acceptable safe default for Story 0; Story 1 verification should
+    explicitly check reader injection
+
+### Orchestrator Final Check
+
+- Story acceptance gate rerun by orchestrator:
+  `corepack pnpm run verify`
+- Result:
+  `passed`
+- Cumulative test baseline:
+  prior Epic 03 affected-suite baseline `74`, current affected-suite baseline
+  `82`; no regression
+- Boundary inventory status:
+  unchanged and not worsened
+
+## Story 0 Pre-Acceptance Receipt
+
+1. Implementation lane used
+   Codex `gpt-5.4` with reasoning `xhigh`
+2. Changed files summary
+   shared process/environment contracts, shared error-code vocabulary,
+   bootstrap/live/materials wiring, reusable Story 0 fixtures, and supporting
+   server/client tests
+3. Story base commit hash
+   `e6c08484846aea19d2d6e3483728126fe7da92f2`
+4. Test diff summary against the story base commit
+   additive Story 0 foundation coverage plus legitimate contract-alignment
+   corrections; no assertion weakening found
+5. Codex verification summary
+   `PASS`, no supported blocking defects, three nonblocking warnings
+6. Sonnet verification summary
+   `PASS`, all critical and major foundation obligations satisfied, minor
+   completeness/documentation warnings only
+7. Convergence rounds run
+   `0`
+8. Fixes applied
+   Fix Batch 01 closed typecheck fallout; Fix Batch 02 updated one remaining
+   strict-equality assertion in `tests/service/server/process-actions-api.test.ts`
+9. Exact story gate command(s) and results
+   - implementer final gate: `corepack pnpm run verify` -> `passed`
+   - Codex verifier gate: `corepack pnpm run verify` -> `passed`
+   - Sonnet verifier gate: `corepack pnpm run verify` -> `passed`
+   - orchestrator gate: `corepack pnpm run verify` -> `passed`
+10. Open risks
+    none blocking; nonblocking warning dispositions recorded above
+
+## Story 0 Transition Checkpoint
+
+- Story 0 acceptance:
+  accepted
+- Story 0 commit:
+  `200aed5059c7aee1c1ddaf202c056f1b391ddbe4`
+- Commit message:
+  `feat: Story 0 - Foundation`
+- Post-story cumulative affected-suite baseline:
+  `82`
+- Baseline movement:
+  increased from `74` to `82`, matching the low end of the pre-story expected
+  range and showing no regression
+- Boundary inventory update:
+  unchanged; hosted provider adapter, local provider adapter, and canonical code
+  checkpoint boundary remain `stub` and are still future-story work rather than
+  worsened regressions
+- Story 1 output directory prepared:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/01-environment-state-and-visible-controls`
+
+## Next Story
+
+- Next story:
+  `stories/01-environment-state-and-visible-controls.md`
+- Next action:
+  reload skill directives, reread Story 1 and its most relevant design sections,
+  project the next cumulative baseline, record the new story base commit, and
+  dispatch a fresh implementer
+
+## Story 1 Preflight
+
+### Refresh Notes
+
+- Reloaded `ls-codex-impl` before Story 1 dispatch.
+- Reread `stories/01-environment-state-and-visible-controls.md` in full.
+- Skimmed `stories/02-start-or-resume-with-environment-preparation.md` to keep
+  the immediate downstream dependency in view.
+- Reread the most relevant Story 1 design/code seams:
+  - `tech-design-client.md`
+  - `tech-design-server.md`
+  - `apps/platform/server/services/processes/process-work-surface.service.ts`
+  - `apps/platform/server/routes/processes.ts`
+  - `apps/platform/client/features/processes/process-work-surface-page.ts`
+  - `apps/platform/client/app/bootstrap.ts`
+  - `tests/service/server/process-work-surface-api.test.ts`
+  - `tests/service/client/process-work-surface-page.test.ts`
+
+### Preflight Assessment
+
+- Story 0 established the shared contract vocabulary, but
+  `DefaultProcessWorkSurfaceService` still returns `defaultEnvironmentSummary`
+  unconditionally. Story 1 now needs durable first-load environment truth.
+- The process work-surface page still renders action buttons from
+  `availableActions` rather than the full stable `controls` array, so Story 1
+  must introduce the visible control area promised by the client design.
+- Story 1 is the first behavior-heavy bootstrap/render story on top of the new
+  environment vocabulary and will likely touch both server projection and client
+  composition.
+- Story 1 must stop short of Story 2 behavior: no start/resume preparation flow,
+  no hydration progress, no controlled execution, and no checkpoint/recovery
+  mutations beyond seeded/durable visibility cases.
+
+### Story Base Commit
+
+- Story 1 base commit:
+  `200aed5059c7aee1c1ddaf202c056f1b391ddbe4`
+
+### Lane Decision
+
+- Story 1 implementation lane:
+  Codex `gpt-5.4` with reasoning `xhigh`
+- Why:
+  first behavior story in the new environment seam, cross-cutting server/client
+  bootstrap work, and a high chance of downstream fix routing if the visible
+  control model or durable environment projection is wrong
+
+### Expected Test Baseline
+
+- Prior affected-suite baseline:
+  `82`
+- Story 1 expectation:
+  should add substantial bootstrap/render/control coverage, especially in the
+  currently empty or underbuilt Story 1 target files such as
+  `tests/service/client/process-controls.test.ts` and
+  `tests/service/client/process-environment-panel.test.ts`
+- Expected post-Story-1 total:
+  about `100-106` affected-suite tests
+- Verification concern:
+  if Story 1 lands materially below `100` without a clear explanation, treat
+  that as a likely coverage gap in the control-state matrix or environment-panel
+  work
+
+### Story-Specific Warnings For Implementer
+
+- Replace the current default-environment bootstrap stub with durable first-load
+  truth, but keep the process route as the only user entry point.
+- Render the stable visible control area from `process.controls`, not only
+  enabled actions from `availableActions`.
+- Keep seeded/durable recovery-state visibility in scope, but do not implement
+  Story 2 start/resume preparation behavior or Story 5 recovery mutations here.
+- Preserve the Story 0 additive defaults and shared fixture patterns instead of
+  inventing a second bootstrap/live/environment model.
+
+### Story 1 Dispatch
+
+- worker id:
+  `019d92c6-bcfb-7b43-af6c-48d8ac314a01`
+- lane:
+  Codex `gpt-5.4` with reasoning `xhigh`
+- dispatch status:
+  launched with one complete Story 1 implementation handoff
+
+### Story 1 Implementer Return Summary
+
+- Implementer returned a complete Story 1 report with no blocking questions.
+- Reported story gate result:
+  `corepack pnpm run verify` -> `passed`
+- Additional reported non-gate command:
+  `corepack pnpm exec convex codegen` -> failed because no local Convex backend
+  was running at `http://127.0.0.1:3210`
+- Orchestrator assessment:
+  the Story 1 implementation is ready for fresh dual verification; reviewers
+  should explicitly evaluate whether the non-gate codegen miss matters in this
+  repo shape.
+
+### Story 1 Verification Launch
+
+- Verification bundle:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/01-environment-state-and-visible-controls/verification-bundle.md`
+- Codex verifier worker:
+  `019d92db-8030-79f2-8d87-a501a0bc28cb`
+- Sonnet verifier exec session:
+  `47875`
+- Sonnet review artifact path:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/01-environment-state-and-visible-controls/sonnet-review.md`
+- Sonnet structured result path:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/01-environment-state-and-visible-controls/sonnet-review.json`
+
+### Story 1 Codex Verification Result
+
+- Report path:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/01-environment-state-and-visible-controls/codex-review.md`
+- Verdict:
+  `REVISE`
+- Blocking finding:
+  action responses (`start` / `resume` / `respond`) rebuild `process.controls`
+  and `hasEnvironment` without the current durable environment summary, so the
+  same session can show `environment.state = ready` while the returned `process`
+  summary regresses to absent-environment disabled reasons
+- Gate note:
+  Codex verifier passed `corepack pnpm run verify`
+- Codegen note:
+  Codex verifier treated the non-gate `convex codegen` failure as non-blocking
+  in the current repo shape, while noting the local Convex dev path remains
+  unverified
+
+### Story 1 Sonnet Verification Result
+
+- Report path:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/01-environment-state-and-visible-controls/sonnet-review.md`
+- Structured result path:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/01-environment-state-and-visible-controls/sonnet-review.json`
+- Verdict:
+  `PASS`
+- Summary:
+  Sonnet found all five ACs satisfied and treated the `convex codegen` miss as a
+  non-blocking repo-shape issue
+
+### Story 1 Convergence Round 1
+
+- Reason:
+  meaningful verifier disagreement on whether same-session action responses stay
+  aligned with the durable environment-aware process summary
+- Orchestrator evidence check:
+  `process-start.service.ts`, `process-resume.service.ts`, and
+  `process-response.service.ts` each call `buildProcessSurfaceSummary(result.process)`
+  without passing the current environment summary
+- Codex reaction:
+  technical inconsistency stands, but Codex retracted the certainty that it is
+  automatically a Story 1 acceptance blocker on scope grounds
+- Sonnet convergence lane:
+  two helper executions failed to produce a report artifact or structured result;
+  treated as incomplete lane-local failure for convergence only
+- Orchestrator decision:
+  route a bounded fix anyway because the inconsistency is real, user-visible on
+  the same process surface, and cheap enough to close now rather than carrying
+  into Story 2
+
+### Story 1 Fix Routing
+
+- Fix batch materialized to:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-01-fix-batch-01.md`
+- Fix worker:
+  reused implementer `019d92c6-bcfb-7b43-af6c-48d8ac314a01`
+- Routing reason:
+  same-session action responses must stay aligned with the environment-aware
+  Story 1 process summary
+
+### Story 1 Fix Batch 01 Result
+
+- Fixes applied:
+  `start`, `resume`, and `respond` now rebuild `process` summaries with the
+  current durable environment summary, action publications include the
+  environment-aware `process`, and a focused regression was added for `resume`
+  with a seeded `ready` environment
+- Files changed in fix batch:
+  - `apps/platform/server/services/processes/process-start.service.ts`
+  - `apps/platform/server/services/processes/process-resume.service.ts`
+  - `apps/platform/server/services/processes/process-response.service.ts`
+  - `tests/service/server/process-actions-api.test.ts`
+- Fix batch gate result:
+  `corepack pnpm run verify` -> `passed`
+- Orchestrator decision:
+  rerun fresh dual verification because post-review code changed
+
+### Story 1 Verification Relaunch
+
+- Codex verifier worker:
+  `019d92e7-26d4-7213-994d-c937b9e4642e`
+- Sonnet verifier exec session:
+  `94442`
+- Codex report path:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/01-environment-state-and-visible-controls/codex-review-round-2.md`
+- Sonnet report path:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/01-environment-state-and-visible-controls/sonnet-review-round-2.md`
+- Sonnet structured result path:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/01-environment-state-and-visible-controls/sonnet-review-round-2.json`
+- Focus:
+  verify the post-fix Story 1 code and specifically confirm the same-session
+  action-response inconsistency is closed
+
+### Story 1 Codex Verification Round 2 Result
+
+- Report path:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/01-environment-state-and-visible-controls/codex-review-round-2.md`
+- Verdict:
+  `PASS`
+- Summary:
+  Codex reran the diff review and the full story gate, and independently
+  rechecked `start`, `resume`, and `respond` with seeded same-session repros;
+  the prior action-response inconsistency is now closed
+
+### Story 1 Sonnet Verification Round 2 Result
+
+- Report path:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/01-environment-state-and-visible-controls/sonnet-review-round-2.md`
+- Structured result path:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/01-environment-state-and-visible-controls/sonnet-review-round-2.json`
+- Verdict:
+  `PASS`
+- Summary:
+  all 17 Story 1 TCs satisfied, full story gate green, and the prior same-session
+  action-response inconsistency explicitly marked closed
+
+### Story 1 Verification Synthesis
+
+- Overlap:
+  both round-2 verifiers agree Story 1 is now `PASS`, the story gate is green,
+  and the previous same-session action-response bug is closed
+- Meaningful disagreement:
+  none remaining
+- Convergence rounds run:
+  `1`
+- Orchestrator decision:
+  no further code change is required before Story 1 acceptance
+
+### Story 1 Finding Dispositions
+
+- `providerKind` remains nullable in Convex storage
+  - disposition: `accepted-risk`
+  - rationale: explicitly documented Story 1 deviation to avoid pulling Story 2
+    provider selection into this slice
+- `convex codegen` did not run against a live local backend
+  - disposition: `accepted-risk`
+  - rationale: not part of the locked story gate in the current repo shape;
+    reviewers treated it as non-blocking
+- `start` and `respond` do not yet have dedicated same-session regression tests
+  - disposition: `defer`
+  - rationale: code path fixed and verified by Codex repro plus one focused
+    `resume` regression; add explicit symmetric tests when Story 2 deepens those
+    action paths
+- `deriveProcessSurfaceAvailableActions` may now be dead code
+  - disposition: `defer`
+  - rationale: cleanup candidate, not a Story 1 correctness blocker
+- no direct `convex/processEnvironmentStates.test.ts` exists yet
+  - disposition: `defer`
+  - rationale: direct Convex-layer coverage becomes more important once Story 2
+    and later stories add write paths
+- some control-matrix cases still rely on implicit rather than dedicated
+  assertions for `respond`/`review`
+  - disposition: `accepted-risk`
+  - rationale: Story 1 required TC coverage is satisfied and the current logic is
+    consistent with the design
+
+### Story 1 Orchestrator Final Check
+
+- Story acceptance gate rerun by orchestrator:
+  `corepack pnpm run verify`
+- Result:
+  `passed`
+- Cumulative test baseline:
+  prior Epic 03 affected-suite baseline `82`, current affected-suite baseline
+  `105`; no regression
+- Boundary inventory status:
+  unchanged and not worsened
+
+## Story 1 Pre-Acceptance Receipt
+
+1. Implementation lane used
+   Codex `gpt-5.4` with reasoning `xhigh`
+2. Changed files summary
+   durable environment bootstrap projection, environment-aware control
+   derivation, new process-surface control/environment UI components, new
+   `processEnvironmentStates` read path, and Story 1 server/client/integration
+   coverage
+3. Story base commit hash
+   `200aed5059c7aee1c1ddaf202c056f1b391ddbe4`
+4. Test diff summary against the story base commit
+   additive Story 1 bootstrap/control/render coverage plus post-review
+   regression coverage for same-session action-response alignment
+5. Codex verification summary
+   round 1 `REVISE` on same-session inconsistency; round 2 `PASS` after fix with
+   seeded repro confirmation
+6. Sonnet verification summary
+   round 1 `PASS`; round 2 `PASS` and explicit confirmation that the same-session
+   fix is closed
+7. Convergence rounds run
+   `1`
+8. Fixes applied
+   Story 1 Fix Batch 01 updated `start` / `resume` / `respond` to rebuild
+   `process` with the current durable environment summary and added a focused
+   `resume` regression
+9. Exact story gate command(s) and results
+   - implementer gate: `corepack pnpm run verify` -> `passed`
+   - fix-batch gate: `corepack pnpm run verify` -> `passed`
+   - Codex verifier round 2 gate: `corepack pnpm run verify` -> `passed`
+   - Sonnet verifier round 2 gate: `corepack pnpm run verify` -> `passed`
+   - orchestrator gate: `corepack pnpm run verify` -> `passed`
+10. Open risks
+    none blocking; nonblocking warning dispositions recorded above
+
+## Story 1 Transition Checkpoint
+
+- Story 1 acceptance:
+  accepted
+- Story 1 commit:
+  `326d8c9cc4ac6455f70bc9a9fe9c5c9ab1b81579`
+- Commit message:
+  `feat: Story 1 - Environment State and Visible Controls`
+- Post-story cumulative affected-suite baseline:
+  `105`
+- Baseline movement:
+  increased from `82` to `105`, consistent with Story 1's expected expansion in
+  bootstrap/control/render coverage and showing no regression
+- Boundary inventory update:
+  unchanged; hosted provider adapter, local provider adapter, and canonical code
+  checkpoint boundary remain future-story work rather than worsened regressions
+- Story 2 output directory prepared:
+  `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/02-start-or-resume-with-environment-preparation`
+
+## Next Story
+
+- Next story:
+  `stories/02-start-or-resume-with-environment-preparation.md`
+- Next action:
+  reload skill directives, reread Story 2 and its most relevant design sections,
+  project the next cumulative baseline, record the new story base commit, and
+  dispatch a fresh implementer
+
+## Story 2 Preflight
+
+### Refresh Notes
+
+- Reloaded `ls-codex-impl` before Story 2 dispatch.
+- Reread `stories/02-start-or-resume-with-environment-preparation.md` in full.
+- Skimmed `stories/03-controlled-execution-and-live-environment-state.md` to
+  keep the immediate downstream seam in view.
+- Reread the most relevant Story 2 design/code seams:
+  - `apps/platform/server/services/processes/process-start.service.ts`
+  - `apps/platform/server/services/processes/process-resume.service.ts`
+  - `apps/platform/server/services/projects/platform-store.ts`
+  - `apps/platform/shared/contracts/process-work-surface.ts`
+  - `apps/platform/client/browser-api/process-work-surface-api.ts`
+  - `tests/service/server/process-actions-api.test.ts`
+  - `tests/service/client/process-controls.test.ts`
+  - `test-plan.md` Story 2-related inventory
+
+### Preflight Assessment
+
+- Current `start` and `resume` still transition directly to generic `running`
+  behavior. Story 2 must replace that with visible preparation/hydration flow
+  and only move to active running when readiness is confirmed.
+- Story 1 established durable environment truth and visible controls, but Story
+  2 is the first story that needs operational environment-state transitions and
+  current-material hydration behavior.
+- Source `accessMode` is now durable and visible, so Story 2 can use it to
+  distinguish writable vs read-only attachments before code checkpointing
+  matters.
+- The new `processEnvironmentStates` read path exists, but direct Convex-layer
+  tests are still absent; Story 2 is the first likely story to add meaningful
+  environment-state writes and should do so carefully.
+- `convex codegen` was non-gating in Story 1 because no local Convex backend was
+  running. Story 2 may still need to work around that local limitation if it
+  adds new function references.
+
+### Story Base Commit
+
+- Story 2 base commit:
+  `326d8c9cc4ac6455f70bc9a9fe9c5c9ab1b81579`
+
+### Lane Decision
+
+- Story 2 implementation lane:
+  Codex `gpt-5.4` with reasoning `xhigh`
+- Why:
+  boundary-heavy first operational environment story, likely Convex/server/client
+  coordination, and high risk of fix routing if state transitions or hydration
+  planning are wrong
+
+### Expected Test Baseline
+
+- Prior affected-suite baseline:
+  `105`
+- Story 2 expectation:
+  should add another `12-18` tests centered on process actions, environment
+  preparation visibility, materials/source access, and accepted-action vs
+  later-failure coherence
+- Expected post-Story-2 total:
+  about `117-123` affected-suite tests
+- Verification concern:
+  if Story 2 lands materially below `117` without a clear explanation, treat
+  that as a likely gap in action-path or preparation/hydration coverage
+
+### Story-Specific Warnings For Implementer
+
+- Replace generic start/resume-to-running behavior with Story 2 preparation
+  semantics, but do not implement Story 3 execution or Story 5 recovery flows.
+- Keep hydration scoped to the process's current artifacts, outputs, and current
+  sources only; do not broaden to unrelated project materials.
+- Preserve accepted-action vs later-failure separation: immediate HTTP errors
+  only for preflight rejection, later lifecycle problems through environment
+  state.
+- Use existing Story 1 environment/bootstrap/control seams rather than adding a
+  second action/progress model.
+
+### Story 2 Dispatch
+
+- worker id:
+  `019d92f0-1f89-77c3-a520-3319c0a5e028`
+- lane:
+  Codex `gpt-5.4` with reasoning `xhigh`
+- dispatch status:
+  launched with one complete Story 2 implementation handoff
+
+### Story 2 Waiting-State Recovery
+
+- Multiple wait windows elapsed without a blocker report.
+- Interrupt status harvest result:
+  worker reported no blocker, no file edits yet, and that it was still in seam
+  inspection/prep.
+- Logged as:
+  `ORCHESTRATOR_STALL`
+- Recovery action:
+  interrupt once and redirect the worker from inspection into concrete Story 2
+  edits; replace the lane if it still does not cross into implementation
+- Post-redirect check:
+  no Story 2 code delta appeared in the workspace
+- Final recovery action:
+  replace the worker
+
+### Story 2 Replacement Dispatch
+
+- replacement worker id:
+  `019d92f8-2833-7160-908f-b0ec433ed9cc`
+- lane:
+  Codex `gpt-5.4` with reasoning `xhigh`
+- replacement strategy:
+  narrowed first-pass scope and required immediate transition from reading into
+  concrete Story 2 edits
+
+### Story 2 Replacement Lane Failure
+
+- Human-observed symptom:
+  replacement worker appeared to be awaiting instruction
+- Orchestrator check:
+  repeated wait windows plus zero workspace delta after explicit implementation
+  redirects
+- Recovery action:
+  replacement worker `019d92f8-2833-7160-908f-b0ec433ed9cc` shut down and lane
+  replaced again
+
+### Story 2 External Slice Recovery
+
+- Internal Codex worker lane was not reliably usable for Story 2 implementation.
+- External Claude helper lane was switched in for bounded implementation slices.
+- Successful bounded slices on the current Story 2 tree:
+  - Slice 1:
+    `start` / `resume` return `environment.state = preparing` in-session when
+    environment work is required, and server regression coverage landed in
+    `tests/service/server/process-actions-api.test.ts`
+  - Slice 2:
+    `PlatformStore` test doubles updated for the new
+    `upsertProcessEnvironmentState` method so repo-wide `typecheck` returned to
+    green
+  - Slice 3:
+    source `accessMode` now renders in
+    `apps/platform/client/features/processes/process-materials-section.ts` and
+    dedicated client coverage landed in
+    `tests/service/client/process-materials-section.test.ts`
+  - Slice 4:
+    Story 2 client page tests now use preparation-aware action-response fixtures
+    and assert visible preparation state immediately after `start` / `resume`
+- Current verified baseline on the uncommitted Story 2 tree:
+  - `corepack pnpm run verify` -> passed
+  - service tests: `74` passing
+  - client tests: `128` passing
+
+### Story 2 Remaining Gap Assessment
+
+- Story 2 is not yet accepted or committed.
+- Current tree materially covers:
+  - visible preparation entry in-session (`AC-2.1`)
+  - source writability visibility (`AC-2.5`)
+  - parts of accepted-action boundary and returned waiting/completed/failed
+    paths (`AC-2.4`)
+- Main remaining gap appears to be the middle of the story:
+  - hydration planning against current artifacts / outputs / sources (`AC-2.2`)
+  - visible hydration progress / recoverable failure without manual refresh
+    (`AC-2.3`)
+
+## Startup Orientation
+
+This run keeps one Codex orchestrator across the full epic. Stories will be
+implemented one at a time, each story will get a fresh implementer plus fresh
+dual verification, default implementation uses Codex `gpt-5.4 high`, riskier
+stories upgrade to Codex `gpt-5.4 xhigh`, and default verification uses fresh
+Codex `gpt-5.4 xhigh` plus fresh Sonnet max.
+
+No human override was provided for lane preferences during setup, so the run is
+initialized with the default lane policy from the skill.
+
+## Artifact Registry
+
+| Artifact | Path | Status |
+|----------|------|--------|
+| Epic | `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/epic.md` | present |
+| Tech design index | `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/tech-design.md` | present |
+| Tech design companion | `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/tech-design-client.md` | present |
+| Tech design companion | `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/tech-design-server.md` | present |
+| Test plan | `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/test-plan.md` | present |
+| Story directory | `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/stories` | present |
+| Story coverage map | `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/stories/coverage.md` | present |
+
+### Story Order
+
+1. `stories/00-foundation.md`
+2. `stories/01-environment-state-and-visible-controls.md`
+3. `stories/02-start-or-resume-with-environment-preparation.md`
+4. `stories/03-controlled-execution-and-live-environment-state.md`
+5. `stories/04-durable-checkpoint-of-artifacts-and-writable-sources.md`
+6. `stories/05-rehydrate-rebuild-and-recovery.md`
+7. `stories/06-return-later-and-degraded-operation.md`
+
+### Story Sequence And Dependency Notes
+
+- Story 0 is the foundation contract story. It defines the shared environment,
+  control, checkpoint, source-access, error, and live-update vocabulary used by
+  all later stories.
+- Story 1 extends the durable process bootstrap with environment truth and the
+  full visible control area. This is the first behavior story and the baseline
+  for all later route, store, and bootstrap work.
+- Story 2 adds start/resume-driven environment preparation, hydration planning,
+  and source writability visibility. It depends on Story 1's bootstrap/control
+  contract.
+- Story 3 adds live execution visibility and environment entity updates over the
+  existing websocket seam. It depends on Stories 1 and 2.
+- Story 4 adds durable checkpointing for artifacts and writable sources plus
+  latest checkpoint result visibility. It depends on Stories 2 and 3.
+- Story 5 adds rehydrate/rebuild/recovery behavior and the production paths that
+  make recovery-only states operationally reachable. It depends on Stories 1
+  and 4.
+- Story 6 closes the loop with reopen/degraded-operation behavior and depends on
+  Stories 1, 4, and 5.
+
+### Per-Story Implementation Prompts
+
+No per-story implementation prompt files were found near the epic or story
+files. The orchestration prompt map below is the authoritative handoff source
+unless later artifacts are added.
+
+## Lane Policy
+
+- `orchestrator`: `gpt-5.4` with reasoning `xhigh`
+- `implementer_default`: `gpt-5.4` with reasoning `high`
+- `implementer_escalation`: `gpt-5.4` with reasoning `xhigh`
+- `story_verifier_codex`: `gpt-5.4` with reasoning `xhigh`
+- `story_verifier_sonnet`: `claude-sonnet-4-6` with effort `max`
+- `feature_verifier_codex`: `gpt-5.4` with reasoning `xhigh`
+- `feature_verifier_sonnet`: `claude-sonnet-4-6` with effort `max`
+- `third_feature_reviewer`: `gpt-5.3-codex` only if repeated convergence fails
+  on a material unresolved issue or the human explicitly requests extra review
+  diversity
+
+## Lane Availability
+
+| Lane | Availability | Evidence |
+|------|--------------|----------|
+| Codex worker lane | available | Current session has Codex worker/subagent tools available |
+| Sonnet verifier lane | available | Claude CLI present and `claude-result` helper succeeded against this repo |
+
+### Sonnet Helper Command
+
+- Resolved helper path:
+  `/Users/leemoore/.claude/skills/claude-subagent/scripts/claude-result`
+- Intended verifier invocation pattern:
+  `"$SONNET_HELPER" --json --cwd /Users/leemoore/code/liminal-build exec "$(cat [PROMPT_FILE])" --model claude-sonnet-4-6 --effort max --permission-mode acceptEdits --allowedTools Read,Write,Edit,Bash,Grep,Glob > [RUN_JSON]`
+
+### Helper Smoke Checks
+
+1. Command:
+   `claude --version`
+   Result:
+   `2.1.109 (Claude Code)`
+2. Command:
+   `"/Users/leemoore/.claude/skills/claude-subagent/scripts/claude-result" --help | sed -n '1,20p'`
+   Result:
+   helper usage rendered successfully
+3. Command:
+   `"/Users/leemoore/.claude/skills/claude-subagent/scripts/claude-result" --json --cwd /Users/leemoore/code/liminal-build exec "Reply with OK only." --model claude-sonnet-4-6 --effort max --permission-mode acceptEdits --allowedTools Read,Write,Edit,Bash,Grep,Glob`
+   Result:
+   success, `result = "OK"`, `session_id = "88a057e1-fcac-4217-af14-effad6fd50d0"`
+
+## Verification Gates
+
+### Story Acceptance Gate
+
+- Locked command:
+  `corepack pnpm run verify`
+- Reason:
+  repo scripts and the Epic 03 test plan identify `verify` as the main
+  development gate, and it includes formatting, lint, typecheck, build,
+  `test:convex`, `test:service`, and `test:client`.
+
+### Feature Acceptance Gate
+
+- Locked command:
+  `corepack pnpm run verify-all`
+- Reason:
+  repo scripts and the Epic 03 test plan identify `verify-all` as the deeper
+  feature gate because it adds integration coverage on top of `verify`. The
+  `test:e2e` lane is scaffolded and intentionally returns `SKIP:` today, so the
+  feature gate still uses `verify-all` and records the expected `SKIP:` output
+  as non-blocking current-state behavior.
+
+## Tech Design Shape
+
+- Tech design shape:
+  `Config B` inferred from the artifact layout
+- Evidence:
+  one design index (`tech-design.md`) plus two companion documents
+  (`tech-design-client.md`, `tech-design-server.md`)
+- Note:
+  the docs do not explicitly say `Config A` or `Config B`; this is an
+  orchestrator inference from file structure
+
+## Orchestrator Reading Notes
+
+### Current-State Baseline
+
+- Existing current state is still Fastify-owned on the browser edge with Convex
+  behind `PlatformStore`; the browser must not bypass Fastify to talk to Convex
+  directly.
+- The current process work surface already supports bootstrap plus live
+  reconciliation and generic lifecycle actions, but it does not yet own
+  environment controls, filesystem visibility, or tool-runtime behavior.
+- Current repo behavior remains generic across process types. Epic 03 deepens
+  the shared process surface rather than introducing process-type-specific
+  orchestration.
+
+### Tech Design Index
+
+- Epic 03 is the first environment/runtime slice layered under the existing
+  process route and work surface, not a second product surface.
+- The highest-risk design area is state separation between process lifecycle and
+  environment lifecycle. The implementation must keep those distinct but
+  connected.
+- The design is explicit that provider and checkpoint dependencies remain
+  security-sensitive boundaries and should be treated as real integration seams.
+
+### Tech Design Client Companion
+
+- No new route kind is added. The dedicated process route remains the sole
+  browser entry point for environment work.
+- `environment` becomes a first-class durable bootstrap entity and a first-class
+  live entity.
+- Client rendering must use full `process.controls` for stable visible controls
+  rather than showing only enabled actions from `availableActions`.
+
+### Tech Design Server Companion
+
+- The server remains one Fastify monolith; the new environment stack nests under
+  the existing process routes and services.
+- The main new server seam is `services/processes/environment/` with a provider
+  registry, orchestrator, planners, checkpoint writer, and execution service.
+- Durable environment lifecycle must live in a new high-churn table
+  (`processEnvironmentStates`) rather than being folded into the generic
+  `processes` row.
+
+### Epic Notes
+
+- The user mental model is one process with a disposable working environment and
+  canonical truth outside the working copy.
+- Scope includes real hydration, controlled execution, checkpointing, recovery,
+  and reopen behavior; it excludes broader GitHub review and source-management
+  product workflows.
+- Stable visible controls and durable reopen behavior are explicit product
+  requirements, not implementation niceties.
+
+### Test Plan Notes
+
+- Confidence chain remains `AC -> TC -> Test File / Test Name -> Implementation
+  Module`.
+- New Epic 03 test rule: environment lifecycle, checkpoint visibility, and
+  control-state semantics must stay coherent across durable bootstrap plus live
+  updates.
+- The plan covers 57 TC conditions, 36 non-TC decided tests, and 103 total
+  planned tests across Convex, server, client, and integration layers.
+
+### Story 0 Notes
+
+- Story 0 is a true foundation story, so verification should focus on contract
+  correctness, shared fixtures, shared error vocabulary, and completeness rather
+  than end-user flow behavior.
+- Story 0's shared vocabulary is the dependency root for Stories 1 through 6,
+  so drift here will amplify downstream.
+
+### Story 1 Notes
+
+- Story 1 is the first behavior-heavy story and establishes durable first-load
+  environment truth plus stable visible control rendering.
+- Recovery states such as `stale`, `lost`, `failed`, `rebuilding`, and
+  `unavailable` are first-load visibility cases in Story 1, while Story 5 owns
+  the production flows that make them reachable.
+
+## Boundary Inventory
+
+| Boundary | Status | Story | Notes |
+|----------|--------|-------|-------|
+| Hosted provider adapter (`DaytonaProviderAdapter`) | `stub` | 2 | New external environment boundary; design references Daytona first |
+| Local provider adapter (`LocalProviderAdapter`) | `stub` | 2 | Fast-follow provider against the same contract |
+| Canonical code checkpoint writer / GitHub write boundary | `stub` | 4 | New external canonical-code persistence boundary |
+
+If any of the above remains `stub` at feature-level verification, treat it as
+blocking unless the human explicitly approves that state earlier in the run.
+
+## Cumulative Test Baseline
+
+Initial Epic 03 affected-suite baseline recorded before Story 0:
+
+- Existing tests in already-present affected suites: `74`
+- Planned tests across Epic 03 target files from the test plan: `103`
+- Newly planned files currently at baseline zero:
+  - `convex/processEnvironmentStates.test.ts`
+  - `tests/service/server/script-execution.service.test.ts`
+  - `tests/service/client/process-controls.test.ts`
+  - `tests/service/client/process-environment-panel.test.ts`
+
+Per-file baseline counts:
+
+| File | Existing test count |
+|------|---------------------|
+| `convex/sourceAttachments.test.ts` | 0 |
+| `convex/processEnvironmentStates.test.ts` | 0 |
+| `tests/service/server/process-work-surface-api.test.ts` | 10 |
+| `tests/service/server/process-actions-api.test.ts` | 14 |
+| `tests/service/server/process-live-updates.test.ts` | 3 |
+| `tests/service/server/script-execution.service.test.ts` | 0 |
+| `tests/service/client/process-work-surface-page.test.ts` | 29 |
+| `tests/service/client/process-controls.test.ts` | 0 |
+| `tests/service/client/process-environment-panel.test.ts` | 0 |
+| `tests/service/client/process-materials-section.test.ts` | 0 |
+| `tests/service/client/process-live.test.ts` | 15 |
+| `tests/service/client/process-live-status.test.ts` | 2 |
+| `tests/integration/process-work-surface.test.ts` | 1 |
+
+Interpretation:
+
+- Story 0 should create the shared contract and fixture baseline and is likely to
+  add new tests without materially reducing counts in existing suites.
+- Story 1 should expand bootstrap/control coverage substantially because many of
+  the Epic 03-targeted client and server environment tests do not exist yet.
+
+## Prompt Map
+
+### Handoff Structure
+
+Every worker and verifier handoff follows:
+
+1. objective framing
+2. reading journey
+3. execution or verification
+4. report contract
+
+### Severity Rubric
+
+```text
+CRITICAL - blocks acceptance unless fixed
+MAJOR - serious issue that normally should be fixed before acceptance
+MINOR - non-blocking, usually cheaper to fix now than track
+```
+
+### Prompt 1: Implementer
+
+```xml
+<role>
+You are the implementer for one story. Your job is to build the smallest
+correct implementation that satisfies the story and fits the tech design.
+You implement directly. A fresh verifier will review your work later.
+</role>
+
+<reading_journey>
+Read these artifacts sequentially. After each one, write 1-3 working
+observations about what matters for this story.
+
+  1. [TECH_DESIGN_INDEX]
+  2. [TECH_DESIGN_COMPANIONS - if provided]
+  3. [EPIC - if provided]
+  4. [TEST_PLAN]
+  5. [STORY]
+  6. [IMPLEMENTATION_PROMPT - if provided]
+</reading_journey>
+
+<execution>
+Follow the confidence chain: AC -> TC -> Test -> Implementation.
+
+Before touching code:
+  - list the ACs and TCs you are targeting
+  - map the relevant TCs to tests from the test plan
+  - identify likely failure modes
+  - state your implementation approach
+
+Implementation expectations:
+  - implement the story as specified
+  - add or update tests that the story and test plan require
+  - do not weaken tests to make the build go green
+  - do not hard-code visible test inputs
+  - follow the tech design's module boundaries and interfaces
+  - if the spec seems inconsistent, stop and report it rather than
+    coding around it
+  - keep seam inspection bounded; if you are still inspecting without
+    moving into edits and reportable implementation progress, stop and
+    report rather than continuing to wander
+
+Before reporting:
+  - self-review against the story's ACs and TCs
+  - run the story acceptance gate: [GATE_COMMAND]
+  - fix non-controversial issues before you report
+</execution>
+
+<report>
+Send this message to the orchestrator:
+
+  PLAN: ACs/TCs targeted and implementation approach
+  CHANGES: files created or modified
+  TESTS: tests added or updated, and why
+  GATE_RESULT: exact commands run and pass/fail
+  RESIDUAL_RISKS: edge cases not fully closed
+  SPEC_DEVIATIONS: any divergence or ambiguity discovered
+  OPEN_QUESTIONS: only if genuinely blocking
+</report>
+```
+
+### Prompt 2: Story Verifier - Codex
+
+```xml
+<role>
+You are a skeptical verifier reviewing this story for correctness,
+architecture alignment, and implementation quality.
+</role>
+
+<context_boundary>
+You have not seen the implementation discussion. Treat missing context
+as unknown.
+</context_boundary>
+
+<reading_journey>
+Read these artifacts sequentially and note 1-3 observations after each:
+
+  1. [TECH_DESIGN_INDEX]
+  2. [TECH_DESIGN_COMPANIONS - if provided]
+  3. [EPIC - if provided]
+  4. [TEST_PLAN]
+  5. [STORY]
+  6. [VERIFICATION_BUNDLE]
+  7. Story base commit: [STORY_BASE_COMMIT]. Run
+     git diff [STORY_BASE_COMMIT] -- **/*.test.* **/*.spec.*
+     and inspect what test changes this story actually introduced.
+</reading_journey>
+
+<verification_stance>
+  - Default status for every important claim is UNVERIFIED.
+  - Distinguish OBSERVED, INFERRED, and SPECULATIVE.
+  - Never assert a defect without evidence.
+  - If evidence is insufficient, mark UNRESOLVED.
+  - Treat passing tests as supporting evidence, not proof.
+  - You do not edit code. You verify and report.
+</verification_stance>
+
+<verification_protocol>
+  1. Check story correctness against the verification bundle, story,
+     and tech design.
+  2. Check architecture alignment, module boundaries, interface use,
+     and obvious pattern drift.
+  3. Check tests for strength, wrong-reason passes, or suspicious
+     shortcuts.
+  4. Categorize test-file changes against the story base commit:
+     legitimate coverage, legitimate correction, assertion weakening,
+     scope shift, or unexplained. Cross-check against the verification
+     bundle's claims.
+  5. Check for hard-coded values, special cases for known tests, or
+     implementation shortcuts that violate the intended behavior.
+  6. Run the story acceptance gate: [GATE_COMMAND]
+  7. Converge when you have either a supported blocking issue or enough
+     evidence that no blocking issue exists.
+</verification_protocol>
+
+<finding_schema>
+For each finding:
+  - finding
+  - severity: CRITICAL | MAJOR | MINOR
+  - confidence: HIGH | MEDIUM | LOW
+  - evidence
+  - disproof_attempt
+  - impact
+  - validation_step
+</finding_schema>
+
+<output_contract>
+  Write the full review to [REPORT_PATH] before responding.
+
+  VERDICT: PASS | REVISE | BLOCK
+  CORRECTNESS_FINDINGS
+  ARCHITECTURE_FINDINGS
+  TEST_DIFF_AUDIT
+  TEST_QUALITY_FINDINGS
+  BLOCKING_FINDINGS
+  NONBLOCKING_WARNINGS
+  UNRESOLVED
+  GATE_RESULT
+
+  After your review: what else did you notice but chose not to report?
+</output_contract>
+```
+
+### Prompt 3: Story Verifier - Sonnet
+
+```xml
+<role>
+You are a compliance verifier. Your job is skeptical AC-by-AC and
+TC-by-TC verification that the story was actually implemented as
+specified.
+</role>
+
+<context_boundary>
+You have not seen the implementation discussion. Treat missing context
+as unknown.
+</context_boundary>
+
+<reading_journey>
+Read these artifacts sequentially and note 1-3 observations after each:
+
+  1. [TECH_DESIGN_INDEX]
+  2. [TECH_DESIGN_COMPANIONS - if provided]
+  3. [EPIC - if provided]
+  4. [TEST_PLAN]
+  5. [STORY]
+  6. [VERIFICATION_BUNDLE]
+  7. Story base commit: [STORY_BASE_COMMIT]. Run
+     git diff [STORY_BASE_COMMIT] -- **/*.test.* **/*.spec.*
+     and inspect what test changes this story actually introduced.
+</reading_journey>
+
+<verification_stance>
+  - Default status for every requirement is UNVERIFIED.
+  - Distinguish OBSERVED, INFERRED, and SPECULATIVE.
+  - Never assert a defect without evidence.
+  - If evidence is insufficient, mark UNRESOLVED.
+  - Treat passing tests as supporting evidence, not proof.
+  - You do not edit code. You verify and report.
+</verification_stance>
+
+<verification_protocol>
+  1. Decompose the story into each AC and TC.
+  2. For each item, decide SATISFIED, VIOLATED, or UNRESOLVED with
+     evidence.
+  3. Check that the required tests exist and actually assert the
+     intended behavior.
+  4. Categorize test-file changes against the story base commit and
+     cross-check them against the verification bundle's claims.
+  5. Check mock usage against the test plan.
+  6. Identify completeness gaps, weak assertions, or placeholder tests.
+  7. Run the story acceptance gate: [GATE_COMMAND]
+  8. Converge when the requirement-by-requirement review is complete.
+</verification_protocol>
+
+<finding_schema>
+For each finding:
+  - finding
+  - severity: CRITICAL | MAJOR | MINOR
+  - confidence: HIGH | MEDIUM | LOW
+  - evidence
+  - disproof_attempt
+  - impact
+  - validation_step
+</finding_schema>
+
+<output_contract>
+  Write the full review to [REPORT_PATH] before responding.
+
+  VERDICT: PASS | REVISE | BLOCK
+  AC_TC_COVERAGE: each AC and TC with SATISFIED | VIOLATED | UNRESOLVED
+  TEST_DIFF_AUDIT
+  TEST_QUALITY_FINDINGS
+  MOCK_AUDIT_FINDINGS
+  COMPLETENESS_GAPS
+  BLOCKING_FINDINGS
+  NONBLOCKING_WARNINGS
+  UNRESOLVED
+  GATE_RESULT
+
+  After your review: what else did you notice but chose not to report?
+</output_contract>
+```
+
+### Prompt 4: Feature Reviewer - Codex
+
+```xml
+<role>
+You are reviewing the full implemented feature for correctness,
+integration coherence, and architecture alignment across stories.
+</role>
+
+<context_boundary>
+You did not participate in story-level work. Treat missing context as
+unknown.
+</context_boundary>
+
+<reading_journey>
+Read in order:
+
+  1. [TECH_DESIGN_INDEX]
+  2. [TECH_DESIGN_COMPANIONS - if provided]
+  3. [EPIC - if provided]
+  4. [TEST_PLAN]
+  5. [ALL STORY FILES]
+
+Then read the full implementation - all relevant source and test files
+for the feature, not just the files that seem obviously central.
+</reading_journey>
+
+<verification_stance>
+  - Default status is UNVERIFIED.
+  - Distinguish OBSERVED, INFERRED, and SPECULATIVE.
+  - Never assert a defect without evidence.
+  - If evidence is insufficient, mark UNRESOLVED.
+  - Passing tests are supporting evidence, not proof.
+  - Quote relevant spec or design language before verdicting disputed
+    or important items.
+</verification_stance>
+
+<verification_protocol>
+Focus on what story-level review misses:
+  - cross-story integration
+  - architecture drift
+  - contract inconsistency
+  - boundary inventory status
+  - correctness gaps that only appear end-to-end
+  - coverage blind spots and non-TC test gaps
+  - full feature gate result: [FEATURE_GATE_COMMAND]
+</verification_protocol>
+
+<finding_schema>
+For each finding:
+  - finding
+  - severity: CRITICAL | MAJOR | MINOR
+  - confidence: HIGH | MEDIUM | LOW
+  - evidence
+  - disproof_attempt
+  - impact
+  - validation_step
+</finding_schema>
+
+<output_contract>
+  Write the full review to [REPORT_PATH] before responding.
+
+  VERDICT: PASS | REVISE | BLOCK
+  CROSS_STORY_FINDINGS
+  ARCHITECTURE_FINDINGS
+  BOUNDARY_INVENTORY_STATUS
+  COVERAGE_ASSESSMENT
+  BLOCKING_FINDINGS
+  NONBLOCKING_WARNINGS
+  UNRESOLVED
+  GATE_RESULT
+
+  After your review: what else did you notice but chose not to report?
+</output_contract>
+```
+
+### Prompt 5: Feature Reviewer - Sonnet
+
+```xml
+<role>
+You are reviewing the full implemented feature for spec compliance and
+completeness across all stories. Your primary deliverable is a complete
+requirements coverage matrix.
+</role>
+
+<context_boundary>
+You did not participate in story-level work. Treat missing context as
+unknown.
+</context_boundary>
+
+<reading_journey>
+Read in order:
+
+  1. [TECH_DESIGN_INDEX]
+  2. [TECH_DESIGN_COMPANIONS - if provided]
+  3. [EPIC - if provided]
+  4. [TEST_PLAN]
+  5. [ALL STORY FILES]
+
+Then read the full implementation - all relevant source and test files
+for the feature, not just the files that seem obviously central.
+</reading_journey>
+
+<verification_stance>
+  - Default every requirement to UNVERIFIED.
+  - Distinguish OBSERVED, INFERRED, and SPECULATIVE.
+  - Never assert a defect without evidence.
+  - If evidence is insufficient, mark UNRESOLVED.
+  - Quote requirement language before verdicting important items.
+</verification_stance>
+
+<verification_protocol>
+  1. Extract every AC and TC from the epic or feature spec. This is
+     your checklist.
+  2. Map each AC and TC to the story that owns it.
+  3. For each requirement, verify the corresponding implementation and
+     test evidence. Mark SATISFIED, VIOLATED, or UNRESOLVED with evidence.
+  4. Check completeness across stories.
+  5. Check test quality and mock usage against the test plan.
+  6. Identify anything that fell between stories.
+  7. Run the feature acceptance gate: [FEATURE_GATE_COMMAND]
+</verification_protocol>
+
+<finding_schema>
+For each finding:
+  - finding
+  - severity: CRITICAL | MAJOR | MINOR
+  - confidence: HIGH | MEDIUM | LOW
+  - evidence
+  - disproof_attempt
+  - impact
+  - validation_step
+</finding_schema>
+
+<output_contract>
+  Write the full review to [REPORT_PATH] before responding.
+
+  VERDICT: PASS | REVISE | BLOCK
+  AC_TC_MATRIX
+  COMPLETENESS_GAPS
+  TEST_QUALITY_FINDINGS
+  MOCK_AUDIT_FINDINGS
+  BLOCKING_FINDINGS
+  NONBLOCKING_WARNINGS
+  UNRESOLVED
+  GATE_RESULT
+
+  After your review: what else did you notice but chose not to report?
+</output_contract>
+```
+
+## Story 0 Preflight
+
+### Refresh Notes
+
+- Reloaded `ls-codex-impl` before Story 0 dispatch.
+- Reread `stories/00-foundation.md` in full.
+- Skimmed `stories/01-environment-state-and-visible-controls.md` to keep the
+  immediate downstream consumer in view.
+- Reread the relevant current-state code seams:
+  - `apps/platform/shared/contracts/process-work-surface.ts`
+  - `apps/platform/shared/contracts/live-process-updates.ts`
+  - `apps/platform/shared/contracts/state.ts`
+  - `tests/fixtures/process-surface.ts`
+  - `tests/fixtures/live-process.ts`
+  - `apps/platform/server/errors/codes.ts`
+
+### Preflight Assessment
+
+- The current shared process-surface contract does not yet include
+  `environment`, visible `controls`, `hasEnvironment`, or source `accessMode`.
+- The current live-update contract does not yet include an `environment` entity.
+- The current process-surface client state does not yet include an
+  `environment` slice.
+- The repo already has shared fixture directories and helper patterns under
+  `tests/fixtures` and `tests/utils`, so Story 0 should extend those patterns
+  rather than inventing a new testing style.
+- `apps/platform/server/errors/codes.ts` is still carrying Story 0 placeholder
+  codes and should become part of the shared Epic 03 error vocabulary.
+
+### Story Base Commit
+
+- Story 0 base commit:
+  `e6c08484846aea19d2d6e3483728126fe7da92f2`
+
+### Lane Decision
+
+- Story 0 implementation lane:
+  Codex `gpt-5.4` with reasoning `xhigh`
+- Why:
+  Story 0 is the first story in a new technical seam, it is architecture
+  sensitive, and its contract choices fan out into every later Epic 03 story.
+
+### Expected Test Baseline
+
+- Prior affected-suite baseline:
+  `74` existing tests across already-present Epic 03-targeted suites
+- Story 0 expectation:
+  this foundation story should add shared schema/fixture/helper coverage rather
+  than broad end-user flow coverage; a healthy increment is about `8-14` tests
+  or equivalent new coverage in new test files
+- Expected post-Story-0 total:
+  about `82-88` affected-suite tests
+- Verification concern:
+  if the post-story total stays flat, review whether Story 0 added the required
+  shared coverage or only changed contracts without durable validation
+
+### Story-Specific Warnings For Implementer
+
+- Keep Story 0 scoped to shared vocabulary, fixtures, helpers, and error
+  classes. Do not implement full environment lifecycle behavior owned by later
+  stories.
+- Extend the existing shared-contract and test-fixture seams instead of adding a
+  parallel contract surface or a second fixture style.
+- Preserve backward compatibility where Story 1 depends on existing
+  process-surface bootstrap and live-update shapes while extending them with the
+  new Epic 03 vocabulary.
+
+## Next Action
+
+Story 0 is cleared for dispatch. The next step is to set the log state to
+`STORY_ACTIVE`, launch a fresh implementer, then immediately move into the
+blocked wait/harvest loop.
+
+## Orchestration Learnings
+
+### Worker-Lane Failures Seen In This Run
+
+- Story 2 exposed a repeated failure mode in the internal Codex worker lane:
+  multiple fresh workers remained in inspection or explicit `AWAITING` state
+  without crossing into code edits.
+- This was not a simple "slow worker" case. We saw:
+  - no workspace delta
+  - no concrete blocker
+  - explicit `AWAITING` replies from micro-workers
+  - repeated need to replace workers without meaningful progress
+- The external Claude helper lane, when constrained to tiny vertical slices,
+  produced real file edits immediately and recovered forward progress.
+
+### What The Current Skill Already Helped With
+
+- The blocked wait/harvest loop and stall rule were useful. They made it clear
+  when the orchestrator had stopped doing real state transitions and forced
+  explicit recovery actions.
+- Logging fix-routing, convergence, and lane replacement decisions prevented the
+  run from losing context once Story 1 and Story 2 got messy.
+- The "no fire-and-forget" rule is still correct and should remain a hard rule.
+
+### What Was Not Strong Enough
+
+- The skill does not yet force a sufficiently early check for actual
+  implementation movement after worker dispatch.
+- "Worker is active" is currently too vague. In practice, a worker can be
+  "running" while doing nothing useful.
+- The skill does not define a hard threshold like:
+  - no file edits
+  - no blocker
+  - no concrete partial output
+  after one or two bounded windows -> replace or switch lanes.
+- The skill assumes the default Codex worker lane is reliably usable for story
+  implementation. In this run, that assumption failed specifically on Story 2.
+
+### Concrete Skill Changes To Add
+
+- Add a **workspace-delta startup check** for implementation workers.
+  After dispatch, require one of:
+  - file edits in the expected write set
+  - a concrete blocker tied to a file/contract
+  - a bounded partial output such as a first patch plan tied to named files
+  If none appears within the first bounded interval, log `ORCHESTRATOR_STALL`
+  and recover immediately.
+
+- Add an **explicit `AWAITING` failure rule**.
+  If a worker replies `AWAITING`, treat that as lane failure for implementation
+  work, not as neutral status.
+
+- Add a **retry cap for the same worker transport**.
+  Example:
+  - first stall -> interrupt and redirect
+  - second stall with zero file movement -> replace worker
+  - third stall across replacements -> switch transport strategy instead of
+    spawning another equivalent worker
+
+- Add a **micro-slice rescue mode** section.
+  When a story worker stalls, switch from full-story prompts to the smallest
+  vertical slice with:
+  - explicit file list
+  - one concrete behavior change
+  - one focused test command
+  - no broad exploration allowance
+
+- Add a **transport fallback rule**.
+  If the Codex worker lane repeatedly stalls without edits, allow the
+  orchestrator to switch to a reliable external helper lane for bounded
+  implementation slices while still preserving the same verification contract.
+
+- Add a **log structure rule**.
+  Keep the prompt map and static setup material separate from the rolling run
+  journal so the newest operational issues are easy to scan at the bottom of
+  the log.
+
+### Current Recommendation
+
+- Keep using the orchestration state machine and dual verification model.
+- Strengthen the skill around worker-start health, explicit `AWAITING`
+  detection, and transport fallback.
+- Treat "no edits + no blocker + repeated waiting" as a first-class failure
+  pattern, not as ordinary slow progress.
+
+### Handoff Note For Skill-Maintainer Agents
+
+- The purpose of this section is to make the run learnings easy to mine back
+  into the orchestration skill itself.
+- If a future agent is updating `ls-codex-impl`, prioritize the evidence in:
+  - `Story 2 Waiting-State Recovery`
+  - `Story 2 Replacement Dispatch`
+  - `Story 2 Replacement Lane Failure`
+  - this `Orchestration Learnings` section
+- The most important improvement target from this run is not verifier quality.
+  It is implementation-lane startup detection and recovery when workers remain
+  in inspection or explicit `AWAITING` mode without producing file edits.
+
+## Story 2 Handoff Status
+
+### Current Acceptance State
+
+- Story 2 is **not accepted**.
+- Story 2 is **not committed**.
+- The current Story 2 implementation tree is materially ahead of the first
+  Story 2 review bundle and remains uncommitted.
+
+### Terminology Correction
+
+- For this run, the remaining Story 2 issues are best described as
+  **unfinished acceptance work**, not generic "blockers", unless they actually
+  prevent any further progress.
+- Real blockers encountered in this run were:
+  - implementation workers that stayed in inspection / `AWAITING`
+  - red gate failures from mechanical follow-on changes
+- The remaining Story 2 gap is primarily that the story is still **not done** at
+  the level required for acceptance.
+
+### Story 2 Chronology
+
+1. Story 2 initial internal Codex workers stalled repeatedly:
+   - no workspace delta
+   - no concrete blocker
+   - repeated `AWAITING`
+   - multiple lane replacements without useful edits
+2. Orchestration switched to bounded external helper slices.
+3. Early successful Story 2 slices established:
+   - `start` / `resume` return `environment.state = preparing` in-session
+   - client bootstrap/action patch applies returned `environment`
+   - source `read_only` / `read_write` visibility in the materials section
+   - client page assertions for visible preparation state after `start` /
+     `resume`
+   - client live/store assertions for preparation progress/failure sequencing
+4. Hydration-planning work then landed:
+   - `WorkingSetPlan`
+   - `getProcessHydrationPlan` / `setProcessHydrationPlan`
+   - `hydration-planner.ts`
+   - plan persistence from `start` / `resume`
+5. Follow-on mechanical fixes were required:
+   - store test doubles updated repeatedly as `PlatformStore` expanded
+   - formatting drift in new files
+   - hydration-plan output coverage initially red until the planner actually
+     included `outputIds`
+6. Later external slices also introduced a minimal provider-backed/server-driven
+   preparation path on the current tree:
+   - `apps/platform/server/services/processes/environment/provider-adapter.ts`
+   - `apps/platform/server/services/processes/environment/process-environment.service.ts`
+   - `apps/platform/server/app.ts` wiring for those services
+   Attribution is partially uncertain because some later external slices did not
+   reliably emit report artifacts before changing the tree.
+
+### Story 2 Review History
+
+- **Round 1 Codex review:** `REVISE`
+  - current outputs absent from hydration path
+  - no real server-driven preparation / progress / failure path
+  - process presented as `running` before readiness
+- **Round 1 Sonnet review:** `REVISE`
+  - agreed that planning-only was not enough for AC-2.2
+- Additional Story 2 slices landed after those reviews.
+- **Round 2 Codex review:** `REVISE`
+  - still said provider-backed hydration execution and no-running-before-ready
+    were not sufficient on the reviewed tree
+- **Round 2 Sonnet review:** `REVISE`
+  - same essential conclusion: planning and UI were strong, but AC-2.2 through
+    AC-2.4 were not fully satisfied strongly enough for acceptance
+- Important note:
+  the current working tree has moved forward again after the round-2 review
+  artifacts. The latest review artifacts may therefore understate what is now in
+  the tree.
+
+### Current Working-Tree State
+
+Observed modified tracked files against Story 2 base commit
+`326d8c9cc4ac6455f70bc9a9fe9c5c9ab1b81579`:
+
+- `apps/platform/client/app/bootstrap.ts`
+- `apps/platform/client/features/processes/process-materials-section.ts`
+- `apps/platform/server/app.ts`
+- `apps/platform/server/services/processes/process-resume.service.ts`
+- `apps/platform/server/services/processes/process-start.service.ts`
+- `apps/platform/server/services/projects/platform-store.ts`
+- `apps/platform/shared/contracts/process-work-surface.ts`
+- `convex/processEnvironmentStates.ts`
+- `docs/spec-build/v2/core-platform-prd.md`
+- `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/tech-design-server.md`
+- `tests/fixtures/live-process.ts`
+- `tests/fixtures/process-surface.ts`
+- `tests/service/client/process-live.test.ts`
+- `tests/service/client/process-work-surface-page.test.ts`
+- `tests/service/server/auth-routes.test.ts`
+- `tests/service/server/process-actions-api.test.ts`
+- `tests/service/server/process-live-updates.test.ts`
+- `tests/service/server/process-work-surface-api.test.ts`
+- `tests/service/server/processes-api.test.ts`
+
+Observed untracked Story 2-relevant files:
+
+- `apps/platform/server/services/processes/environment/hydration-planner.ts`
+- `apps/platform/server/services/processes/environment/process-environment.service.ts`
+- `apps/platform/server/services/processes/environment/provider-adapter.ts`
+- `tests/service/client/process-materials-section.test.ts`
+
+Observed unrelated / suspicious doc drift that should be triaged before any
+Story 2 commit:
+
+- `docs/spec-build/v2/core-platform-prd.md`
+- `docs/spec-build/v2/epics/04--artifact-review-and-package-surface/`
+- `docs/spec-build/v2/epics/05--source-attachments-and-canonical-source-management/`
+
+The Story 2 server design doc also changed:
+
+- `docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/tech-design-server.md`
+
+That may be legitimate alignment or stray helper drift and should be reviewed
+before commit.
+
+### Latest Verified Green Baseline
+
+The current Story 2 tree was observed green on:
+
+- `corepack pnpm run verify`
+
+Latest observed totals on the current tree:
+
+- Convex tests: `9`
+- Server tests: `79`
+- Client tests: `130`
+
+This means the current tree is internally consistent enough to build and pass
+the repository gate, but it has **not** yet been re-reviewed from scratch after
+all later Story 2 slices landed.
+
+### What The Current Tree Clearly Delivers
+
+- visible `preparing` environment state in-session after `start` / `resume`
+- durable bootstrap reflection of that `preparing` state
+- client page assertions for visible preparation state after `start` / `resume`
+- source `read_only` vs `read_write` visibility in server bootstrap and client
+  materials rendering
+- hydration-plan persistence including:
+  - artifacts
+  - sources
+  - outputs
+- client live/store tests for:
+  - preparation progress
+  - preparation failure
+  - readiness before running
+  - no running after failed preparation
+- minimal provider/service files now exist for server-driven hydration work:
+  - `provider-adapter.ts`
+  - `process-environment.service.ts`
+  - `app.ts` wiring
+
+### What Still Needs Fresh Verification
+
+Because later slices landed after the last review artifacts, the next harness
+should freshly verify:
+
+1. whether the new `ProcessEnvironmentService` and provider adapter path are
+   actually invoked from `start` / `resume` in the current tree
+2. whether that path is strong enough to satisfy AC-2.2 through AC-2.4
+3. whether the process is still presented as `running` before readiness in any
+   user-visible path
+4. whether the new provider/service files have direct server test coverage in
+   `tests/service/server/process-live-updates.test.ts`
+5. whether the doc changes should stay or be reverted before any commit
+
+### Recommended Next Move For Another Harness
+
+- Treat the current tree as the new Story 2 baseline.
+- Build a fresh Story 2 verification bundle from the **current** tree, not the
+  existing round-2 bundle.
+- Re-run fresh dual verification on the current tree before deciding whether
+  Story 2 is now acceptable or still needs one more implementation slice.
+
+---
+
+## Run State — Hybrid `ls-team-impl-cc` Pickup
+
+- `state`: `STORY_ACTIVE`
+- `phase`: `verification`
+- `story`: `stories/02-start-or-resume-with-environment-preparation.md`
+- `harness`: hybrid — `ls-team-impl-cc` process discipline with Codex `gpt-5.4 xhigh` in place of Sonnet for implementation and one verifier lane
+- `picked_up_at`: `2026-04-15`
+- `picked_up_by`: fresh Claude Opus 4.6 orchestrator (this session)
+
+### Why the harness change
+
+Previous `ls-codex-impl` run stalled inside Story 2. Internal Codex worker lane
+repeatedly returned `AWAITING` with zero workspace delta. External Claude
+helper micro-slices produced the current tree forward through slice 9. The
+orchestration learnings are preserved earlier in this log and are now folded
+into the hybrid lane policy below.
+
+### Lane Policy (hybrid)
+
+| Role | Model | Dispatch path |
+|------|-------|---------------|
+| Orchestrator | Claude Opus 4.6 | This session. Does not edit code. Runs gate. |
+| Implementer | Codex `gpt-5.4` reasoning `xhigh` | via `codex-subagent` skill inside an Opus Claude Code teammate |
+| Verifier A | Codex `gpt-5.4` reasoning `xhigh`, fresh session | same pattern, fresh teammate per verification round |
+| Verifier B | Claude Sonnet 4.6 max, fresh session | general-purpose Agent, `model: sonnet` |
+| Rescue | on-demand Claude subagents via `Agent` | only when Codex implementer stalls per safeguard below |
+
+### Carried-Forward Safeguards (from Story 2 learnings)
+
+1. **Workspace-delta startup check.** After Codex dispatch, require a first
+   meaningful file edit or a concrete blocker tied to a named file/contract
+   within one bounded window. No delta + no blocker → harvest status.
+2. **Explicit `AWAITING` = lane failure.** Not slow progress.
+3. **Retry cap per transport.** First stall → interrupt and redirect. Second
+   stall with zero movement → replace worker. Third stall → switch transport
+   to a Claude subagent for bounded slices.
+4. **Skill reload every story boundary.**
+5. **Orchestrator runs the gate** (`corepack pnpm run verify`) before any
+   acceptance commit. Never delegated, never trusted from reports alone.
+
+### Current Tree Status (inherited)
+
+- HEAD: `326d8c9` (Story 1 accepted)
+- Story 2 base commit: `326d8c9`
+- Working tree: Story 2 slices 1-9 landed, uncommitted
+- Last gate result: `corepack pnpm run verify` → passed (9 convex / 81 server /
+  130 client) per slice 9 report
+- Gap from round-2 reviews (server-driven hydration, no-running-before-ready)
+  was the target of slices 8-9; not yet re-verified by fresh reviewers
+
+### Immediate Action Queue
+
+1. Build Round 3 verification bundle against the current tree (includes slices
+   1-9, including the new `environment/` server services and live-update
+   transitions).
+2. Dispatch Codex `xhigh` verifier + Sonnet 4.6 max verifier in parallel
+   against the current tree.
+3. On dual PASS → stage all Story 2 paths + any adjacent non-Story-2 uncommitted
+   work the user is happy to fold in (per explicit instruction: don't be picky
+   about commit hygiene) and commit `feat: Story 2 — start or resume with
+   environment preparation`.
+4. On REVISE → route a bounded Codex fix slice, re-verify, then commit.
+5. Advance to Story 3 (controlled execution + live environment state) under
+   the hybrid TDD cycle (red-phase commit, then green, then dual verify).
+
+### Diagnostic: Teammate-Managed Codex Exec Gets Orphaned (2026-04-15)
+
+**Symptom:** Story 2 Round 3 Codex verifier dispatched twice via a Claude
+Code teammate using the `codex-subagent` skill. Both times `codex exec`
+started, emitted `thread.started` + `turn.started` + one agent intro
+message + 2–3 successful shell reads, then stopped writing to the jsonl
+with **no `turn.completed` signal**. `ps` showed no live `codex exec`
+subprocess; `lsof` showed no open write fd on the jsonl; the session id
+was preserved but zero tokens reported and no error line was ever written
+to the jsonl.
+
+**Investigation steps:**
+- Confirmed Codex CLI works: direct `codex exec --json "Reply with OK"`
+  completed cleanly with `turn.completed` and proper usage stats
+- Confirmed codex-cli 0.120.0, `model_reasoning_effort=xhigh` default,
+  `model_context_window=1050000` — no resource/config issue
+- Confirmed zsh init scripts are tiny (.zprofile 79B, .zshrc 141B,
+  .zshenv 373B) — no shell-init hang
+- Confirmed no OOM / Jetsam / memorystatus kills in `log show` for the
+  last hour
+- Confirmed the teammate-dispatched jsonl had no `turn.completed`, no
+  `thread.failed`, no stderr file (`codex-subagent` redirects
+  `2>/dev/null` by default, swallowing errors)
+
+**Root cause:** The Claude Code teammate spawned `codex exec` as a child
+process during its turn. When the teammate reported back to the
+orchestrator (e.g., "monitor armed, continuing to work" per my
+instruction `do NOT let yourself get blocked waiting synchronously —
+poll actively`), the teammate returned control and went idle. Its child
+`codex exec` process was orphaned/reaped mid-turn. Codex had done 2–3
+shell reads, was in the middle of reasoning, and the process
+disappeared before it could emit `turn.completed`.
+
+**Fix:** Dispatch `codex exec` **directly from the orchestrator's own
+Bash session** using `run_in_background`. The orchestrator session is
+the long-lived root. Its Bash children survive independently until they
+exit. The background Bash tool's completion notification is the
+reliable signal that `codex exec` finished (clean or not).
+
+Skeleton:
+
+```bash
+codex exec --json - < /tmp/codex-prompt.txt \
+  > /tmp/codex-run.jsonl \
+  2> /tmp/codex-run.err
+```
+
+With `run_in_background: true` on the Bash tool. Capture stderr
+explicitly — do NOT use the `2>/dev/null` pattern the codex-subagent
+skill defaults to.
+
+**Rule going forward:** Do not route long-running external CLI tasks
+(Codex exec, any multi-minute external command) through a Claude Code
+teammate unless the teammate blocks synchronously on the full lifetime
+of the subprocess. The teammate layer is cheap context but an unsafe
+lifecycle manager. Prefer direct `run_in_background` dispatch for
+codex exec and monitor the jsonl for `turn.completed` or stall.
+
+**Secondary fix:** Always capture stderr from `codex exec`. The skill's
+default `2>/dev/null` pattern is unsafe for diagnosis.
+
+

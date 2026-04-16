@@ -391,12 +391,14 @@ export type ProcessWorkSurfaceResponse = z.infer<typeof processWorkSurfaceRespon
 export const startProcessResponseSchema = z.object({
   process: processSurfaceSummarySchema,
   currentRequest: currentProcessRequestSchema.nullable(),
+  environment: environmentSummarySchema.default(defaultEnvironmentSummary),
 });
 export type StartProcessResponse = z.infer<typeof startProcessResponseSchema>;
 
 export const resumeProcessResponseSchema = z.object({
   process: processSurfaceSummarySchema,
   currentRequest: currentProcessRequestSchema.nullable(),
+  environment: environmentSummarySchema.default(defaultEnvironmentSummary),
 });
 export type ResumeProcessResponse = z.infer<typeof resumeProcessResponseSchema>;
 

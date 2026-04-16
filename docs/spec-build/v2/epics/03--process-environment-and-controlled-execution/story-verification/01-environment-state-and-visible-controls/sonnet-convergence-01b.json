@@ -1,0 +1,36 @@
+{
+  "session_id": "f4c6b64c-5525-4c71-a277-e1744b201869",
+  "result": "Written to `sonnet-convergence-01b.md`. Here's the summary:\n\n**1. Retract:** AC-1.4 SATISFIED was wrong. The code directly confirms the finding — all three action services call `buildProcessSurfaceSummary(result.process)` without environment, hitting the `absent` fallback which enables `start` and `resume` regardless of durable environment state.\n\n**2. Still stand behind:** Bootstrap path is correct (`getSurface` passes environment at line 404). Derivation logic is sound. AC-1.1–1.3, 1.5 stand.\n\n**3. Weaker/stronger:** AC-1.4 HIGH confidence collapses — the original concern about `fallbackEnvironmentSummary` was valid but I incorrectly dismissed it as safe after only checking `getSurface`. The three action services were outside that check.\n\n**4. Smallest check:** Seed `stale` environment, call `POST /processes/:id/start`, assert `controls.start.enabled === false`. The code as written fails this — `absent` fallback enables the control.\n\n**Revised verdict: AC-1.4 FAIL.** This is blocking.",
+  "model": "claude-sonnet-4-6",
+  "usage": {
+    "input_tokens": 50,
+    "cache_creation_input_tokens": 24392,
+    "cache_read_input_tokens": 143582,
+    "output_tokens": 3545,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24392,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 8,
+        "output_tokens": 301,
+        "cache_read_input_tokens": 34761,
+        "cache_creation_input_tokens": 1926,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1926
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "session_file": "/Users/leemoore/.claude/projects/-Users-leemoore-code-liminal-build/f4c6b64c-5525-4c71-a277-e1744b201869.jsonl"
+}

@@ -1,0 +1,36 @@
+{
+  "session_id": "aea6acc7-e69a-49ba-b874-6d8684cc379f",
+  "result": "## VERDICT: PASS\n\nReview written to `story-verification/01-environment-state-and-visible-controls/sonnet-review.md`.\n\n---\n\n### Summary\n\n**AC/TC Coverage:** All 5 ACs satisfied, all 17 TC conditions covered by passing tests.\n\n**Gate:** `corepack pnpm run verify` passes clean — 9 Convex + 66 server service + 122 client service + 2 integration = 199 tests.\n\n---\n\n### Non-blocking warnings\n\n| # | Severity | Finding |\n|---|----------|---------|\n| NW-1 | MINOR | `providerKind` nullable — documented deviation, justified (Story 2 fills it), contained |\n| NW-2 | MINOR | `convex codegen` not run against live backend; expected in this test-tier shape |\n| NW-3 | MINOR | One planned non-TC test (\"control order stable on rerender\") absent from `process-controls.test.ts` |\n| TQF-1 | MINOR | TC-1.1k only asserts `rehydrate` disabled reason; doesn't verify `start`/`resume`/`rebuild` are also disabled |\n| CG-1 | MINOR | `failed` + `environmentId === null` disables rehydrate in the implementation but this path is not tested |\n| CG-4 | MINOR | Server bootstrap not explicitly tested for `lost` environment state (client layer covers it) |\n\n### Invisible risk worth tracking\n\n`convex/processEnvironmentStates.ts` has only a `query`, no mutations — correct for Story 1 read-only scope, but Stories 2–5 will need to add Convex mutations and keep `InMemoryPlatformStore` in sync with the real Convex shapes.",
+  "model": "claude-sonnet-4-6",
+  "usage": {
+    "input_tokens": 130,
+    "cache_creation_input_tokens": 111100,
+    "cache_read_input_tokens": 1297361,
+    "output_tokens": 15968,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 111100,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 8,
+        "output_tokens": 453,
+        "cache_read_input_tokens": 118171,
+        "cache_creation_input_tokens": 5224,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 5224
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "session_file": "/Users/leemoore/.claude/projects/-Users-leemoore-code-liminal-build/aea6acc7-e69a-49ba-b874-6d8684cc379f.jsonl"
+}

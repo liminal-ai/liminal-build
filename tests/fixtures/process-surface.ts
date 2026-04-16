@@ -342,6 +342,7 @@ export const startedProcessResponseFixture = startProcessResponseSchema.parse({
     updatedAt: '2026-04-13T12:20:00.000Z',
   }),
   currentRequest: null,
+  environment: preparingEnvironmentFixture,
 });
 
 export const startedWaitingProcessResponseFixture = startProcessResponseSchema.parse({
@@ -352,6 +353,7 @@ export const startedWaitingProcessResponseFixture = startProcessResponseSchema.p
     updatedAt: '2026-04-13T12:21:00.000Z',
   }),
   currentRequest: currentProcessRequestFixture,
+  environment: preparingEnvironmentFixture,
 });
 
 export const resumedPausedProcessResponseFixture = resumeProcessResponseSchema.parse({
@@ -362,6 +364,7 @@ export const resumedPausedProcessResponseFixture = resumeProcessResponseSchema.p
     updatedAt: '2026-04-13T12:24:00.000Z',
   }),
   currentRequest: null,
+  environment: preparingEnvironmentFixture,
 });
 
 export const resumedPausedToCompletedProcessResponseFixture = resumeProcessResponseSchema.parse({
@@ -382,6 +385,7 @@ export const resumedInterruptedProcessResponseFixture = resumeProcessResponseSch
     updatedAt: '2026-04-13T12:27:00.000Z',
   }),
   currentRequest: null,
+  environment: preparingEnvironmentFixture,
 });
 
 export const resumedInterruptedToFailedProcessResponseFixture = resumeProcessResponseSchema.parse({

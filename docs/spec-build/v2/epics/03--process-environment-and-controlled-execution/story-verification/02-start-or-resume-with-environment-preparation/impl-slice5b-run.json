@@ -1,0 +1,36 @@
+{
+  "session_id": "0162833f-3010-4e00-b8f7-03b20419be36",
+  "result": "Done. Here's what changed:\n\n**`tests/fixtures/live-process.ts`** — added `environmentFailedUpsertLiveFixture` (seq 19, `failedEnvironmentFixture` — plain preparation failure, no checkpoint result).\n\n**`tests/service/client/process-live.test.ts`** — four Story 2 TCs are now explicit and semantically precise:\n\n| TC | Scenario | What changed |\n|----|----------|-------------|\n| TC-2.3a | hydration progress visible | No change (was already correct) |\n| TC-2.3b | hydration failure visible | Now uses plain `failedEnvironmentFixture` (not checkpoint failure); asserts `state: 'failed'`, `blockedReason` contains \"Preparation failed\", `lastCheckpointResult: null` |\n| TC-2.4a | running only after readiness | Now a three-step sequence: `preparing → ready → running` with intermediate state assertions |\n| TC-2.4b | running doesn't appear after failed preparation | Now sequential `preparing → failed` using the plain failure fixture; explicitly asserts `state !== 'running'` |\n\n19/19 pass. Lint clean.",
+  "model": "claude-sonnet-4-6",
+  "usage": {
+    "input_tokens": 211,
+    "cache_creation_input_tokens": 90069,
+    "cache_read_input_tokens": 1673996,
+    "output_tokens": 28369,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 90069,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 8,
+        "output_tokens": 302,
+        "cache_read_input_tokens": 89155,
+        "cache_creation_input_tokens": 1023,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1023
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "session_file": "/Users/leemoore/.claude/projects/-Users-leemoore-code-liminal-build/0162833f-3010-4e00-b8f7-03b20419be36.jsonl"
+}

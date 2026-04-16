@@ -20,6 +20,11 @@ import {
 } from './services/processes/live/process-live-hub.js';
 import { ProcessModuleRegistry } from './services/processes/process-module-registry.js';
 import { ProcessAccessService } from './services/processes/process-access.service.js';
+import { ProcessEnvironmentService } from './services/processes/environment/process-environment.service.js';
+import {
+  InMemoryProviderAdapter,
+  type ProviderAdapter,
+} from './services/processes/environment/provider-adapter.js';
 import { ProcessResponseService } from './services/processes/process-response.service.js';
 import { ProcessResumeService } from './services/processes/process-resume.service.js';
 import { ProcessStartService } from './services/processes/process-start.service.js';
@@ -52,6 +57,8 @@ export interface CreateAppOptions {
   processLiveHub?: ProcessLiveHub;
   processAccessService?: ProcessAccessService;
   processModuleRegistry?: ProcessModuleRegistry;
+  providerAdapter?: ProviderAdapter;
+  processEnvironmentService?: ProcessEnvironmentService;
   processResponseService?: ProcessResponseService;
   processRegistrationService?: ProcessRegistrationService;
   processResumeService?: ProcessResumeService;
@@ -110,12 +117,26 @@ export async function createApp(options: CreateAppOptions = {}) {
   const processResponseService =
     options.processResponseService ??
     new ProcessResponseService(platformStore, processAccessService, processLiveHub);
+  const providerAdapter = options.providerAdapter ?? new InMemoryProviderAdapter();
+  const processEnvironmentService =
+    options.processEnvironmentService ??
+    new ProcessEnvironmentService(platformStore, providerAdapter, processLiveHub);
   const processStartService =
     options.processStartService ??
-    new ProcessStartService(platformStore, processAccessService, processLiveHub);
+    new ProcessStartService(
+      platformStore,
+      processAccessService,
+      processLiveHub,
+      processEnvironmentService,
+    );
   const processResumeService =
     options.processResumeService ??
-    new ProcessResumeService(platformStore, processAccessService, processLiveHub);
+    new ProcessResumeService(
+      platformStore,
+      processAccessService,
+      processLiveHub,
+      processEnvironmentService,
+    );
   const processWorkSurfaceService =
     options.processWorkSurfaceService ??
     new DefaultProcessWorkSurfaceService(platformStore, processAccessService);

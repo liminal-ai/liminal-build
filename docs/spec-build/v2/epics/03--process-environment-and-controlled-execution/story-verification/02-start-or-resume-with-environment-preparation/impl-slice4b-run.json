@@ -1,0 +1,36 @@
+{
+  "session_id": "0b58e7ed-41c1-4cdf-b099-9fc8ba79f240",
+  "result": "Done. Here's what happened:\n\n**Fixture state (already correct from prior Codex session):**\n- `startedProcessResponseFixture`, `startedWaitingProcessResponseFixture`, `resumedPausedProcessResponseFixture`, `resumedInterruptedProcessResponseFixture` — all carry `environment: preparingEnvironmentFixture`\n\n**Test changes made in this slice (TC-2.1a and TC-2.1b):**\n- Removed intermediate `environmentPanel*` queries that used optional chaining (`?.textContent`) — these could pass vacuously if the element was absent\n- Removed generic `body.textContent.toContain('Running')` and `nextActionLabel` assertions\n- Replaced with a single direct `body.textContent.toContain('State: Preparing environment')` in each test\n\n**Result:** 36/36 pass. The assertions now specifically verify preparation state is visible immediately after Start/Resume, not generic process status.",
+  "model": "claude-sonnet-4-6",
+  "usage": {
+    "input_tokens": 285,
+    "cache_creation_input_tokens": 94319,
+    "cache_read_input_tokens": 2706055,
+    "output_tokens": 22812,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 94319,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 8,
+        "output_tokens": 245,
+        "cache_read_input_tokens": 105488,
+        "cache_creation_input_tokens": 300,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 300
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "session_file": "/Users/leemoore/.claude/projects/-Users-leemoore-code-liminal-build/0b58e7ed-41c1-4cdf-b099-9fc8ba79f240.jsonl"
+}

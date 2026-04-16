@@ -1,0 +1,36 @@
+{
+  "session_id": "4611e5c4-c656-4831-b6cc-4d45f19f5edd",
+  "result": "Done. Here's what was built:\n\n## Summary\n\n**Review blocker resolved:** `start`/`resume` now have a real server-side path that executes hydration work and transitions environment state from `preparing` → `ready` or `failed`.\n\n### New files\n- `environment/provider-adapter.ts` — `ProviderAdapter` interface, `InMemoryProviderAdapter` (instant success, returns `env-mem-<processId>`), `FailingProviderAdapter` (for test failure path)\n- `environment/process-environment.service.ts` — `runHydrationAsync` fire-and-forget: reads hydration plan → calls adapter → upserts `ready`/`failed` in store → publishes to live hub\n\n### Modified files\n- `process-start.service.ts` / `process-resume.service.ts` — added optional `ProcessEnvironmentService` 4th ctor param; calls `runHydrationAsync` after the hydration plan is set (before the HTTP response returns)\n- `app.ts` — wires `InMemoryProviderAdapter` + `ProcessEnvironmentService` by default; both injectable via `CreateAppOptions`\n- `process-live-updates.test.ts` — new `describe('server-driven environment preparation')` with 2 websocket tests proving the transition without any manual `processLiveHub.publish()` call in the test\n- `process-actions-api.test.ts` — updated `S2-TC-2.1a` bootstrap assertion to `ready` (InMemory adapter resolves as microtasks before the next `await app.inject()`)\n\n### Results\n- **81 tests pass**, full `pnpm run verify` green (format, lint, typecheck, build, all test suites)\n- Both new tests assert server-causation: HTTP response shows `preparing`, then a later websocket message (not manually triggered) shows `ready` or `failed`",
+  "model": "claude-haiku-4-5-20251001",
+  "usage": {
+    "input_tokens": 597,
+    "cache_creation_input_tokens": 109724,
+    "cache_read_input_tokens": 5810654,
+    "output_tokens": 43068,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 109724,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 8,
+        "output_tokens": 464,
+        "cache_read_input_tokens": 119082,
+        "cache_creation_input_tokens": 345,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 345
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "session_file": "/Users/leemoore/.claude/projects/-Users-leemoore-code-liminal-build/4611e5c4-c656-4831-b6cc-4d45f19f5edd.jsonl"
+}

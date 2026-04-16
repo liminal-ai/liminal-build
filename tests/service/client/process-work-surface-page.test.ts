@@ -910,10 +910,7 @@ describe('process work surface page', () => {
     startButton.click();
     await flush();
 
-    expect(dom.window.document.body.textContent).toContain('Running');
-    expect(dom.window.document.body.textContent).toContain(
-      startedProcessResponseFixture.process.nextActionLabel ?? '',
-    );
+    expect(dom.window.document.body.textContent).toContain('State: Preparing environment');
 
     expect(
       countSurfaceBootstrapRequests(fetchMock, {
@@ -943,10 +940,7 @@ describe('process work surface page', () => {
     resumeButton.click();
     await flush();
 
-    expect(dom.window.document.body.textContent).toContain('Running');
-    expect(dom.window.document.body.textContent).toContain(
-      resumedPausedProcessResponseFixture.process.nextActionLabel ?? '',
-    );
+    expect(dom.window.document.body.textContent).toContain('State: Preparing environment');
   });
 
   it('TC-2.1c clicking Resume on an interrupted process applies the returned process state in-session', async () => {
@@ -1344,6 +1338,90 @@ describe('process work surface page', () => {
         processId: readyProcessWorkSurfaceFixture.process.processId,
       }),
     ).toBe(1);
+  });
+
+  it('TC-2.6a shows preparing environment state in the environment panel immediately after Start without a manual refresh', async () => {
+    installInteractiveFetchMock({
+      surface: earlyProcessWorkSurfaceFixture,
+      actionPayload: startedProcessResponseFixture,
+      action: 'start',
+    });
+    const dom = await renderInteractiveProcessSurface(
+      `http://localhost:5001/projects/${earlyProcessWorkSurfaceFixture.project.projectId}/processes/${earlyProcessWorkSurfaceFixture.process.processId}`,
+    );
+    const startButton = [...dom.window.document.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Start process',
+    );
+
+    if (!(startButton instanceof dom.window.HTMLButtonElement)) {
+      throw new Error('Expected the process work surface to render a Start process button.');
+    }
+
+    startButton.click();
+    await flush();
+
+    const environmentPanel = dom.window.document.querySelector(
+      '[data-process-environment-panel="true"]',
+    );
+
+    expect(environmentPanel?.textContent).toContain('State: Preparing environment');
+    expect(dom.window.document.body.textContent).toContain('Running');
+  });
+
+  it('TC-2.6b shows preparing environment state in the environment panel immediately after Resume from paused without a manual refresh', async () => {
+    installInteractiveFetchMock({
+      surface: pausedProcessWorkSurfaceFixture,
+      actionPayload: resumedPausedProcessResponseFixture,
+      action: 'resume',
+    });
+    const dom = await renderInteractiveProcessSurface(
+      `http://localhost:5001/projects/${pausedProcessWorkSurfaceFixture.project.projectId}/processes/${pausedProcessWorkSurfaceFixture.process.processId}`,
+    );
+    const resumeButton = [...dom.window.document.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Resume process',
+    );
+
+    if (!(resumeButton instanceof dom.window.HTMLButtonElement)) {
+      throw new Error('Expected the process work surface to render a Resume process button.');
+    }
+
+    resumeButton.click();
+    await flush();
+
+    const environmentPanel = dom.window.document.querySelector(
+      '[data-process-environment-panel="true"]',
+    );
+
+    expect(environmentPanel?.textContent).toContain('State: Preparing environment');
+    expect(dom.window.document.body.textContent).toContain('Running');
+  });
+
+  it('TC-2.6c shows preparing environment state in the environment panel immediately after Resume from interrupted without a manual refresh', async () => {
+    installInteractiveFetchMock({
+      surface: interruptedProcessWorkSurfaceFixture,
+      actionPayload: resumedInterruptedProcessResponseFixture,
+      action: 'resume',
+    });
+    const dom = await renderInteractiveProcessSurface(
+      `http://localhost:5001/projects/${interruptedProcessWorkSurfaceFixture.project.projectId}/processes/${interruptedProcessWorkSurfaceFixture.process.processId}`,
+    );
+    const resumeButton = [...dom.window.document.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Resume process',
+    );
+
+    if (!(resumeButton instanceof dom.window.HTMLButtonElement)) {
+      throw new Error('Expected the process work surface to render a Resume process button.');
+    }
+
+    resumeButton.click();
+    await flush();
+
+    const environmentPanel = dom.window.document.querySelector(
+      '[data-process-environment-panel="true"]',
+    );
+
+    expect(environmentPanel?.textContent).toContain('State: Preparing environment');
+    expect(dom.window.document.body.textContent).toContain('Running');
   });
 
   it('TC-3.5b shows a bounded error and does not create partial visible history when response submission fails', async () => {

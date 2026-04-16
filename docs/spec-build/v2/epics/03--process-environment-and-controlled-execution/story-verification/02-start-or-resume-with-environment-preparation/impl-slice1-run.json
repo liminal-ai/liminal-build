@@ -1,0 +1,36 @@
+{
+  "session_id": "49cfa380-913c-4551-aa43-93f1950771db",
+  "result": "All 20 tests pass. Here's what was implemented:\n\n**`process-start.service.ts`** — already upserted to `preparing`, but wasn't passing `environment` in the response. Now conditionally upserts only when the result status is `running`/`waiting` (skips for terminal results), and includes `environment` in `startProcessResponseSchema.parse()`.\n\n**`process-resume.service.ts`** — previously only read env, never transitioned it. Now fetches the existing env, then upserts to `preparing` (preserving `environmentId` + `lastHydratedAt`) when the result process is `running` or `waiting`. Includes `environment` in the response.\n\n**`process-actions-api.test.ts`** — 5 new tests added covering:\n- S2-TC-2.1a: start returns `environment.state = preparing` in the same session + bootstrap durability\n- S2-TC-2.1b: resume returns preparing when env is absent + preserves hydration context from prior `ready` env\n- S2-TC-2.4b: terminal start result does not enter preparing state\n- Updated existing \"resume always enters preparing\" test to assert the correct preparing-state disabled reasons\n\nReport written to `story-verification/02-start-or-resume-with-environment-preparation/impl-slice1-report.md`.",
+  "model": "claude-sonnet-4-6",
+  "usage": {
+    "input_tokens": 194,
+    "cache_creation_input_tokens": 78014,
+    "cache_read_input_tokens": 1649140,
+    "output_tokens": 17483,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 78014,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 8,
+        "output_tokens": 337,
+        "cache_read_input_tokens": 89334,
+        "cache_creation_input_tokens": 975,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 975
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "session_file": "/Users/leemoore/.claude/projects/-Users-leemoore-code-liminal-build/49cfa380-913c-4551-aa43-93f1950771db.jsonl"
+}

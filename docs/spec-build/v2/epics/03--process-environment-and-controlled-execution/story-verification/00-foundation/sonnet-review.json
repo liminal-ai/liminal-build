@@ -1,0 +1,36 @@
+{
+  "session_id": "99a50a2d-963e-42a9-a37a-6983e0fadeb4",
+  "result": "---\n\n## VERDICT: PASS\n\n**Gate:** `corepack pnpm run verify` — 176 tests across 29 files, all passing. Build clean.\n\n---\n\n### Foundation checklist (30 items)\n\n28/30 **SATISFIED**, 1 **VIOLATED (minor)**, 1 **SATISFIED (inferred)**:\n\n- All contract vocabulary is in place: `environmentStateSchema` (10 states), `processSurfaceControlOrder` (7 controls, stable order), `buildProcessSurfaceControls` helper, `LastCheckpointResult`, `EnvironmentSummary`, `source.accessMode`, 3 new Epic 3 error codes, `environment` live entity schema, and `AppState.processSurface.environment`.\n- All required fixtures exist: `process-environment.ts` (10 states), `checkpoint-results.ts` (5 types), `process-controls.ts` (stable order + `disabledReasons`), `materials.ts` (`accessMode` coverage), live fixtures for environment snapshot/upserts.\n- The `environment` live apply branch in `process-live.ts` is wired and tested.\n- The `process-work-surface.service.ts` returns `defaultEnvironmentSummary` as a correct Story 0 stub — the actual reader is scheduled for Story 1.\n\n**Single VIOLATED item:** No `environmentCompleteLiveFixture`. The DoD says \"completion markers\"; the schema permits `complete` for environment but no named fixture exercises it.\n\n---\n\n### Non-blocking warnings (3)\n\n1. **Silent default stub** — the service will return `absent` until Story 1 wires the `EnvironmentSectionReader`. No guard will catch a forgotten injection.\n2. **Environment excluded from live error schema** — `liveProcessErrorMessageSchema` covers only `history | materials | side_work`. Environment errors travel through `environment.state`/`blockedReason`. Appears intentional but was not documented as a resolved decision.\n3. **Route-level `controls` not asserted** — `process-work-surface-api.test.ts` covers `environment` but skips `controls`/`hasEnvironment` at the route layer; the foundation contract test covers this at service level.\n\n---\n\n### What I noticed but didn't report\n\n- `disabledReason` uses `.default(null)` not `.optional()` — stricter than the spec table but coherent.\n- `environmentLiveDataMessageSchema` requires a full `EnvironmentSummary` payload even for `complete` messages — unlike `current_request` which allows `null`. Asymmetry that may matter when teardown needs a `complete` event.\n- `reconnectingProcessSurfaceStateFixture.lastSequenceNumber = 17` — coherently tracks the highest sequence in the file.",
+  "model": "claude-sonnet-4-6",
+  "usage": {
+    "input_tokens": 16935,
+    "cache_creation_input_tokens": 94677,
+    "cache_read_input_tokens": 1616231,
+    "output_tokens": 14998,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 94677,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 8,
+        "output_tokens": 683,
+        "cache_read_input_tokens": 101303,
+        "cache_creation_input_tokens": 5669,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 5669
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "session_file": "/Users/leemoore/.claude/projects/-Users-leemoore-code-liminal-build/99a50a2d-963e-42a9-a37a-6983e0fadeb4.jsonl"
+}

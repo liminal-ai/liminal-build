@@ -1077,4 +1077,130 @@ describe('process work surface api', () => {
 
     await app.close();
   });
+
+  it('S2-TC-2.5a: bootstrap exposes read_write accessMode for an attached writable source', async () => {
+    const writableSource = {
+      sourceAttachmentId: 'source-writable-impl-001',
+      displayName: 'liminal-build',
+      purpose: 'implementation' as const,
+      accessMode: 'read_write' as const,
+      targetRef: 'feature/epic-03',
+      hydrationState: 'not_hydrated' as const,
+      attachmentScope: 'process' as const,
+      processId: waitingProcessSummary.processId,
+      processDisplayLabel: waitingProcessSummary.displayLabel,
+      updatedAt: '2026-04-15T10:00:00.000Z',
+    };
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: { 'user:workos-user-1': [projectSummary] },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: { kind: 'accessible', project: projectSummary },
+      },
+      processesByProjectId: { [projectSummary.projectId]: [waitingProcessSummary] },
+      artifactsByProjectId: { [projectSummary.projectId]: [] },
+      sourceAttachmentsByProjectId: { [projectSummary.projectId]: [writableSource] },
+      currentMaterialRefsByProcessId: {
+        [waitingProcessSummary.processId]: {
+          artifactIds: [],
+          sourceAttachmentIds: [writableSource.sourceAttachmentId],
+        },
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}`,
+      cookies: { [sessionCookieName]: 'valid-session-cookie' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().materials.currentSources).toEqual([
+      {
+        sourceAttachmentId: writableSource.sourceAttachmentId,
+        displayName: writableSource.displayName,
+        purpose: writableSource.purpose,
+        accessMode: 'read_write',
+        targetRef: writableSource.targetRef,
+        hydrationState: writableSource.hydrationState,
+        updatedAt: writableSource.updatedAt,
+      },
+    ]);
+
+    await app.close();
+  });
+
+  it('S2-TC-2.5b: bootstrap exposes read_only accessMode for an attached read-only source', async () => {
+    const readOnlySource = {
+      sourceAttachmentId: 'source-readonly-research-001',
+      displayName: 'research-notes',
+      purpose: 'research' as const,
+      accessMode: 'read_only' as const,
+      targetRef: 'main',
+      hydrationState: 'hydrated' as const,
+      attachmentScope: 'project' as const,
+      processId: null,
+      processDisplayLabel: null,
+      updatedAt: '2026-04-15T09:00:00.000Z',
+    };
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: { 'user:workos-user-1': [projectSummary] },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: { kind: 'accessible', project: projectSummary },
+      },
+      processesByProjectId: { [projectSummary.projectId]: [waitingProcessSummary] },
+      artifactsByProjectId: { [projectSummary.projectId]: [] },
+      sourceAttachmentsByProjectId: { [projectSummary.projectId]: [readOnlySource] },
+      currentMaterialRefsByProcessId: {
+        [waitingProcessSummary.processId]: {
+          artifactIds: [],
+          sourceAttachmentIds: [readOnlySource.sourceAttachmentId],
+        },
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}`,
+      cookies: { [sessionCookieName]: 'valid-session-cookie' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().materials.currentSources).toEqual([
+      {
+        sourceAttachmentId: readOnlySource.sourceAttachmentId,
+        displayName: readOnlySource.displayName,
+        purpose: readOnlySource.purpose,
+        accessMode: 'read_only',
+        targetRef: readOnlySource.targetRef,
+        hydrationState: readOnlySource.hydrationState,
+        updatedAt: readOnlySource.updatedAt,
+      },
+    ]);
+
+    await app.close();
+  });
 });

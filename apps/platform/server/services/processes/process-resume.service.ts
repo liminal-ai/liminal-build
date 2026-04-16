@@ -6,12 +6,15 @@ import type { ProcessLiveHub } from './live/process-live-hub.js';
 import type { PlatformStore } from '../projects/platform-store.js';
 import { buildProcessSurfaceSummary } from './process-work-surface.service.js';
 import type { ProcessAccessService } from './process-access.service.js';
+import { planHydrationWorkingSet } from './environment/hydration-planner.js';
+import type { ProcessEnvironmentService } from './environment/process-environment.service.js';
 
 export class ProcessResumeService {
   constructor(
     private readonly platformStore: PlatformStore,
     private readonly processAccessService: ProcessAccessService,
     private readonly processLiveHub: ProcessLiveHub,
+    private readonly processEnvironmentService?: ProcessEnvironmentService,
   ) {}
 
   async resume(args: {
@@ -32,9 +35,42 @@ export class ProcessResumeService {
     const result = await this.platformStore.resumeProcess({
       processId: access.process.processId,
     });
-    const environment = await this.platformStore.getProcessEnvironmentSummary({
+    const existingEnvironment = await this.platformStore.getProcessEnvironmentSummary({
       processId: access.process.processId,
     });
+    const environment = requiresEnvironmentPreparation(result.process.status)
+      ? await this.platformStore.upsertProcessEnvironmentState({
+          processId: access.process.processId,
+          providerKind: null,
+          state: 'preparing',
+          environmentId: existingEnvironment.environmentId,
+          blockedReason: null,
+          lastHydratedAt: existingEnvironment.lastHydratedAt,
+        })
+      : existingEnvironment;
+
+    if (requiresEnvironmentPreparation(result.process.status)) {
+      const [materialRefs, currentOutputs] = await Promise.all([
+        this.platformStore.getCurrentProcessMaterialRefs({
+          processId: access.process.processId,
+        }),
+        this.platformStore.listProcessOutputs({
+          processId: access.process.processId,
+        }),
+      ]);
+      await this.platformStore.setProcessHydrationPlan({
+        processId: access.process.processId,
+        plan: planHydrationWorkingSet({
+          ...materialRefs,
+          outputIds: currentOutputs.map((o) => o.outputId),
+        }),
+      });
+      this.processEnvironmentService?.runHydrationAsync({
+        projectId: access.project.projectId,
+        processId: access.process.processId,
+      });
+    }
+
     const process = buildProcessSurfaceSummary(result.process, environment);
 
     this.processLiveHub.publish({
@@ -52,10 +88,17 @@ export class ProcessResumeService {
     return resumeProcessResponseSchema.parse({
       process,
       currentRequest: result.currentRequest,
+      environment,
     });
   }
 }
 
 function isTerminalProcessStatus(status: ResumeProcessResponse['process']['status']): boolean {
   return status === 'completed' || status === 'failed' || status === 'interrupted';
+}
+
+function requiresEnvironmentPreparation(
+  status: ResumeProcessResponse['process']['status'],
+): boolean {
+  return status !== 'completed' && status !== 'failed' && status !== 'waiting';
 }

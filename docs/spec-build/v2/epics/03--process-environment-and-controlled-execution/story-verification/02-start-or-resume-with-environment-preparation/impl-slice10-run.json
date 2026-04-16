@@ -1,0 +1,36 @@
+{
+  "session_id": "eaccb881-d653-431d-8554-9b92d3e6b438",
+  "result": "Prompt is too long",
+  "model": "claude-haiku-4-5-20251001",
+  "usage": {
+    "input_tokens": 549,
+    "cache_creation_input_tokens": 164067,
+    "cache_read_input_tokens": 8417208,
+    "output_tokens": 71497,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 164067,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 8,
+        "output_tokens": 602,
+        "cache_read_input_tokens": 175059,
+        "cache_creation_input_tokens": 1303,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1303
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "session_file": "/Users/leemoore/.claude/projects/-Users-leemoore-code-liminal-build/eaccb881-d653-431d-8554-9b92d3e6b438.jsonl"
+}

@@ -207,6 +207,7 @@ export function renderProcessMaterialsSection(args: {
 
       item.setAttribute('data-process-material-kind', 'source');
       item.setAttribute('data-process-material-id', source.sourceAttachmentId);
+      item.setAttribute('data-access-mode', source.accessMode);
       heading.textContent = source.displayName;
 
       item.append(heading);
@@ -220,6 +221,12 @@ export function renderProcessMaterialsSection(args: {
         item,
         label: 'Purpose',
         value: source.purpose,
+        targetDocument: args.targetDocument,
+      });
+      appendDetail({
+        item,
+        label: 'Access',
+        value: source.accessMode.replaceAll('_', ' '),
         targetDocument: args.targetDocument,
       });
       appendDetail({
