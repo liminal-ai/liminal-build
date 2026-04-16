@@ -418,6 +418,54 @@ describe('auth routes', () => {
           currentRequest: null,
         };
       },
+      async transitionProcessToWaiting(args) {
+        return {
+          process: {
+            processId: args.processId,
+            displayLabel: 'Feature Specification #1',
+            processType: 'FeatureSpecification',
+            status: 'waiting',
+            phaseLabel: 'Working',
+            nextActionLabel: 'Waiting for user response',
+            availableActions: ['respond'],
+            hasEnvironment: false,
+            updatedAt: '2026-04-13T12:05:00.000Z',
+          },
+          currentRequest: null,
+        };
+      },
+      async transitionProcessToCompleted(args) {
+        return {
+          process: {
+            processId: args.processId,
+            displayLabel: 'Feature Specification #1',
+            processType: 'FeatureSpecification',
+            status: 'completed',
+            phaseLabel: 'Working',
+            nextActionLabel: null,
+            availableActions: ['review'],
+            hasEnvironment: false,
+            updatedAt: '2026-04-13T12:05:00.000Z',
+          },
+          currentRequest: null,
+        };
+      },
+      async transitionProcessToInterrupted(args) {
+        return {
+          process: {
+            processId: args.processId,
+            displayLabel: 'Feature Specification #1',
+            processType: 'FeatureSpecification',
+            status: 'interrupted',
+            phaseLabel: 'Working',
+            nextActionLabel: 'Choose resume, review, rehydrate, or restart',
+            availableActions: ['resume', 'review', 'rehydrate', 'restart'],
+            hasEnvironment: false,
+            updatedAt: '2026-04-13T12:05:00.000Z',
+          },
+          currentRequest: null,
+        };
+      },
       async getSubmittedProcessResponse() {
         return null;
       },
@@ -480,6 +528,9 @@ describe('auth routes', () => {
         return {
           ...defaultEnvironmentSummary,
         };
+      },
+      async getProcessEnvironmentProviderKind() {
+        return null;
       },
       async upsertProcessEnvironmentState(args) {
         return {

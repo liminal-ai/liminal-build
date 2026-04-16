@@ -272,7 +272,7 @@ export class LocalProviderAdapter implements ProviderAdapter {
     }
 
     const result = validated.value;
-    const refValidation = validateCandidateRefs({
+    const refValidation = await validateCandidateRefs({
       workingTree,
       artifactCandidates: result.artifactCheckpointCandidates,
       codeCandidates: result.codeCheckpointCandidates,
@@ -281,7 +281,7 @@ export class LocalProviderAdapter implements ProviderAdapter {
       return result;
     }
     return buildFailureExecutionResult(
-      `Script declared a candidate path that does not exist in the working tree: ${refValidation.reason}`,
+      `Script declared an invalid checkpoint candidate path: ${refValidation.reason}`,
     );
   }
 
@@ -445,11 +445,11 @@ function validateExecutionResult(value: unknown): ValidationResult<ExecutionResu
   };
 }
 
-function validateCandidateRefs(args: {
+async function validateCandidateRefs(args: {
   workingTree: string;
   artifactCandidates: ArtifactCheckpointCandidate[];
   codeCandidates: CodeCheckpointCandidate[];
-}): { ok: true } | { ok: false; reason: string } {
+}): Promise<{ ok: true } | { ok: false; reason: string }> {
   // Ensure each declared `contentsRef` and `workspaceRef` is a path inside the
   // working tree. We check that the path starts with the working tree root or
   // is a relative path resolvable from it.
@@ -465,24 +465,63 @@ function validateCandidateRefs(args: {
   }
 
   const absoluteRoot = path.resolve(args.workingTree);
+  function isWithinWorkingTree(resolvedPath: string): boolean {
+    const relative = path.relative(absoluteRoot, resolvedPath);
+    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+  }
+
+  async function assertExistingFile(
+    resolvedPath: string,
+    reason: string,
+  ): Promise<{ ok: true } | { ok: false; reason: string }> {
+    try {
+      const stat = await fs.stat(resolvedPath);
+      if (stat.isFile()) {
+        return { ok: true };
+      }
+      return {
+        ok: false,
+        reason: `${reason} resolved to '${resolvedPath}', which is not a file.`,
+      };
+    } catch {
+      return {
+        ok: false,
+        reason: `${reason} resolved to '${resolvedPath}', which does not exist.`,
+      };
+    }
+  }
 
   for (const candidate of args.artifactCandidates) {
     const resolved = normalize(candidate.contentsRef);
-    if (resolved === null || !resolved.startsWith(absoluteRoot)) {
+    if (resolved === null || !isWithinWorkingTree(resolved)) {
       return {
         ok: false,
         reason: `artifactCheckpointCandidate '${candidate.artifactId}' contentsRef '${candidate.contentsRef}' is outside the working tree.`,
       };
     }
+    const exists = await assertExistingFile(
+      resolved,
+      `artifactCheckpointCandidate '${candidate.artifactId}' contentsRef '${candidate.contentsRef}'`,
+    );
+    if (!exists.ok) {
+      return exists;
+    }
   }
 
   for (const candidate of args.codeCandidates) {
     const resolved = normalize(candidate.workspaceRef);
-    if (resolved === null || !resolved.startsWith(absoluteRoot)) {
+    if (resolved === null || !isWithinWorkingTree(resolved)) {
       return {
         ok: false,
         reason: `codeCheckpointCandidate '${candidate.sourceAttachmentId}' workspaceRef '${candidate.workspaceRef}' is outside the working tree.`,
       };
+    }
+    const exists = await assertExistingFile(
+      resolved,
+      `codeCheckpointCandidate '${candidate.sourceAttachmentId}' workspaceRef '${candidate.workspaceRef}'`,
+    );
+    if (!exists.ok) {
+      return exists;
     }
   }
 

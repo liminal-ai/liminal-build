@@ -115,6 +115,9 @@ export interface PlatformStore {
   startProcess(args: { processId: string }): Promise<ProcessActionStoreResult>;
   resumeProcess(args: { processId: string }): Promise<ProcessActionStoreResult>;
   transitionProcessToRunning(args: { processId: string }): Promise<ProcessActionStoreResult>;
+  transitionProcessToWaiting(args: { processId: string }): Promise<ProcessActionStoreResult>;
+  transitionProcessToCompleted(args: { processId: string }): Promise<ProcessActionStoreResult>;
+  transitionProcessToInterrupted(args: { processId: string }): Promise<ProcessActionStoreResult>;
   getSubmittedProcessResponse(args: {
     processId: string;
     clientRequestId: string;
@@ -142,6 +145,9 @@ export interface PlatformStore {
   }): Promise<ProcessHistoryItem>;
   getCurrentProcessRequest(args: { processId: string }): Promise<CurrentProcessRequest | null>;
   getProcessEnvironmentSummary(args: { processId: string }): Promise<EnvironmentSummary>;
+  getProcessEnvironmentProviderKind(args: {
+    processId: string;
+  }): Promise<'daytona' | 'local' | null>;
   upsertProcessEnvironmentState(args: {
     processId: string;
     providerKind: 'daytona' | 'local' | null;
@@ -252,6 +258,24 @@ const markProcessRunningMutation = makeFunctionReference<
   ProcessActionStoreResult
 >('processes:markProcessRunning');
 
+const markProcessWaitingMutation = makeFunctionReference<
+  'mutation',
+  { processId: string },
+  ProcessActionStoreResult
+>('processes:markProcessWaiting');
+
+const markProcessCompletedMutation = makeFunctionReference<
+  'mutation',
+  { processId: string },
+  ProcessActionStoreResult
+>('processes:markProcessCompleted');
+
+const markProcessInterruptedMutation = makeFunctionReference<
+  'mutation',
+  { processId: string },
+  ProcessActionStoreResult
+>('processes:markProcessInterrupted');
+
 const submitProcessResponseMutation = makeFunctionReference<
   'mutation',
   {
@@ -326,6 +350,12 @@ const getProcessEnvironmentSummaryQuery = makeFunctionReference<
   { processId: string },
   EnvironmentSummary
 >('processEnvironmentStates:getProcessEnvironmentSummary');
+
+const getProcessEnvironmentProviderKindQuery = makeFunctionReference<
+  'query',
+  { processId: string },
+  'daytona' | 'local' | null
+>('processEnvironmentStates:getProcessEnvironmentProviderKind');
 
 const upsertProcessEnvironmentStateMutation = makeFunctionReference<
   'mutation',
@@ -525,6 +555,67 @@ export class NullPlatformStore implements PlatformStore {
     };
   }
 
+  async transitionProcessToWaiting(args: { processId: string }): Promise<ProcessActionStoreResult> {
+    const now = new Date().toISOString();
+
+    return {
+      process: {
+        processId: args.processId,
+        displayLabel: 'Unavailable process',
+        processType: 'FeatureSpecification',
+        status: 'waiting',
+        phaseLabel: 'Working',
+        nextActionLabel: 'Waiting for user response',
+        availableActions: ['respond'],
+        hasEnvironment: false,
+        updatedAt: now,
+      },
+      currentRequest: null,
+    };
+  }
+
+  async transitionProcessToCompleted(args: {
+    processId: string;
+  }): Promise<ProcessActionStoreResult> {
+    const now = new Date().toISOString();
+
+    return {
+      process: {
+        processId: args.processId,
+        displayLabel: 'Unavailable process',
+        processType: 'FeatureSpecification',
+        status: 'completed',
+        phaseLabel: 'Working',
+        nextActionLabel: null,
+        availableActions: ['review'],
+        hasEnvironment: false,
+        updatedAt: now,
+      },
+      currentRequest: null,
+    };
+  }
+
+  async transitionProcessToInterrupted(args: {
+    processId: string;
+  }): Promise<ProcessActionStoreResult> {
+    const now = new Date().toISOString();
+
+    return {
+      process: {
+        processId: args.processId,
+        displayLabel: 'Unavailable process',
+        processType: 'FeatureSpecification',
+        status: 'interrupted',
+        phaseLabel: 'Working',
+        nextActionLabel: 'Choose resume, review, rehydrate, or restart',
+        availableActions: ['resume', 'review', 'rehydrate', 'restart'],
+        hasEnvironment: false,
+        updatedAt: now,
+      },
+      currentRequest: null,
+    };
+  }
+
   async submitProcessResponse(args: {
     processId: string;
     clientRequestId: string;
@@ -610,6 +701,10 @@ export class NullPlatformStore implements PlatformStore {
 
   async getProcessEnvironmentSummary(): Promise<EnvironmentSummary> {
     return buildDefaultEnvironmentSummary();
+  }
+
+  async getProcessEnvironmentProviderKind(): Promise<'daytona' | 'local' | null> {
+    return null;
   }
 
   async upsertProcessEnvironmentState(args: {
@@ -796,6 +891,28 @@ export class ConvexPlatformStore implements PlatformStore {
     });
   }
 
+  async transitionProcessToWaiting(args: { processId: string }): Promise<ProcessActionStoreResult> {
+    return this.client.mutation(markProcessWaitingMutation, args, {
+      skipQueue: true,
+    });
+  }
+
+  async transitionProcessToCompleted(args: {
+    processId: string;
+  }): Promise<ProcessActionStoreResult> {
+    return this.client.mutation(markProcessCompletedMutation, args, {
+      skipQueue: true,
+    });
+  }
+
+  async transitionProcessToInterrupted(args: {
+    processId: string;
+  }): Promise<ProcessActionStoreResult> {
+    return this.client.mutation(markProcessInterruptedMutation, args, {
+      skipQueue: true,
+    });
+  }
+
   async submitProcessResponse(args: {
     processId: string;
     clientRequestId: string;
@@ -859,6 +976,12 @@ export class ConvexPlatformStore implements PlatformStore {
 
   async getProcessEnvironmentSummary(args: { processId: string }): Promise<EnvironmentSummary> {
     return this.client.query(getProcessEnvironmentSummaryQuery, args);
+  }
+
+  async getProcessEnvironmentProviderKind(args: {
+    processId: string;
+  }): Promise<'daytona' | 'local' | null> {
+    return this.client.query(getProcessEnvironmentProviderKindQuery, args);
   }
 
   async upsertProcessEnvironmentState(args: {
@@ -992,6 +1115,10 @@ export class InMemoryPlatformStore implements PlatformStore {
   private readonly processHistoryItemsByProcessId = new Map<string, ProcessHistoryItem[]>();
   private readonly currentRequestsByProcessId = new Map<string, CurrentProcessRequest | null>();
   private readonly processEnvironmentSummariesByProcessId = new Map<string, EnvironmentSummary>();
+  private readonly processEnvironmentProviderKindsByProcessId = new Map<
+    string,
+    'daytona' | 'local' | null
+  >();
   private readonly currentMaterialRefsByProcessId = new Map<string, CurrentProcessMaterialRefs>();
   private readonly processHydrationPlansByProcessId = new Map<string, WorkingSetPlan>();
   private readonly processOutputsByProcessId = new Map<string, PlatformProcessOutputSummary[]>();
@@ -1020,6 +1147,7 @@ export class InMemoryPlatformStore implements PlatformStore {
       processHistoryItemsByProcessId?: Record<string, ProcessHistoryItem[]>;
       currentRequestsByProcessId?: Record<string, CurrentProcessRequest | null>;
       processEnvironmentSummariesByProcessId?: Record<string, EnvironmentSummary>;
+      processEnvironmentProviderKindsByProcessId?: Record<string, 'daytona' | 'local' | null>;
       currentMaterialRefsByProcessId?: Record<string, CurrentProcessMaterialRefs>;
       processOutputsByProcessId?: Record<string, PlatformProcessOutputSeed[]>;
       processSideWorkItemsByProcessId?: Record<string, SideWorkItem[]>;
@@ -1065,6 +1193,12 @@ export class InMemoryPlatformStore implements PlatformStore {
       args.processEnvironmentSummariesByProcessId ?? {},
     )) {
       this.processEnvironmentSummariesByProcessId.set(processId, cloneEnvironmentSummary(summary));
+    }
+
+    for (const [processId, providerKind] of Object.entries(
+      args.processEnvironmentProviderKindsByProcessId ?? {},
+    )) {
+      this.processEnvironmentProviderKindsByProcessId.set(processId, providerKind);
     }
 
     for (const [processId, refs] of Object.entries(args.currentMaterialRefsByProcessId ?? {})) {
@@ -1227,6 +1361,7 @@ export class InMemoryPlatformStore implements PlatformStore {
       process.processId,
       buildDefaultEnvironmentSummary(),
     );
+    this.processEnvironmentProviderKindsByProcessId.set(process.processId, null);
     this.updateProjectSummary(args.projectId, (project) => ({
       ...project,
       processCount: project.processCount + 1,
@@ -1260,7 +1395,23 @@ export class InMemoryPlatformStore implements PlatformStore {
   }
 
   async transitionProcessToRunning(args: { processId: string }): Promise<ProcessActionStoreResult> {
-    return this.transitionProcessToRunningInternal(args.processId);
+    return this.transitionProcessLifecycleInternal(args.processId, 'running');
+  }
+
+  async transitionProcessToWaiting(args: { processId: string }): Promise<ProcessActionStoreResult> {
+    return this.transitionProcessLifecycleInternal(args.processId, 'waiting');
+  }
+
+  async transitionProcessToCompleted(args: {
+    processId: string;
+  }): Promise<ProcessActionStoreResult> {
+    return this.transitionProcessLifecycleInternal(args.processId, 'completed');
+  }
+
+  async transitionProcessToInterrupted(args: {
+    processId: string;
+  }): Promise<ProcessActionStoreResult> {
+    return this.transitionProcessLifecycleInternal(args.processId, 'interrupted');
   }
 
   async submitProcessResponse(args: {
@@ -1387,6 +1538,12 @@ export class InMemoryPlatformStore implements PlatformStore {
     );
   }
 
+  async getProcessEnvironmentProviderKind(args: {
+    processId: string;
+  }): Promise<'daytona' | 'local' | null> {
+    return this.processEnvironmentProviderKindsByProcessId.get(args.processId) ?? null;
+  }
+
   async upsertProcessEnvironmentState(args: {
     processId: string;
     providerKind: 'daytona' | 'local' | null;
@@ -1414,6 +1571,12 @@ export class InMemoryPlatformStore implements PlatformStore {
           : args.lastCheckpointResult,
     });
     this.processEnvironmentSummariesByProcessId.set(args.processId, next);
+    this.processEnvironmentProviderKindsByProcessId.set(
+      args.processId,
+      args.providerKind ??
+        this.processEnvironmentProviderKindsByProcessId.get(args.processId) ??
+        null,
+    );
     return cloneEnvironmentSummary(next);
   }
 
@@ -1844,7 +2007,10 @@ export class InMemoryPlatformStore implements PlatformStore {
     };
   }
 
-  private transitionProcessToRunningInternal(processId: string): ProcessActionStoreResult {
+  private transitionProcessLifecycleInternal(
+    processId: string,
+    status: 'running' | 'waiting' | 'completed' | 'interrupted',
+  ): ProcessActionStoreResult {
     for (const [projectId, processes] of this.processesByProjectId.entries()) {
       const index = processes.findIndex((process) => process.processId === processId);
 
@@ -1859,19 +2025,20 @@ export class InMemoryPlatformStore implements PlatformStore {
       }
 
       const now = new Date().toISOString();
+      const currentRequest =
+        status === 'waiting' ? (this.currentRequestsByProcessId.get(processId) ?? null) : null;
       const nextProcess = processSummarySchema.parse({
         ...existing,
-        status: 'running',
-        phaseLabel:
-          existing.phaseLabel === 'Preparing environment' ? 'Working' : existing.phaseLabel,
-        nextActionLabel: 'Monitor progress in the work surface',
-        availableActions: ['open', 'review'],
+        status,
+        phaseLabel: resolveLifecyclePhaseLabel(existing.phaseLabel),
+        nextActionLabel: resolveLifecycleNextActionLabel(status),
+        availableActions: resolveLifecycleAvailableActions(status),
         updatedAt: now,
       });
       const nextProcesses = [...processes];
       nextProcesses[index] = nextProcess;
       this.processesByProjectId.set(projectId, nextProcesses);
-      this.currentRequestsByProcessId.set(processId, null);
+      this.currentRequestsByProcessId.set(processId, currentRequest);
       this.updateProjectSummary(projectId, (project) => ({
         ...project,
         lastUpdatedAt: now,
@@ -1879,26 +2046,62 @@ export class InMemoryPlatformStore implements PlatformStore {
 
       return {
         process: nextProcess,
-        currentRequest: null,
+        currentRequest,
       };
     }
 
     const now = new Date().toISOString();
+    const currentRequest =
+      status === 'waiting' ? (this.currentRequestsByProcessId.get(processId) ?? null) : null;
 
     return {
       process: processSummarySchema.parse({
         processId,
         displayLabel: 'Unavailable process',
         processType: 'FeatureSpecification',
-        status: 'running',
+        status,
         phaseLabel: 'Working',
-        nextActionLabel: 'Monitor progress in the work surface',
-        availableActions: ['open', 'review'],
+        nextActionLabel: resolveLifecycleNextActionLabel(status),
+        availableActions: resolveLifecycleAvailableActions(status),
         hasEnvironment: false,
         updatedAt: now,
       }),
-      currentRequest: null,
+      currentRequest,
     };
+  }
+}
+
+function resolveLifecyclePhaseLabel(phaseLabel: string): string {
+  return phaseLabel === 'Draft' || phaseLabel === 'Preparing environment' ? 'Working' : phaseLabel;
+}
+
+function resolveLifecycleNextActionLabel(
+  status: 'running' | 'waiting' | 'completed' | 'interrupted',
+): string | null {
+  switch (status) {
+    case 'running':
+      return 'Monitor progress in the work surface';
+    case 'waiting':
+      return 'Waiting for user response';
+    case 'completed':
+      return null;
+    case 'interrupted':
+      return 'Choose resume, review, rehydrate, or restart';
+  }
+}
+
+function resolveLifecycleAvailableActions(
+  status: 'running' | 'waiting' | 'completed' | 'interrupted',
+): ProcessSummary['availableActions'] {
+  switch (status) {
+    case 'running':
+      return ['open', 'review'];
+    case 'waiting':
+      return ['respond'];
+    case 'completed':
+      return ['review'];
+    case 'interrupted':
+      return ['resume', 'review', 'rehydrate', 'restart'];
   }
 }
 

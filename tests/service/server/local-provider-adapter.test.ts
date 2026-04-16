@@ -364,6 +364,97 @@ describe('LocalProviderAdapter', () => {
     expect(exec.processHistoryItems[0]?.text).toContain('outside the working tree');
   });
 
+  it('executeScript returns a failed ExecutionResult when an artifact contentsRef does not exist', async () => {
+    const platformStore = new InMemoryPlatformStore();
+    const runtime: LocalProviderRuntime = {
+      cloneSource: async () => null,
+      runScript: async ({ workingTree }) => {
+        const result = {
+          processStatus: 'completed',
+          processHistoryItems: [],
+          outputWrites: [],
+          sideWorkWrites: [],
+          artifactCheckpointCandidates: [
+            {
+              artifactId: 'artifact-missing-1',
+              displayName: 'Missing artifact',
+              revisionLabel: null,
+              contentsRef: 'missing-artifact.md',
+            },
+          ],
+          codeCheckpointCandidates: [],
+        };
+        await fs.writeFile(
+          path.join(workingTree, SCRIPT_RESULT_FILENAME),
+          JSON.stringify(result),
+          'utf8',
+        );
+        return 0;
+      },
+    };
+    const adapter = new LocalProviderAdapter(platformStore, { workspaceRoot, runtime });
+    const ensured = await adapter.ensureEnvironment({
+      processId: 'proc-exec-missing-artifact-1',
+      providerKind: 'local',
+    });
+
+    const exec = await adapter.executeScript({
+      environmentId: ensured.environmentId,
+      scriptPayload: { format: 'ts-module-source', entrypoint: 'default', source: 'noop' },
+    });
+
+    expect(exec.processStatus).toBe('failed');
+    expect(exec.processHistoryItems[0]?.text).toContain('artifactCheckpointCandidate');
+    expect(exec.processHistoryItems[0]?.text).toContain('missing-artifact.md');
+    expect(exec.processHistoryItems[0]?.text).toContain('does not exist');
+  });
+
+  it('executeScript returns a failed ExecutionResult when a code workspaceRef does not exist', async () => {
+    const platformStore = new InMemoryPlatformStore();
+    const runtime: LocalProviderRuntime = {
+      cloneSource: async () => null,
+      runScript: async ({ workingTree }) => {
+        const result = {
+          processStatus: 'completed',
+          processHistoryItems: [],
+          outputWrites: [],
+          sideWorkWrites: [],
+          artifactCheckpointCandidates: [],
+          codeCheckpointCandidates: [
+            {
+              sourceAttachmentId: 'source-missing-1',
+              displayName: 'Missing diff',
+              targetRef: 'main',
+              accessMode: 'read_write',
+              workspaceRef: 'missing-workspace.diff',
+            },
+          ],
+        };
+        await fs.writeFile(
+          path.join(workingTree, SCRIPT_RESULT_FILENAME),
+          JSON.stringify(result),
+          'utf8',
+        );
+        return 0;
+      },
+    };
+    const adapter = new LocalProviderAdapter(platformStore, { workspaceRoot, runtime });
+    const ensured = await adapter.ensureEnvironment({
+      processId: 'proc-exec-missing-workspace-1',
+      providerKind: 'local',
+    });
+
+    const exec = await adapter.executeScript({
+      environmentId: ensured.environmentId,
+      scriptPayload: { format: 'ts-module-source', entrypoint: 'default', source: 'noop' },
+    });
+
+    expect(exec.processStatus).toBe('failed');
+    expect(exec.processHistoryItems[0]?.text).toContain('codeCheckpointCandidate');
+    expect(exec.processHistoryItems[0]?.text).toContain('missing-workspace.diff');
+    expect(exec.processHistoryItems[0]?.text).toContain('does not exist');
+  });
+
   it('teardownEnvironment removes the working tree and is idempotent', async () => {
     const platformStore = new InMemoryPlatformStore();
     const adapter = new LocalProviderAdapter(platformStore, { workspaceRoot });

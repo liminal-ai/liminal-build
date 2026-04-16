@@ -369,6 +369,33 @@ export const markProcessRunning = mutation({
   },
 });
 
+export const markProcessWaiting = mutation({
+  args: {
+    processId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return transitionProcessToWaiting(ctx, args.processId);
+  },
+});
+
+export const markProcessCompleted = mutation({
+  args: {
+    processId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return transitionProcessToCompleted(ctx, args.processId);
+  },
+});
+
+export const markProcessInterrupted = mutation({
+  args: {
+    processId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return transitionProcessToInterrupted(ctx, args.processId);
+  },
+});
+
 export const submitProcessResponse = mutation({
   args: {
     processId: v.string(),
@@ -767,6 +794,55 @@ async function transitionProcessToRunning(
   ctx: MutationCtx,
   processIdValue: string,
 ): Promise<{ process: ProcessSummary; currentRequest: CurrentProcessRequest | null }> {
+  return transitionProcessLifecycle(ctx, processIdValue, {
+    status: 'running',
+    nextActionLabel: 'Monitor progress in the work surface',
+    preserveCurrentRequestHistoryItem: false,
+  });
+}
+
+async function transitionProcessToWaiting(
+  ctx: MutationCtx,
+  processIdValue: string,
+): Promise<{ process: ProcessSummary; currentRequest: CurrentProcessRequest | null }> {
+  return transitionProcessLifecycle(ctx, processIdValue, {
+    status: 'waiting',
+    nextActionLabel: 'Waiting for user response',
+    preserveCurrentRequestHistoryItem: true,
+  });
+}
+
+async function transitionProcessToCompleted(
+  ctx: MutationCtx,
+  processIdValue: string,
+): Promise<{ process: ProcessSummary; currentRequest: CurrentProcessRequest | null }> {
+  return transitionProcessLifecycle(ctx, processIdValue, {
+    status: 'completed',
+    nextActionLabel: null,
+    preserveCurrentRequestHistoryItem: false,
+  });
+}
+
+async function transitionProcessToInterrupted(
+  ctx: MutationCtx,
+  processIdValue: string,
+): Promise<{ process: ProcessSummary; currentRequest: CurrentProcessRequest | null }> {
+  return transitionProcessLifecycle(ctx, processIdValue, {
+    status: 'interrupted',
+    nextActionLabel: 'Choose resume, review, rehydrate, or restart',
+    preserveCurrentRequestHistoryItem: false,
+  });
+}
+
+async function transitionProcessLifecycle(
+  ctx: MutationCtx,
+  processIdValue: string,
+  args: {
+    status: 'running' | 'waiting' | 'completed' | 'interrupted';
+    nextActionLabel: string | null;
+    preserveCurrentRequestHistoryItem: boolean;
+  },
+): Promise<{ process: ProcessSummary; currentRequest: CurrentProcessRequest | null }> {
   let processRecord: Doc<'processes'> | null = null;
 
   try {
@@ -781,10 +857,15 @@ async function transitionProcessToRunning(
 
   const now = new Date().toISOString();
   const nextProcessFields = {
-    status: 'running' as const,
-    phaseLabel: processRecord.phaseLabel === 'Draft' ? 'Working' : processRecord.phaseLabel,
-    nextActionLabel: 'Monitor progress in the work surface',
-    currentRequestHistoryItemId: null,
+    status: args.status,
+    phaseLabel:
+      processRecord.phaseLabel === 'Draft' || processRecord.phaseLabel === 'Preparing environment'
+        ? 'Working'
+        : processRecord.phaseLabel,
+    nextActionLabel: args.nextActionLabel,
+    currentRequestHistoryItemId: args.preserveCurrentRequestHistoryItem
+      ? processRecord.currentRequestHistoryItemId
+      : null,
     updatedAt: now,
   };
 
@@ -804,7 +885,12 @@ async function transitionProcessToRunning(
       ...processRecord,
       ...nextProcessFields,
     }),
-    currentRequest: null,
+    currentRequest: args.preserveCurrentRequestHistoryItem
+      ? await resolveCurrentProcessRequest(ctx, {
+          ...processRecord,
+          ...nextProcessFields,
+        })
+      : null,
   };
 }
 

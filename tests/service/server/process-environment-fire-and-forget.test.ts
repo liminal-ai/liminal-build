@@ -12,6 +12,7 @@ import {
 import { InMemoryProcessLiveHub } from '../../../apps/platform/server/services/processes/live/process-live-hub.js';
 import { InMemoryPlatformStore } from '../../../apps/platform/server/services/projects/platform-store.js';
 import {
+  type LiveProcessUpdateMessage,
   processSummarySchema,
   projectSummarySchema,
 } from '../../../apps/platform/shared/contracts/index.js';
@@ -86,6 +87,41 @@ async function waitForFailedDurable(args: {
   throw new Error(
     `Timed out waiting for env to transition to failed with reason containing '${args.reasonContains}'. Final state=${final.state}, reason=${final.blockedReason}`,
   );
+}
+
+async function waitFor(
+  predicate: () => boolean,
+  timeoutMs = 1500,
+  message = 'Timed out while waiting for live publication.',
+): Promise<void> {
+  const startedAt = Date.now();
+
+  while (!predicate()) {
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error(message);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+function subscribeToProcess(args: { processLiveHub: InMemoryProcessLiveHub; processId: string }): {
+  messages: LiveProcessUpdateMessage[];
+  close: () => void;
+} {
+  const messages: LiveProcessUpdateMessage[] = [];
+  const subscription = args.processLiveHub.subscribe({
+    actorId: actor.userId,
+    projectId,
+    processId: args.processId,
+    send: (message) => {
+      messages.push(message);
+    },
+  });
+
+  return {
+    messages,
+    close: () => subscription.close(),
+  };
 }
 
 describe('process environment fire-and-forget cleanup', () => {
@@ -169,6 +205,65 @@ describe('process environment fire-and-forget cleanup', () => {
     await app.close();
   });
 
+  it('runRehydrateAsync publishes the failed environment when the adapter rejects', async () => {
+    const paused = processSummarySchema.parse({
+      ...pausedProcessFixture,
+      processId: 'process-rehydrate-live-failure-1',
+      updatedAt: '2026-04-15T11:06:00.000Z',
+    });
+    const processLiveHub = new InMemoryProcessLiveHub();
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: { 'user:workos-user-1': [projectSummary] },
+      projectAccessByProjectId: {
+        [projectId]: { kind: 'accessible', project: projectSummary },
+      },
+      processesByProjectId: { [projectId]: [paused] },
+      processEnvironmentSummariesByProcessId: {
+        [paused.processId]: staleEnvironmentFixture,
+      },
+      processEnvironmentProviderKindsByProcessId: {
+        [paused.processId]: 'local',
+      },
+    });
+    const failureProvider: ProviderAdapter = new FailingProviderAdapter('rehydrate live kaboom');
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({ actor, reason: null }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+      processLiveHub,
+      providerAdapter: failureProvider,
+    });
+    const subscription = subscribeToProcess({
+      processLiveHub,
+      processId: paused.processId,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectId}/processes/${paused.processId}/rehydrate`,
+      cookies: { [sessionCookieName]: 'valid-session-cookie' },
+    });
+    expect(response.statusCode).toBe(200);
+
+    await waitFor(
+      () =>
+        subscription.messages.some(
+          (message) =>
+            message.entityType === 'environment' &&
+            message.payload !== null &&
+            (message.payload as { state?: string; blockedReason?: string }).state === 'failed' &&
+            ((message.payload as { blockedReason?: string }).blockedReason ?? '').includes(
+              'rehydrate live kaboom',
+            ),
+        ),
+      1500,
+      'Timed out waiting for failed rehydrate live publication.',
+    );
+
+    subscription.close();
+    await app.close();
+  });
+
   it('runRebuildAsync transitions environment to failed when the adapter rejects', async () => {
     const interrupted = processSummarySchema.parse({
       ...interruptedProcessFixture,
@@ -213,6 +308,174 @@ describe('process environment fire-and-forget cleanup', () => {
       reasonContains: 'rebuild kaboom',
     });
 
+    await app.close();
+  });
+
+  it('runRebuildAsync publishes the failed environment when the adapter rejects', async () => {
+    const interrupted = processSummarySchema.parse({
+      ...interruptedProcessFixture,
+      processId: 'process-rebuild-live-failure-1',
+      updatedAt: '2026-04-15T11:11:00.000Z',
+    });
+    const processLiveHub = new InMemoryProcessLiveHub();
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: { 'user:workos-user-1': [projectSummary] },
+      projectAccessByProjectId: {
+        [projectId]: { kind: 'accessible', project: projectSummary },
+      },
+      processesByProjectId: { [projectId]: [interrupted] },
+      processEnvironmentSummariesByProcessId: {
+        [interrupted.processId]: lostEnvironmentFixture,
+      },
+      processEnvironmentProviderKindsByProcessId: {
+        [interrupted.processId]: 'local',
+      },
+      processOutputsByProcessId: {
+        [interrupted.processId]: [
+          {
+            outputId: 'output-rebuild-live-1',
+            linkedArtifactId: null,
+            displayName: 'Existing checkpoint',
+            revisionLabel: 'v1',
+            state: 'ready_for_review',
+            updatedAt: '2026-04-15T11:09:00.000Z',
+          },
+        ],
+      },
+    });
+    const failureProvider: ProviderAdapter = new FailingProviderAdapter('rebuild live kaboom');
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({ actor, reason: null }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+      processLiveHub,
+      providerAdapter: failureProvider,
+    });
+    const subscription = subscribeToProcess({
+      processLiveHub,
+      processId: interrupted.processId,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectId}/processes/${interrupted.processId}/rebuild`,
+      cookies: { [sessionCookieName]: 'valid-session-cookie' },
+    });
+    expect(response.statusCode).toBe(200);
+
+    await waitFor(
+      () =>
+        subscription.messages.some(
+          (message) =>
+            message.entityType === 'environment' &&
+            message.payload !== null &&
+            (message.payload as { state?: string; blockedReason?: string }).state === 'failed' &&
+            ((message.payload as { blockedReason?: string }).blockedReason ?? '').includes(
+              'rebuild live kaboom',
+            ),
+        ),
+      1500,
+      'Timed out waiting for failed rebuild live publication.',
+    );
+
+    subscription.close();
+    await app.close();
+  });
+
+  it('runExecutionAsync publishes failed state when executeScript throws instead of returning a failed ExecutionResult', async () => {
+    const draft = processSummarySchema.parse({
+      ...draftProcessFixture,
+      processId: 'process-execution-throw-failure-1',
+      updatedAt: '2026-04-15T11:12:00.000Z',
+    });
+    const processLiveHub = new InMemoryProcessLiveHub();
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: { 'user:workos-user-1': [projectSummary] },
+      projectAccessByProjectId: {
+        [projectId]: { kind: 'accessible', project: projectSummary },
+      },
+      processesByProjectId: { [projectId]: [draft] },
+    });
+    const throwingProvider: ProviderAdapter = {
+      providerKind: 'local',
+      async ensureEnvironment({ processId, providerKind }) {
+        return {
+          providerKind,
+          environmentId: `env-throw-${processId}`,
+          workspaceHandle: `workspace-throw-${processId}`,
+        };
+      },
+      async hydrateEnvironment({ environmentId, plan }) {
+        return {
+          environmentId,
+          hydratedAt: '2026-04-15T11:12:30.000Z',
+          fingerprint: plan.fingerprint,
+        };
+      },
+      async executeScript(): Promise<never> {
+        throw new Error('execution throw kaboom');
+      },
+      async rehydrateEnvironment({ environmentId, plan }) {
+        return {
+          environmentId,
+          hydratedAt: '2026-04-15T11:12:30.000Z',
+          fingerprint: plan.fingerprint,
+        };
+      },
+      async rebuildEnvironment({ processId, providerKind, plan }) {
+        return {
+          providerKind,
+          environmentId: `env-rebuild-${processId}`,
+          workspaceHandle: `workspace-rebuild-${processId}`,
+          hydratedAt: '2026-04-15T11:12:30.000Z',
+          fingerprint: plan.fingerprint,
+        };
+      },
+      async teardownEnvironment() {
+        return;
+      },
+    };
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({ actor, reason: null }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+      processLiveHub,
+      providerAdapter: throwingProvider,
+    });
+    const subscription = subscribeToProcess({
+      processLiveHub,
+      processId: draft.processId,
+    });
+
+    const startResponse = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectId}/processes/${draft.processId}/start`,
+      cookies: { [sessionCookieName]: 'valid-session-cookie' },
+    });
+    expect(startResponse.statusCode).toBe(200);
+    expect(startResponse.json().environment.state).toBe('preparing');
+
+    await waitForFailedDurable({
+      store: platformStore,
+      processId: draft.processId,
+      reasonContains: 'execution throw kaboom',
+    });
+    await waitFor(
+      () =>
+        subscription.messages.some(
+          (message) =>
+            message.entityType === 'environment' &&
+            message.payload !== null &&
+            (message.payload as { state?: string; blockedReason?: string }).state === 'failed' &&
+            ((message.payload as { blockedReason?: string }).blockedReason ?? '').includes(
+              'execution throw kaboom',
+            ),
+        ),
+      1500,
+      'Timed out waiting for failed execution live publication.',
+    );
+
+    subscription.close();
     await app.close();
   });
 });

@@ -39,10 +39,14 @@ export class ProcessResumeService {
     const existingEnvironment = await this.platformStore.getProcessEnvironmentSummary({
       processId: access.process.processId,
     });
+    const persistedProviderKind = await this.platformStore.getProcessEnvironmentProviderKind({
+      processId: access.process.processId,
+    });
+    const providerKind = persistedProviderKind ?? this.defaultEnvironmentProviderKind;
     const environment = requiresEnvironmentPreparation(result.process.status)
       ? await this.platformStore.upsertProcessEnvironmentState({
           processId: access.process.processId,
-          providerKind: this.defaultEnvironmentProviderKind,
+          providerKind,
           state: 'preparing',
           environmentId: existingEnvironment.environmentId,
           blockedReason: null,

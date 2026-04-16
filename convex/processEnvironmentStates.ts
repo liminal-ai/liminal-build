@@ -390,6 +390,32 @@ export const getProcessEnvironmentSummary = query({
   },
 });
 
+export const getProcessEnvironmentProviderKind = query({
+  args: {
+    processId: v.string(),
+  },
+  handler: async (ctx, args): Promise<'daytona' | 'local' | null> => {
+    let processRecord: Doc<'processes'> | null = null;
+
+    try {
+      processRecord = await ctx.db.get(args.processId as Id<'processes'>);
+    } catch {
+      return null;
+    }
+
+    if (processRecord === null) {
+      return null;
+    }
+
+    const state = await ctx.db
+      .query('processEnvironmentStates')
+      .withIndex('by_processId', (indexQuery) => indexQuery.eq('processId', processRecord._id))
+      .unique();
+
+    return state?.providerKind ?? null;
+  },
+});
+
 export const upsertProcessEnvironmentState = mutation({
   args: {
     processId: v.string(),

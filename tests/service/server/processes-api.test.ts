@@ -156,7 +156,23 @@ class RecordingPlatformStore implements PlatformStore {
   }
 
   async transitionProcessToRunning(args: { processId: string }): Promise<ProcessActionStoreResult> {
-    return this._applyRunningTransition(args.processId);
+    return this._applyLifecycleTransition(args.processId, 'running');
+  }
+
+  async transitionProcessToWaiting(args: { processId: string }): Promise<ProcessActionStoreResult> {
+    return this._applyLifecycleTransition(args.processId, 'waiting');
+  }
+
+  async transitionProcessToCompleted(args: {
+    processId: string;
+  }): Promise<ProcessActionStoreResult> {
+    return this._applyLifecycleTransition(args.processId, 'completed');
+  }
+
+  async transitionProcessToInterrupted(args: {
+    processId: string;
+  }): Promise<ProcessActionStoreResult> {
+    return this._applyLifecycleTransition(args.processId, 'interrupted');
   }
 
   async getSubmittedProcessResponse() {
@@ -249,6 +265,10 @@ class RecordingPlatformStore implements PlatformStore {
     return {
       ...defaultEnvironmentSummary,
     };
+  }
+
+  async getProcessEnvironmentProviderKind(): Promise<'daytona' | 'local' | null> {
+    return null;
   }
 
   async upsertProcessEnvironmentState(args: {
@@ -386,6 +406,13 @@ class RecordingPlatformStore implements PlatformStore {
   }
 
   private _applyRunningTransition(processId: string): ProcessActionStoreResult {
+    return this._applyLifecycleTransition(processId, 'running');
+  }
+
+  private _applyLifecycleTransition(
+    processId: string,
+    status: 'running' | 'waiting' | 'completed' | 'interrupted',
+  ): ProcessActionStoreResult {
     for (const [projectId, processes] of this.processesByProjectId.entries()) {
       const index = processes.findIndex((process) => process.processId === processId);
 
@@ -402,10 +429,13 @@ class RecordingPlatformStore implements PlatformStore {
       const now = new Date().toISOString();
       const nextProcess = processSummarySchema.parse({
         ...existing,
-        status: 'running',
-        phaseLabel: existing.phaseLabel === 'Draft' ? 'Working' : existing.phaseLabel,
-        nextActionLabel: 'Monitor progress in the work surface',
-        availableActions: ['open', 'review'],
+        status,
+        phaseLabel:
+          existing.phaseLabel === 'Draft' || existing.phaseLabel === 'Preparing environment'
+            ? 'Working'
+            : existing.phaseLabel,
+        nextActionLabel: resolveLifecycleNextActionLabel(status),
+        availableActions: resolveLifecycleAvailableActions(status),
         updatedAt: now,
       });
       const nextProcesses = [...processes];
@@ -419,6 +449,36 @@ class RecordingPlatformStore implements PlatformStore {
     }
 
     throw new Error(`Unknown process ${processId}`);
+  }
+}
+
+function resolveLifecycleNextActionLabel(
+  status: 'running' | 'waiting' | 'completed' | 'interrupted',
+): string | null {
+  switch (status) {
+    case 'running':
+      return 'Monitor progress in the work surface';
+    case 'waiting':
+      return 'Waiting for user response';
+    case 'completed':
+      return null;
+    case 'interrupted':
+      return 'Choose resume, review, rehydrate, or restart';
+  }
+}
+
+function resolveLifecycleAvailableActions(
+  status: 'running' | 'waiting' | 'completed' | 'interrupted',
+): ProcessSummary['availableActions'] {
+  switch (status) {
+    case 'running':
+      return ['open', 'review'];
+    case 'waiting':
+      return ['respond'];
+    case 'completed':
+      return ['review'];
+    case 'interrupted':
+      return ['resume', 'review', 'rehydrate', 'restart'];
   }
 }
 
