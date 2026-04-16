@@ -17,6 +17,7 @@ import {
   standaloneOutputReferenceFixture,
 } from '../../fixtures/materials.js';
 import {
+  codeCheckpointedAbsentEnvironmentProcessWorkSurfaceFixture,
   checkpointedAbsentEnvironmentProcessWorkSurfaceFixture,
   currentProcessRequestFixture,
   earlyProcessWorkSurfaceFixture,
@@ -688,6 +689,72 @@ describe('process work surface page', () => {
       'Live updates are currently unavailable.',
     );
     expect(dom.window.document.body.textContent).toContain('Retry live updates');
+  });
+
+  it('TC-6.3a durable surface remains usable when live setup fails after reopen restores a checkpoint', async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const rawUrl =
+        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const url = new URL(rawUrl, 'http://localhost:5001');
+      const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+
+      if (url.pathname === '/auth/me') {
+        return buildJsonResponse({
+          user: {
+            id: 'user:workos-user-1',
+            email: 'lee@example.com',
+            displayName: 'Lee Moore',
+          },
+        });
+      }
+
+      if (
+        method === 'GET' &&
+        url.pathname ===
+          `/api/projects/${codeCheckpointedAbsentEnvironmentProcessWorkSurfaceFixture.project.projectId}/processes/${codeCheckpointedAbsentEnvironmentProcessWorkSurfaceFixture.process.processId}`
+      ) {
+        return buildJsonResponse(codeCheckpointedAbsentEnvironmentProcessWorkSurfaceFixture);
+      }
+
+      throw new Error(`Unexpected fetch request: ${method} ${url.pathname}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const dom = await renderInteractiveProcessSurface(
+      `http://localhost:5001/projects/${codeCheckpointedAbsentEnvironmentProcessWorkSurfaceFixture.project.projectId}/processes/${codeCheckpointedAbsentEnvironmentProcessWorkSurfaceFixture.process.processId}`,
+      {
+        WebSocketCtor: FakeWebSocket as unknown as typeof WebSocket,
+      },
+    );
+    const socket = FakeWebSocket.instances[0];
+
+    if (socket === undefined) {
+      throw new Error('Expected bootstrap to start a live websocket.');
+    }
+
+    socket.emitError();
+    socket.emitClose();
+    await flush();
+
+    expect(dom.window.document.body.textContent).toContain(
+      codeCheckpointedAbsentEnvironmentProcessWorkSurfaceFixture.process.displayLabel,
+    );
+    expect(dom.window.document.body.textContent).toContain(
+      codeCheckpointedAbsentEnvironmentProcessWorkSurfaceFixture.materials.currentSources[0]
+        ?.displayName ?? '',
+    );
+    expect(dom.window.document.body.textContent).toContain(
+      codeCheckpointedAbsentEnvironmentProcessWorkSurfaceFixture.environment.lastCheckpointResult
+        ?.targetRef ?? '',
+    );
+    expect(dom.window.document.body.textContent).toContain(
+      'Live updates are currently unavailable.',
+    );
+    expect(
+      dom.window.document.querySelector('[data-process-checkpoint-result="true"]')?.textContent,
+    ).toContain(
+      codeCheckpointedAbsentEnvironmentProcessWorkSurfaceFixture.environment.lastCheckpointResult
+        ?.targetLabel ?? '',
+    );
   });
 
   it('TC-6.2a and TC-6.2b preserve visible state on connection loss and show reconnecting status', async () => {

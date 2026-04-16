@@ -20,6 +20,7 @@ import {
 import { readyProcessMaterialsFixture } from '../../fixtures/materials.js';
 import { readyProcessHistoryFixture } from '../../fixtures/process-history.js';
 import {
+  codeCheckpointSucceededEnvironmentFixture,
   checkpointSucceededEnvironmentFixture,
   readyEnvironmentFixture,
   staleEnvironmentFixture,
@@ -431,6 +432,62 @@ describe('process work surface api', () => {
     expect(response.json().environment).toMatchObject({
       state: 'unavailable',
       lastCheckpointResult: checkpointSucceededEnvironmentFixture.lastCheckpointResult,
+    });
+
+    await app.close();
+  });
+
+  it('TC-6.1a bootstrap keeps the latest durable code checkpoint visible when the environment is absent on reopen', async () => {
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectSummary.projectId]: [pausedProcessFixture],
+      },
+      currentRequestsByProcessId: {
+        [pausedProcessFixture.processId]: null,
+      },
+      processEnvironmentSummariesByProcessId: {
+        [pausedProcessFixture.processId]: {
+          ...earlyProcessWorkSurfaceFixture.environment,
+          lastCheckpointAt: codeCheckpointSucceededEnvironmentFixture.lastCheckpointAt,
+          lastCheckpointResult: codeCheckpointSucceededEnvironmentFixture.lastCheckpointResult,
+        },
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${pausedProcessFixture.processId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().environment).toMatchObject({
+      state: 'absent',
+      lastCheckpointAt: codeCheckpointSucceededEnvironmentFixture.lastCheckpointAt,
+      lastCheckpointResult: codeCheckpointSucceededEnvironmentFixture.lastCheckpointResult,
     });
 
     await app.close();

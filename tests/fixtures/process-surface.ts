@@ -26,6 +26,7 @@ import {
   emptyProcessMaterialsFixture,
   errorProcessMaterialsFixture,
   readyProcessMaterialsFixture,
+  writableProcessMaterialsFixture,
 } from './materials.js';
 import {
   checkpointingEnvironmentProcessControlsFixture,
@@ -45,6 +46,7 @@ import {
 } from './process-controls.js';
 import {
   absentEnvironmentFixture,
+  codeCheckpointSucceededEnvironmentFixture,
   checkpointSucceededEnvironmentFixture,
   lostEnvironmentFixture,
   preparingEnvironmentFixture,
@@ -328,6 +330,18 @@ export const checkpointedAbsentEnvironmentProcessWorkSurfaceFixture =
       ...absentEnvironmentFixture,
       lastCheckpointAt: checkpointSucceededEnvironmentFixture.lastCheckpointAt,
       lastCheckpointResult: checkpointSucceededEnvironmentFixture.lastCheckpointResult,
+    },
+  });
+
+export const codeCheckpointedAbsentEnvironmentProcessWorkSurfaceFixture =
+  buildProcessWorkSurfaceFixture({
+    process: pausedProcessSurfaceFixture,
+    materials: writableProcessMaterialsFixture,
+    currentRequest: null,
+    environment: {
+      ...absentEnvironmentFixture,
+      lastCheckpointAt: codeCheckpointSucceededEnvironmentFixture.lastCheckpointAt,
+      lastCheckpointResult: codeCheckpointSucceededEnvironmentFixture.lastCheckpointResult,
     },
   });
 

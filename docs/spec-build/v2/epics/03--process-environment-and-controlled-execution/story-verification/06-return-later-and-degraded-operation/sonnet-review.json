@@ -1,0 +1,27 @@
+{
+  "story": "06-return-later-and-degraded-operation",
+  "model": "claude-sonnet-4-6",
+  "date": "2026-04-15",
+  "role": "verifier-b",
+  "verdict": "APPROVED",
+  "gate": {
+    "command": "corepack pnpm run verify 2>&1 | tail -30",
+    "result": "PASS",
+    "convex_files": 4,
+    "convex_tests": 12,
+    "service_files": 12,
+    "service_tests": 102,
+    "client_files": 19,
+    "client_tests": 148
+  },
+  "ac_coverage": {
+    "AC-6.1_TC-6.1a": "SATISFIED",
+    "AC-6.2_TC-6.2a": "SATISFIED",
+    "AC-6.3_TC-6.3a": "SATISFIED",
+    "AC-6.4_TC-6.4a": "SATISFIED",
+    "AC-6.4_TC-6.4b": "SATISFIED"
+  },
+  "tc4_1b_chain": "intact",
+  "tautology_check": "clean",
+  "blocking_findings": []
+}

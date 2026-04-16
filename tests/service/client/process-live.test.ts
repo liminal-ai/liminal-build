@@ -52,6 +52,7 @@ import {
 } from '../../fixtures/process-surface.js';
 import {
   progressUpdateHistoryFixture,
+  readyProcessHistoryFixture,
   userMessageHistoryFixture,
 } from '../../fixtures/process-history.js';
 import { readySideWorkFixture } from '../../fixtures/side-work.js';
@@ -385,6 +386,42 @@ describe('process live foundation', () => {
     });
 
     expect(nextState.history).toEqual(state.history);
+  });
+
+  it('TC-6.4b environment checkpoint visibility remains separate from finalized history', () => {
+    const state = processSurfaceStateSchema.parse({
+      ...connectedProcessSurfaceStateFixture,
+      history: readyProcessHistoryFixture,
+      environment: checkpointSucceededEnvironmentFixture,
+      live: {
+        connectionState: 'connected',
+        subscriptionId: 'subscription-001',
+        lastSequenceNumber: 10,
+        error: null,
+      },
+    });
+    const nextState = applyLiveProcessMessage({
+      state,
+      message: buildLiveProcessMessageFixture({
+        messageType: 'upsert',
+        entityType: 'environment',
+        entityId: 'environment',
+        processId:
+          state.processId ?? connectedProcessSurfaceStateFixture.processId ?? 'process-001',
+        sequenceNumber: 11,
+        payload: buildEnvironmentSummaryFixture({
+          ...checkpointSucceededEnvironmentFixture,
+        }),
+      }),
+    });
+
+    expect(nextState.history).toEqual(readyProcessHistoryFixture);
+    expect(nextState.history?.items.map((item) => item.historyItemId)).toEqual(
+      readyProcessHistoryFixture.items.map((item) => item.historyItemId),
+    );
+    expect(nextState.environment?.lastCheckpointResult).toEqual(
+      checkpointSucceededEnvironmentFixture.lastCheckpointResult,
+    );
   });
 
   it('environment updates do not wipe unrelated materials state', () => {
