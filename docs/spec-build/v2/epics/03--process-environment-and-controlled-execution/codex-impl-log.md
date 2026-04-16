@@ -2255,3 +2255,350 @@ log or the code, it doesn't survive context compression.
   it pointed at a real process failure. Treat frustration as a symptom of a
   real problem, not as noise to manage.
 
+---
+
+## 2026-04-16 — Proper Epic-Level Verification (4-Phase) — VERDICT: BLOCK
+
+User correctly called out that the prior story-level "epic verification"
+(Codex + Sonnet running story-shape reviews of the epic) was NOT a real
+epic-level verification. The actual `ls-team-impl` epic verification has
+four phases (parallel reviews → meta-reports → fresh synthesis → fixes),
+not a single dual review.
+
+### Phase 1 — Four Parallel Adversarial Reviews
+
+Tree under review: `dd2cb39` (after pre-verification cleanup + nit-fix batch).
+Reviewers used full-codebase reads, with Claude reviewers given explicitly
+adversarial prompts ("find what's wrong; assume problems exist").
+
+| Reviewer | Verdict | Session/Thread ID | Notes |
+|----------|---------|-------------------|-------|
+| GPT-5.4 xhigh | **BLOCK** | `019d95f3-f215-7022-827a-a18c66c6e9a1` | Best production-path read |
+| GPT-5.3-codex xhigh | **REVISE** | `019d95fe-680e-75f3-8ef9-0019ee1a4352` | First attempt overflowed context; compact retry succeeded |
+| Sonnet 4.6 max (adversarial) | **SHIP** | `31ae0b12-6eb6-4931-9481-126a4ed82bb8` | Under-calibrated — over-relied on passing tests |
+| Opus 1m max (adversarial) | **REVISE** (Haiku fallback) | n/a | Failed to land Opus despite multiple dispatch patterns; review is from Haiku 4.5 |
+
+### Phase 2 — Meta-Reports
+
+Each reviewer read all 4 reviews and produced a meta-report ranking the
+others. Codex `--resume` does not work with `exec` mode (exit code 2),
+so Codex meta-reports ran as fresh sessions; Claude meta-reports resumed.
+3 of 4 meta-reports landed. Opus/Haiku meta blocked twice on permissions.
+
+### Phase 3 — Synthesis (Fresh GPT-5.4 xhigh)
+
+A fresh GPT-5.4 xhigh agent read all 7 prior reports, independently verified
+every claim against source code, and rated the verifiers. Output:
+`synthesis-report.md`.
+
+### Final Synthesis Verdict: **BLOCK**
+
+Gate passes (271 tests, exit 0 verified by synthesis agent), but the real
+production path materially under-delivers Epic 3 promises:
+
+**Must-fix (8 items):**
+1. Default runtime boots with `InMemoryProviderAdapter` — replace with real provider selection
+2. `StubCodeCheckpointWriter` is the production default — wire real canonical code persistence
+3. `convex/artifacts.ts` discards `artifact.contents` — persist content or durable handle
+4. `convex/sourceAttachments.ts` doesn't durably persist `accessMode` — add to schema + projections
+5. `InMemoryPlatformStore.hasCanonicalRecoveryMaterials` diverges from Convex implementation
+6. Fire-and-forget recovery paths swallow secondary failures with `.catch(() => {})`; hydration post-ready can reject unhandled
+7. `workingSetFingerprint` modeled but never written or compared — stale/lost detection missing at runtime
+8. Execution doesn't emit process-facing durable writes (current requests, side-work) — only environment flips + coarse `process_event`
+
+**Should-fix (4 items):**
+1. Client recomputes `environment.statusLabel` instead of trusting contract value
+2. `process.hasEnvironment` can drift from environment truth
+3. `convex/sourceAttachments.ts` violates Convex guidelines (`queryGeneric`, `ctx:any`)
+4. Tautological foundation test + over-reliance on text-presence client assertions
+
+**Findings the synthesis agent disproved:**
+- GPT-5.3-codex's failing-gate claim (verified clean on `dd2cb39`)
+- Sonnet's AC-4.1, AC-4.2, TC-2.5a/b satisfaction claims (production path falsifies all three)
+- Sonnet's "no tautological tests" claim (one exists at `process-foundation-contracts.test.ts:29`)
+
+### Verifier Calibration Ratings (from synthesis agent)
+
+| Reviewer | Accuracy | Depth | Calibration | Usefulness |
+|----------|----------|-------|-------------|------------|
+| GPT-5.4 | 9 | 10 | 9 | 10 |
+| GPT-5.3 Codex | 7 | 7 | 8 | 7 |
+| Opus/Haiku | 8 | 9 | 8 | 8 |
+| Sonnet | 4 | 6 | 2 | 4 |
+
+**Insight:** SHIP-to-BLOCK spread came from reviewers answering different
+questions. Sonnet asked "are contracts/reducers/tests coherent?" GPT-5.4
+asked "does the real default runtime deliver Epic 3's promised behavior?"
+Future epic-review prompts must explicitly require:
+- Evaluation against ACs + boundary inventory, not just test coverage
+- Verification of real default app wiring, not just mocked seams
+- Separate analysis of `InMemoryPlatformStore` vs `ConvexPlatformStore`
+- Gate re-run with timestamp + commit SHA in the report
+- Distinction between "test double" and "stub-as-production-default"
+
+### Files Generated (epic-verification directory)
+
+All paths relative to
+`docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/epic-verification/`:
+
+**Phase 1 — Reviews:**
+- `gpt54-review.md` (34.6K, BLOCK)
+- `gpt53-codex-review.md` (6.9K, REVISE)
+- `sonnet-review.md` (50.4K, SHIP)
+- `opus-review.md` (46K, REVISE — Haiku fallback)
+
+**Phase 2 — Meta-Reports:**
+- `gpt54-meta-report.md` (6.1K)
+- `gpt53-codex-meta-report.md` (6.8K)
+- `sonnet-meta-report.md` (2.9K)
+- (Opus/Haiku meta-report not produced — write blocked twice)
+
+**Phase 3 — Synthesis:**
+- `synthesis-report.md` (14.7K — final BLOCK verdict + verified findings table + verifier ratings)
+
+### Orchestration Issues Encountered
+
+1. **Helper CLI model flag inconsistency.** `claude-subagent` helper sometimes
+   silently fell back to Haiku 4.5 when dispatching Opus 4.6 / Sonnet 4.6
+   despite the `--model` flag. Direct `claude` CLI invocation worked. Need
+   to verify model in result JSON before accepting any Claude subagent output.
+
+2. **Opus 1m API ConnectionRefused** on direct CLI dispatch even after
+   pattern-matching a verified working invocation. Could not get a real
+   Opus review for Phase 1.
+
+3. **Codex `exec --resume` fails with exit code 2.** Phase 2 Codex meta-reports
+   had to run as fresh sessions instead of resumed. Sessions captured for
+   audit but unusable for resume.
+
+4. **Sonnet write tool permission-blocked twice** during Phase 2. Had to
+   extract content from session JSON and write manually.
+
+5. **GPT-5.3-codex context overflow** on first Phase 1 attempt — 1M context
+   was insufficient for full epic + tech-design + codebase read. Compact
+   prompt (skip spec re-read, point at code) succeeded.
+
+### Status After Phase 3
+
+Epic 3 is **NOT shippable** in current form. The story-level work is
+durable-state-coherent; the production-path wiring (real providers, real
+checkpoint writer, durable Convex schema for `accessMode` + artifact
+contents + `workingSetFingerprint`) is the gap.
+
+**Phase 4 (fixes) has NOT been started.** Awaiting human direction on
+disposition of the 8 must-fix items.
+
+---
+
+## Phase 4 Closure — Three-Chunk Fix Execution
+
+Phase 4 executed as three sequential fix-batch chunks. No new stories; no
+new ACs. The 14 verified gaps (8 must-fix + 6 should-fix from the synthesis
+report) were grouped by coherent dependency ordering and dispatched with
+full real implementation (no stubs-as-defaults, no shims). Each chunk
+received dedicated Codex `gpt-5.4 xhigh` verification with bounded fix
+slices as needed until the verifier returned PASS.
+
+### Pre-Chunk 1 unblock
+
+`3b6b9f2` — chore: drop dead Buffer references blocking convex dev typecheck
+
+Two `Buffer` references (checkpoint-types.ts:6, platform-store.ts:918)
+from an earlier speculative slice prevented `npx convex dev` typecheck
+from passing. No real producer ever returned Buffer. Trivial two-line
+removal by Opus 4.7 subagent.
+
+### Chunk 1 — Convex Durability Foundation
+
+**Items closed:** 4, 5, 6, 9, 11, 13
+**Implementer:** Opus 4.7 subagent (one-shot fix-batch dispatch)
+**Verifier:** Codex `gpt-5.4 xhigh` direct bash dispatch
+
+Commits:
+- `45f38e5` — feat: Convex durability foundation (schema migrations,
+  `accessMode` durable field + projection, typed `query` compliance on
+  sourceAttachments, artifact content persistence via `contentStorageId`
+  and internal action + internal mutation pattern, `workingSetFingerprint`
+  read-time comparison + write-time storage, aligned
+  `hasCanonicalRecoveryMaterials` semantics between Convex and InMemory
+  stores, `processes.hasEnvironment` derivation from env state)
+- `dad936e` — fix: verifier findings closure (admin auth wiring on
+  ConvexHttpClient for internal action calls, orphan cleanup on
+  `ctx.storage.store` failure, `workingSetFingerprint` write on the
+  initial `createProcess` env state insert)
+
+Architectural decisions carried through:
+- Convex File Storage for artifact contents — `contentStorageId: v.id('_storage')`
+- All Convex code in default V8 runtime — no `'use node'` anywhere
+- Internal functions for server-only orchestration
+- Same-mutation orphan cleanup on artifact delete
+- Web Crypto SHA-256 for fingerprint; stable JSON with fixed key order
+- No schema migrations — breaking changes landed directly (pre-customer dev)
+- FakeConvexContext gained in-memory storage implementation for tests
+
+Final Chunk 1 gate: 34 convex / 112 service / 152 client / 9 integration.
+Codex verdict: PASS, all 6 items SATISFIED.
+
+### Chunk 2 — Real Provider Lane + Honest Error Handling
+
+**Items closed:** 1, 2, 7, 8, 12
+**Implementer:** Opus 4.7 subagent
+**Verifier:** Codex `gpt-5.4 xhigh`
+
+Commits:
+- `6d8a1f1` — feat: real provider lane (real `LocalProviderAdapter` with
+  working-tree management + child_process execution + real canonical
+  hydration; `DaytonaProviderAdapter` typed skeleton throwing
+  `NotImplementedError` until Daytona research closes; `ExecutionResult`
+  contract extension to the full spec'd 6 fields; fire-and-forget `.catch`
+  cleanup with terminal-state transitions; provider default switch to
+  `daytona` for shared/remote, `local` only when explicitly dev-selected)
+- `ad3fdf6` — fix: 5 Codex verifier findings
+  - persisted `providerKind` now authoritative on resume/rehydrate/rebuild
+    (was re-resolving from current config on every call)
+  - side-effect failure visibility: `applyExecutionResultSideEffects` now
+    propagates history/output/side-work persistence failures to visible
+    env state (was `console.warn` + continue — the same silent-swallow
+    pattern Item 8 was supposed to fix)
+  - candidate validation: `LocalProviderAdapter.validateCandidateRefs`
+    now checks file existence, not just path containment
+  - `ExecutionResult` consumption: `processStatus` 5-value enum handled
+    for all states; outputs/sideWork always replaced per spec (was only
+    applied when non-empty, breaking replace semantics)
+  - fire-and-forget tests for rehydrate/rebuild/runExecution rejection
+- `36fd186` — fix: `transitionProcessToFailed` for full `ExecutionResult`
+  lifecycle coverage (orchestrator gained `transitionProcessToWaiting`,
+  `transitionProcessToCompleted`, `transitionProcessToInterrupted`, but
+  missed `transitionProcessToFailed` — when execution returned
+  `processStatus: 'failed'` the env flipped failed but process status
+  stayed stale; incoherent state)
+
+Final Chunk 2 gate: 34 convex / 152 service / 152 client / 9 integration.
+Codex verdict: PASS, all 5 items SATISFIED (Item 7 required 2 fix slices
+to close fully; final closure at `36fd186`).
+
+### Chunk 3 — Real Octokit Code Checkpoint Writer + Cleanup
+
+**Items closed:** 3, 10, 14
+**Implementer:** Opus 4.7 subagent (Chunk 3 feat); Codex `gpt-5.4 xhigh`
+(subsequent fix slices)
+**Verifier:** Codex `gpt-5.4 xhigh`
+
+Commits:
+- `d423a4d` — feat: real Octokit code checkpoint writer
+  (`OctokitCodeCheckpointWriter` using `@octokit/rest 22.0.1`; direct
+  write to attached writable `targetRef` per spec — no branch invention;
+  server-side fail-closed for `read_only` attachments + unknown source
+  IDs; env var `GITHUB_TOKEN` required, fail-loud if missing rather
+  than silent mock; 3 real integration tests against
+  `liminal-ai/liminal-build` with branch cleanup; client trusts
+  `environment.statusLabel` from server contract in the panel;
+  tautological foundation test dropped)
+- `77087d4` — fix: Item 10 closure in live reducer (apps/platform/client/app/process-live.ts:79-98
+  was still recomputing `statusLabel` from state on every live update
+  even after the panel was fixed — same Item 10 violation, different
+  file); strengthened panel and live tests (fixtures used custom
+  statusLabel that happened to equal canonical derived string — tests
+  would still pass if recomputation were reintroduced); runtime
+  validation added for `CodeCheckpointCandidate.filePath`/`commitMessage`
+- `6dcc1c8` — fix: remove `statusLabel` default from
+  `environmentSummarySchema` (the Zod default of `'Not prepared'` meant
+  a malformed live message with `state: 'ready'` but no `statusLabel`
+  would parse successfully and display an absent-state label on a ready
+  environment — spec says `statusLabel` is required, non-empty;
+  contract violation masked by schema default). Negative tests added for
+  missing + empty `statusLabel`.
+- `7ea7c30` — fix: remove anti-pattern defaults on `state` and
+  `environment` response schemas (Codex flagged `state` as the same
+  anti-pattern as `statusLabel`; a sweep also found `environment`
+  field defaults on response schemas). Verified these were only
+  masking test-fixture sloppiness, not real production bugs —
+  server-side response construction was already always including
+  `environment` correctly.
+
+Final Chunk 3 gate: 34 convex / 152 service / 152 client / 9 integration
+(test count unchanged but test rigor strengthened via removal of
+default-masking).
+
+Codex verdict: PASS, all 3 items SATISFIED plus contract hygiene flush.
+
+Residual: 4 required-with-default anti-patterns on other contract
+shapes (`environment.lastCheckpointResult`, `process.controls`,
+`process.hasEnvironment`, `processSourceReference.accessMode`) flagged
+as **non-blocking future cleanup** — they don't affect Epic 3 behavior.
+
+### Phase 4 Closure Summary
+
+| Chunk | Commits | Items Closed | Final Verdict |
+|-------|---------|--------------|---------------|
+| 1 | `45f38e5`, `dad936e` | 4, 5, 6, 9, 11, 13 | PASS |
+| 2 | `6d8a1f1`, `ad3fdf6`, `36fd186` | 1, 2, 7, 8, 12 | PASS |
+| 3 | `d423a4d`, `77087d4`, `6dcc1c8`, `7ea7c30` | 3, 10, 14 | PASS |
+
+All 14 gap items closed. Current tree post `7ea7c30`:
+- `corepack pnpm run verify`: exit 0
+- `corepack pnpm run test:integration`: exit 0
+- `tsc --noEmit -p convex/tsconfig.json`: exit 0
+- 34 convex / 152 service / 152 client / 9 integration tests
+
+### Orchestration Learnings Carried Forward
+
+1. **Direct Codex bash dispatch is the reliable pattern.** Every
+   successful Codex run in Phase 4 used `codex exec --json "prompt" > jsonl`
+   via Bash `run_in_background: true`. No `codex-subagent` wrapper;
+   no shell `&`; no teammate managed codex instance.
+
+2. **Codex `gpt-5.4 xhigh` is rigorous but finds narrow-scope defects
+   on fix-batch re-verification.** Several chunks needed 2-3 bounded
+   fix slices before the verifier returned PASS. This is a feature,
+   not a failure — the verifier catches the next layer of defects
+   exposed by the fix itself (e.g., removing `statusLabel` default
+   exposed `state` default; removing one fail-open path exposed a
+   similar pattern elsewhere).
+
+3. **Schema defaults on required fields are an anti-pattern** that
+   accumulates as fixtures grow. Removal exposes all callers that
+   were implicitly relying on the default. When doing this kind of
+   cleanup, expect a ripple of test-fixture fixes.
+
+4. **Convex `setAdminAuth` is `@internal` in the public types.** The
+   fix-batch used a narrowed type cast. Worth tracking for Convex
+   upgrades but not worth sidestepping via alternative patterns
+   (the internal-action+internal-mutation pattern is canonical;
+   admin auth is the canonical way to call it from a long-lived
+   Fastify-side ConvexHttpClient).
+
+5. **Real external integration (Octokit) adds value to the test
+   suite.** The 3 integration tests against `liminal-ai/liminal-build`
+   prove the path works end-to-end, catch auth shape issues,
+   exercise branch cleanup, and give manual-verification-checklist
+   confidence. Worth the slight complexity of env-var requirement
+   and test isolation.
+
+6. **When an honest stub refuses to boot** (e.g., `GITHUB_TOKEN`
+   missing), the test suite runs unit-mocked paths but integration
+   tests fail-loud at startup. This is the right shape — the
+   alternative (silent mock) hides missing credentials and becomes
+   a production surprise.
+
+---
+
+## Phase 5 — Final Epic Verification and Manual Acceptance (PENDING)
+
+After all three chunks closed, the final Epic 3 acceptance work:
+
+1. **Full four-phase epic re-verification** on the post-`7ea7c30` tree:
+   - Phase 1: fresh reviews from GPT-5.4 xhigh, GPT-5.3-codex xhigh,
+     Sonnet 4.6 max adversarial, Opus 1m max adversarial
+   - Phase 2: cross-reviewer meta-reports
+   - Phase 3: fresh GPT-5.4 xhigh synthesis with independent code
+     verification
+   - Required verdict: SHIP
+2. **Manual Verification Checklist** (`test-plan.md:501+`) walked
+   end-to-end against `npx convex dev` + Fastify/Vite dev server with
+   `LocalProviderAdapter` and the real Octokit code checkpoint writer.
+3. Convex dev server verified clean on the current tree
+   (`3b6b9f2` unblocked typecheck; re-verify post-Chunk-3).
+
+Only after both (1) and (2) pass does Epic 3 close.
+
