@@ -38,6 +38,7 @@ import {
   checkpointSucceededEnvironmentFixture,
   failedEnvironmentFixture,
   rehydratingEnvironmentFixture,
+  readyEnvironmentFixture,
   rebuildingEnvironmentFixture,
   runningEnvironmentFixture,
 } from '../../fixtures/process-environment.js';
@@ -315,6 +316,51 @@ describe('process live foundation', () => {
       state: 'checkpointing',
       statusLabel: customStatusLabel,
     });
+  });
+
+  it('TC-3.3c malformed ready environment live messages missing statusLabel are rejected', () => {
+    const payloadWithoutStatusLabel = {
+      environmentId: readyEnvironmentFixture.environmentId,
+      state: readyEnvironmentFixture.state,
+      blockedReason: readyEnvironmentFixture.blockedReason,
+      lastHydratedAt: readyEnvironmentFixture.lastHydratedAt,
+      lastCheckpointAt: readyEnvironmentFixture.lastCheckpointAt,
+      lastCheckpointResult: readyEnvironmentFixture.lastCheckpointResult,
+    };
+    const result = liveProcessUpdateMessageSchema.safeParse({
+      subscriptionId: 'subscription-001',
+      processId: runningProcessSurfaceFixture.processId,
+      sequenceNumber: 2,
+      entityId: 'environment',
+      correlationId: null,
+      completedAt: null,
+      messageType: 'upsert',
+      entityType: 'environment',
+      payload: payloadWithoutStatusLabel,
+    });
+
+    expect(result.success).toBe(false);
+    expect(JSON.stringify(result.error?.issues)).toContain('"statusLabel"');
+  });
+
+  it('TC-3.3d malformed ready environment live messages with empty statusLabel are rejected', () => {
+    const result = liveProcessUpdateMessageSchema.safeParse({
+      subscriptionId: 'subscription-001',
+      processId: runningProcessSurfaceFixture.processId,
+      sequenceNumber: 2,
+      entityId: 'environment',
+      correlationId: null,
+      completedAt: null,
+      messageType: 'upsert',
+      entityType: 'environment',
+      payload: {
+        ...readyEnvironmentFixture,
+        statusLabel: '',
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(JSON.stringify(result.error?.issues)).toContain('"statusLabel"');
   });
 
   it('TC-3.4a execution failure preserves process identity, history, and materials visibility', () => {

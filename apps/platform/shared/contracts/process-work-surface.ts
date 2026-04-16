@@ -233,7 +233,7 @@ export const defaultEnvironmentSummary = {
 export const environmentSummarySchema = z.object({
   environmentId: z.string().min(1).nullable().default(defaultEnvironmentSummary.environmentId),
   state: environmentStateSchema.default(defaultEnvironmentSummary.state),
-  statusLabel: z.string().min(1).default(defaultEnvironmentSummary.statusLabel),
+  statusLabel: z.string().min(1),
   blockedReason: z.string().min(1).nullable().default(defaultEnvironmentSummary.blockedReason),
   lastHydratedAt: z.string().min(1).nullable().default(defaultEnvironmentSummary.lastHydratedAt),
   lastCheckpointAt: z
