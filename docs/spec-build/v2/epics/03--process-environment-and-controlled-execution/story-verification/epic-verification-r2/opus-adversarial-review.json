@@ -1,0 +1,91 @@
+{
+  "reviewerId": "opus-adversarial",
+  "verdict": "SHIP",
+  "gateRan": true,
+  "gateExitCode": 0,
+  "testCounts": {
+    "convex": 35,
+    "service": 163,
+    "client": 156,
+    "integration": 12
+  },
+  "acSatisfied": 29,
+  "acViolated": 0,
+  "tcSatisfied": 57,
+  "tcViolated": 0,
+  "blockingFindings": [],
+  "nonblockingFindings": [
+    {
+      "id": "NB-1",
+      "severity": "minor",
+      "ac": "AC-4.4",
+      "title": "Zod .default(null) on required lastCheckpointResult",
+      "file": "apps/platform/shared/contracts/process-work-surface.ts:244-246",
+      "evidence": "lastCheckpointResult: lastCheckpointResultSchema.nullable().default(defaultEnvironmentSummary.lastCheckpointResult) — default masks a missing server field",
+      "spec": "epic.md:589 — lastCheckpointResult is required (nullable but present)"
+    },
+    {
+      "id": "NB-2",
+      "severity": "minor",
+      "ac": "AC-1.2",
+      "title": "Zod .default() on required controls array",
+      "file": "apps/platform/shared/contracts/process-work-surface.ts:258",
+      "evidence": "controls: z.array(processSurfaceControlStateSchema).default(defaultProcessSurfaceControls) — default is an empty-disabled set that hides missing server contract",
+      "spec": "epic.md:620 — controls is a required full-visible-control-set field"
+    },
+    {
+      "id": "NB-3",
+      "severity": "minor",
+      "ac": "AC-1.4",
+      "title": "Zod .default(false) on required hasEnvironment",
+      "file": "apps/platform/shared/contracts/process-work-surface.ts:259",
+      "evidence": "hasEnvironment: z.boolean().default(false)",
+      "spec": "epic.md:621 — hasEnvironment is required"
+    },
+    {
+      "id": "NB-4",
+      "severity": "minor",
+      "ac": "AC-2.5",
+      "title": "Zod .default('read_only') on required accessMode",
+      "file": "apps/platform/shared/contracts/process-work-surface.ts:328; apps/platform/shared/contracts/schemas.ts:158",
+      "evidence": "accessMode: sourceAccessModeSchema.default('read_only') — safe default but still masks a missing server field",
+      "spec": "epic.md:634 — accessMode is required"
+    },
+    {
+      "id": "NB-5",
+      "severity": "minor",
+      "ac": "none",
+      "title": "EnvironmentProviderAdapter interface — index sketch (7 methods) vs refined server spec and impl (6 methods + providerKind property)",
+      "file": "docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/tech-design.md:213-222 (sketch); apps/platform/server/services/processes/environment/provider-adapter.ts:129-147 (impl)",
+      "evidence": "Index sketch lists collectCheckpointCandidate as a 7th method; refined server tech design (tech-design-server.md:573-591) and impl moved that responsibility into ExecutionResult.artifactCheckpointCandidates/codeCheckpointCandidates + the CheckpointPlanner seam. Impl follows the refined server spec.",
+      "spec": "tech-design-server.md:573-591 — refined 6-method + providerKind property adapter contract"
+    },
+    {
+      "id": "NB-6",
+      "severity": "minor",
+      "ac": "none",
+      "title": "Orchestrator passes fingerprint: '' to adapter",
+      "file": "apps/platform/server/services/processes/environment/process-environment.service.ts:1311-1312",
+      "evidence": "buildAdapterHydrationPlan returns { fingerprint: '', ... }; the adapter echoes this back in HydrationResult. No behavioral impact because the durable fingerprint is computed in Convex (processEnvironmentStates.ts:483-490) and compared at read time (:382-386).",
+      "spec": "tech-design.md:312-329 — fingerprint is a first-class hydration input; tech-design.md:332-340 — stale detection uses the stored fingerprint comparison"
+    },
+    {
+      "id": "NB-7",
+      "severity": "trivial",
+      "ac": "AC-1.1",
+      "title": "Client-side normalizeEnvironmentState recomputes statusLabel on synthesized transitions",
+      "file": "apps/platform/client/app/process-live.ts:79-88, 159-161",
+      "evidence": "normalizeEnvironmentState(...) sets statusLabel: deriveEnvironmentStatusLabel(state) when the client synthesizes a new env summary after a process-to-waiting transition with no accompanying server env message. For server-supplied payloads the panel already trusts server statusLabel (process-environment-panel.ts:25).",
+      "spec": "tech-design-client.md:99-103 — the browser should keep availableActions for backward checks but render from controls; statusLabel is server-sourced per epic.md:585"
+    },
+    {
+      "id": "NB-8",
+      "severity": "trivial",
+      "ac": "AC-5.1",
+      "title": "Integration tests use InMemoryPlatformStore, so the Convex-only stale projection is tested only at the Convex-function seam",
+      "file": "tests/integration/process-work-surface.test.ts:55-67",
+      "evidence": "startApp takes an InMemoryPlatformStore parameter; the InMemory store does not implement fingerprint or stale projection. Stale detection is covered by convex/processEnvironmentStates.test.ts:467 (writes fingerprint on every mutation) and :484 (stale projection at read time).",
+      "spec": "tech-design.md:332-340 — rehydrate vs rebuild decision depends on stale detection"
+    }
+  ]
+}

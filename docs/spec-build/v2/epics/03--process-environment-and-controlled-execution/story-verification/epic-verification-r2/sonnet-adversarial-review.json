@@ -1,0 +1,82 @@
+{
+  "reviewerId": "sonnet-adversarial",
+  "verdict": "SHIP",
+  "gateRan": true,
+  "gateExitCode": 0,
+  "testCounts": {
+    "convex": 35,
+    "service": 163,
+    "client": 156,
+    "integration": 12
+  },
+  "acSatisfied": 22,
+  "acViolated": 0,
+  "tcSatisfied": 57,
+  "tcViolated": 0,
+  "blockingFindings": [],
+  "nonblockingFindings": [
+    {
+      "id": "NB-1",
+      "severity": "minor",
+      "ac": "AC-5.1",
+      "title": "InMemoryPlatformStore lacks read-time fingerprint-based stale projection",
+      "file": "apps/platform/server/services/projects/platform-store.ts:1570-1575",
+      "evidence": "InMemoryPlatformStore.getProcessEnvironmentSummary returns the stored summary directly without comparing fingerprints. ConvexPlatformStore delegates to the Convex getProcessEnvironmentSummary query which performs read-time stale projection at convex/processEnvironmentStates.ts:382-386. Service and integration tests use InMemory so they cannot exercise the automatic fingerprint-driven stale detection path end-to-end. Convex unit tests do exercise it.",
+      "spec": "tech-design.md:335-342 — ready vs stale is determined by fingerprint comparison at read time. tech-design-server.md:303 — stale means environment exists but canonical inputs no longer match the fingerprint."
+    },
+    {
+      "id": "NB-2",
+      "severity": "minor",
+      "ac": "AC-1.2",
+      "title": "Four Zod defaults on spec-required fields (pre-acknowledged in addendum)",
+      "file": "apps/platform/shared/contracts/process-work-surface.ts:246,258,259,328",
+      "evidence": "Four .default() calls on fields the spec marks as required: lastCheckpointResult (default null), controls (default defaultProcessSurfaceControls), hasEnvironment (default false), accessMode (default 'read_only'). If the server omits these fields from a response, the schema silently fills defaults rather than surfacing a contract violation. Production code always sets these fields explicitly so no behavioral bug exists currently.",
+      "spec": "Flagged in implementation-addendum.md as non-blocking future cleanup. Epic spec marks these fields as required (lastCheckpointResult: yes | present; controls: yes; hasEnvironment: yes; accessMode: yes)."
+    },
+    {
+      "id": "NB-3",
+      "severity": "minor",
+      "ac": "AC-1.2",
+      "title": "Response composer gated on availableActions not process.controls",
+      "file": "apps/platform/client/features/processes/process-work-surface-page.ts:190-193",
+      "evidence": "Page gates the respond text-input composer on activeProcess.availableActions.includes('respond') rather than deriving from process.controls. The respond button itself is correctly rendered via renderProcessControls(process.controls). The availableActions check is used only for the optional secondary input surface.",
+      "spec": "tech-design-client.md:99-103 — client must stop rendering action buttons from availableActions and render from controls. The composer is not a button but the principle extends to all rendering gated on process state."
+    },
+    {
+      "id": "NB-4",
+      "severity": "minor",
+      "ac": "AC-2.1",
+      "title": "providerKind schema allows null but spec shows only daytona | local",
+      "file": "convex/processEnvironmentStates.ts:51,554",
+      "evidence": "processEnvironmentStatesTableFields declares providerKind as v.union(v.literal('daytona'), v.literal('local'), v.null()). setProcessHydrationPlan inserts a new row with providerKind: null when no environment exists yet. The orchestrator always sets a real providerKind before any lifecycle work, so null is only a transient initialization state.",
+      "spec": "tech-design-server.md:368-379 shows providerKind as v.union(v.literal('daytona'), v.literal('local')) without null. The addendum's architecture section does not explicitly address this null addition."
+    },
+    {
+      "id": "NB-5",
+      "severity": "minor",
+      "ac": "AC-2.2",
+      "title": "buildAdapterHydrationPlan passes empty fingerprint string to adapter",
+      "file": "apps/platform/server/services/processes/environment/process-environment.service.ts:1311",
+      "evidence": "buildAdapterHydrationPlan sets fingerprint: '' in the HydrationPlan passed to adapters. The adapter echoes it back in HydrationResult. The durable workingSetFingerprint is stored correctly via computeWorkingSetFingerprint called inside upsertProcessEnvironmentState — it is never derived from the plan fingerprint. The empty plan fingerprint is a dead field on the plan shape.",
+      "spec": "tech-design-server.md:509-533 — HydrationPlan.fingerprint is spec'd as a stable JSON-SHA256 digest. The intent was for the plan to carry the fingerprint so the adapter can echo it back as confirmation."
+    },
+    {
+      "id": "NB-6",
+      "severity": "minor",
+      "ac": "AC-4.1",
+      "title": "Checkpoint guard condition is inconsistent between outer and inner check",
+      "file": "apps/platform/server/services/processes/environment/process-environment.service.ts:602-613,693",
+      "evidence": "executeExecution fires runCheckpointAsync when checkpointPlanner !== undefined || codeCheckpointWriter !== undefined || artifactCheckpointPersistence !== platformStore. But runCheckpointAsync itself bails silently if checkpointPlanner === undefined || codeCheckpointWriter === undefined. If exactly one of the two is defined, the outer condition fires but the inner bails silently. In production both are always set together so this edge case is never hit.",
+      "spec": "No explicit spec rule. Internal implementation consistency issue."
+    },
+    {
+      "id": "NB-7",
+      "severity": "minor",
+      "ac": "AC-1.1",
+      "title": "ENV_STATES_WITH_ENVIRONMENT omits unavailable state",
+      "file": "convex/processEnvironmentStates.ts:72-81",
+      "evidence": "ENV_STATES_WITH_ENVIRONMENT does not include 'unavailable'. When environment state becomes 'unavailable', deriveHasEnvironment returns false, so processes.hasEnvironment is set to false. It is unclear from the spec whether unavailable means a working environment may still exist but be unreachable (hasEnvironment = true) or that no environment is present (hasEnvironment = false).",
+      "spec": "epic.md:137 — unavailable is a distinct environment state. tech-design-server.md:304 — unavailable means environment lifecycle service/provider path is currently unavailable. Spec does not explicitly state hasEnvironment semantics for unavailable."
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "reviewerId": "gpt54-xhigh",
+  "verdict": "REVISE",
+  "gateRan": true,
+  "gateExitCode": 0,
+  "testCounts": {
+    "convex": 35,
+    "service": 163,
+    "client": 156,
+    "integration": 12
+  },
+  "acSatisfied": 28,
+  "acViolated": 0,
+  "tcSatisfied": 58,
+  "tcViolated": 0,
+  "blockingFindings": [
+    {
+      "id": "B-1",
+      "severity": "major",
+      "ac": "AC-1.4",
+      "title": "Required-field Zod defaults still mask malformed Epic 3 payloads in the production client",
+      "file": "apps/platform/shared/contracts/process-work-surface.ts:244-246; apps/platform/shared/contracts/process-work-surface.ts:258-259; apps/platform/shared/contracts/process-work-surface.ts:328; apps/platform/client/browser-api/process-work-surface-api.ts:106-194",
+      "evidence": "The production client schemas still default required Epic 3 fields: `environment.lastCheckpointResult`, `process.controls`, `process.hasEnvironment`, and `processSourceReference.accessMode`. I also confirmed with a local tsx parse probe that payloads missing those fields still parse successfully as `null`, a 7-item default control set, `false`, and `read_only`.",
+      "spec": "The Round 2 brief requires no Zod defaults on required fields, and Epic 3 relies on durable/server truth for visible controls, checkpoint context, and source access mode."
+    }
+  ],
+  "nonblockingFindings": [
+    {
+      "id": "N-1",
+      "severity": "minor",
+      "ac": "AC-2.2",
+      "title": "HydrationPlan fingerprint is still passed to adapters as an empty string",
+      "file": "apps/platform/server/services/processes/environment/process-environment.service.ts:1306-1313",
+      "evidence": "`buildAdapterHydrationPlan` hard-codes `fingerprint: ''` even though the provider contract includes a fingerprint field. Current stale detection still works because Convex computes and stores `workingSetFingerprint` separately on env-state writes.",
+      "spec": "The provider contract in tech-design-server.md defines `HydrationPlan.fingerprint` as part of the adapter input; threading the real digest would keep the contract honest end-to-end."
+    }
+  ]
+}

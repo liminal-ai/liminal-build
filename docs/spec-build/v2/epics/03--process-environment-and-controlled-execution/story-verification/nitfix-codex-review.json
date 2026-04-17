@@ -1,0 +1,56 @@
+{
+  "reviewer": "Verifier A (codex-gpt-5.4-xhigh)",
+  "date": "2026-04-16",
+  "range": "68b73c6..dd2cb39",
+  "verdict": "REVISE",
+  "verdict_reason": "Item 11's runtime publication fix is present, but the new test only verifies reducer behavior for a fabricated materials message instead of the requested checkpoint-triggered live-publication path.",
+  "items_total": 17,
+  "items_verified": 16,
+  "items_with_issues": [
+    11
+  ],
+  "items_not_applied": [],
+  "gate": {
+    "status": "passed",
+    "command": "corepack pnpm run verify 2>&1 | tail -30",
+    "output_tail": "      Tests  13 passed (13)\n   Start at  06:54:32\n   Duration  174ms (transform 126ms, setup 0ms, import 210ms, tests 20ms, environment 0ms)\n\n\n> liminal-build@ test:service /Users/leemoore/code/liminal-build\n> corepack pnpm exec vitest run tests/service/server --environment node\n\n\n RUN  v4.1.4 /Users/leemoore/code/liminal-build\n\n\n Test Files  12 passed (12)\n      Tests  106 passed (106)\n   Start at  06:54:33\n   Duration  867ms (transform 1.15s, setup 0ms, import 3.19s, tests 1.02s, environment 1ms)\n\n\n> liminal-build@ test:client /Users/leemoore/code/liminal-build\n> corepack pnpm exec vitest run tests/service/client --environment jsdom\n\n\n RUN  v4.1.4 /Users/leemoore/code/liminal-build\n\n\n Test Files  19 passed (19)\n      Tests  152 passed (152)\n   Start at  06:54:34\n   Duration  1.17s (transform 1.41s, setup 0ms, import 2.83s, tests 638ms, environment 9.28s)\n"
+  },
+  "regression_check": {
+    "assertion_weakening_found": false,
+    "evidence": "git diff --unified=0 68b73c6..dd2cb39 -- tests shows only import deletions and TC-2.6 label renames; no expect() assertion removals were found."
+  },
+  "scope_check": {
+    "unexpected_scope_expansion": false,
+    "notes": "Changed files stay within the targeted docs, environment/history/hydration-plan/provider-kind codepaths, related Convex persistence, and matching tests/fixtures. Excluded items 15, 16, and 18 were not touched."
+  },
+  "new_test_quality": {
+    "overall": "mostly_meaningful_with_one_gap",
+    "issue_items": [
+      11
+    ],
+    "notes": [
+      "Items 6, 7, 8, 9, 10, and 13 add non-tautological assertions over real behavior.",
+      "Item 11's test is reducer-only and would not fail if checkpoint publication of materials regressed.",
+      "The integration chain test includes one tautological length check, but the adjacent uniqueness assertion is meaningful."
+    ]
+  },
+  "blocking_findings": [],
+  "nonblocking_warnings": [
+    {
+      "item": 11,
+      "warning": "Add a stronger test that drives a real checkpoint/live-publication sequence; the current reducer-only test does not verify checkpoint-triggered materials publication."
+    },
+    {
+      "item": "doc_drift",
+      "warning": "Stale wording remains outside the explicit batch edits at epic.md:873 ('recovery error classes') and stories/00-foundation.md:14 ('already-attached writable repositories')."
+    },
+    {
+      "item": 17,
+      "warning": "Residual absent-row seed paths still persist providerKind: null at convex/processes.ts:263-276 and convex/processEnvironmentStates.ts:273-287."
+    }
+  ],
+  "artifacts": [
+    "docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/nitfix-codex-review.md",
+    "docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/story-verification/nitfix-codex-review.json"
+  ]
+}

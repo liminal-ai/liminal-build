@@ -1,0 +1,175 @@
+{
+  "reviewer": "sonnet-r2-fix-verify",
+  "commit": "7ba4201",
+  "date": "2026-04-16",
+  "verdict": "PASS",
+  "gates": {
+    "verify": {
+      "exit_code": 0,
+      "convex_tests": 36,
+      "server_tests": 167,
+      "client_tests": 157,
+      "total": 360
+    },
+    "test_integration": {
+      "exit_code": 0,
+      "tests": 12,
+      "files": 3
+    }
+  },
+  "p0_probe": {
+    "method": "independent_tsx_probe",
+    "missing_lastCheckpointResult": "REJECTS",
+    "missing_controls": "REJECTS",
+    "missing_hasEnvironment": "REJECTS",
+    "missing_accessMode": "REJECTS",
+    "conclusion": "All four required fields now fail parse on omission. No silent normalization."
+  },
+  "items": [
+    {
+      "id": "P0-1",
+      "description": "lastCheckpointResult default removed from environmentSummarySchema",
+      "file": "apps/platform/shared/contracts/process-work-surface.ts:244",
+      "status": "CLOSED",
+      "evidence": "diff confirmed; tsx probe confirms rejection"
+    },
+    {
+      "id": "P0-2",
+      "description": "controls default removed from processSurfaceSummarySchema",
+      "file": "apps/platform/shared/contracts/process-work-surface.ts:258",
+      "status": "CLOSED",
+      "evidence": "diff confirmed; tsx probe confirms rejection"
+    },
+    {
+      "id": "P0-3",
+      "description": "hasEnvironment default removed from processSurfaceSummarySchema",
+      "file": "apps/platform/shared/contracts/process-work-surface.ts:259",
+      "status": "CLOSED",
+      "evidence": "diff confirmed; tsx probe confirms rejection"
+    },
+    {
+      "id": "P0-4",
+      "description": "accessMode default removed from processSourceReferenceSchema and sourceAttachmentSummarySchema",
+      "files": [
+        "apps/platform/shared/contracts/process-work-surface.ts:323",
+        "apps/platform/shared/contracts/schemas.ts:155"
+      ],
+      "status": "CLOSED",
+      "evidence": "both diffs confirmed; tsx probe confirms rejection for process-surface schema"
+    },
+    {
+      "id": "P0-5",
+      "description": "Negative parser tests added for all four missing required fields",
+      "file": "tests/service/client/process-live.test.ts",
+      "status": "CLOSED",
+      "evidence": "5 bootstrap cases + 12 action-schema cases (17 total); uses real production fixtures; parameterized assertions"
+    },
+    {
+      "id": "Item-1",
+      "description": "HydrationPlan.fingerprint no longer empty string; real persisted fingerprint threaded",
+      "file": "apps/platform/server/services/processes/environment/process-environment.service.ts:1290-1340",
+      "status": "CLOSED",
+      "evidence": "placeholder removed; getProcessWorkingSetFingerprint added to store; setProcessHydrationPlan stores fingerprint atomically before buildAdapterHydrationPlan reads it; throw on null is correct invariant guard",
+      "risk_investigated": "fingerprint throw on first hydration cleared — setProcessHydrationPlan always precedes buildAdapterHydrationPlan and computes fingerprint within same Convex mutation"
+    },
+    {
+      "id": "Item-2",
+      "description": "Checkpoint dependency guards collapsed from asymmetric OR to symmetric AND",
+      "file": "apps/platform/server/services/processes/environment/process-environment.service.ts:601",
+      "status": "CLOSED",
+      "evidence": "|| changed to &&; third vestigial condition removed; no production misconfiguration currently triggers the old divergent path"
+    },
+    {
+      "id": "Item-3",
+      "description": "InMemoryPlatformStore.getProcessEnvironmentSummary emulates Convex read-time stale projection",
+      "files": [
+        "apps/platform/server/services/projects/platform-store.ts:1712-1739",
+        "tests/service/server/platform-store-environment-summary.test.ts"
+      ],
+      "status": "CLOSED",
+      "evidence": "fingerprint comparison logic added; new 150-line dedicated test verifies stale projection and non-stale case"
+    },
+    {
+      "id": "Item-6",
+      "description": "providerKind no longer accepts null in Convex schema or writers; all call sites updated",
+      "files": [
+        "convex/processEnvironmentStates.ts:48",
+        "convex/processes.ts:264",
+        "apps/platform/server/services/projects/platform-store.ts",
+        "apps/platform/server/services/projects/process-registration.service.ts"
+      ],
+      "status": "CLOSED",
+      "evidence": "v.null() removed from schema validator, mutation args, and InMemory signature; fallback ?? existing.providerKind removed; all writers pass real EnvironmentProviderKind"
+    },
+    {
+      "id": "Item-7",
+      "description": "unavailable added to ENV_STATES_WITH_ENVIRONMENT; test covers it",
+      "file": "convex/processEnvironmentStates.ts:78",
+      "status": "CLOSED",
+      "evidence": "literal added to array; convex/processEnvironmentStates.test.ts has +25 lines covering deriveHasEnvironment for unavailable"
+    },
+    {
+      "id": "Item-8",
+      "description": "Server pairs environment before process-to-waiting; client synthesis path removed",
+      "files": [
+        "apps/platform/client/app/process-live.ts",
+        "apps/platform/server/services/processes/live/process-live-normalizer.ts",
+        "tests/service/server/process-live-updates.test.ts"
+      ],
+      "status": "CLOSED",
+      "evidence": "normalizeEnvironmentState function and its call site removed from client; normalizer leads with environment when publication includes process.status=waiting + environment; WebSocket ordering test verifies environment precedes process",
+      "tc_3_1a_assessment": "assertion change (not.toBe -> toBe) correctly reflects semantic change; not a weakening",
+      "structural_note": "pairing is conditional on publication.environment !== undefined; publishEnvironmentUpsert always includes both; gap is latent pre-existing, not introduced"
+    },
+    {
+      "id": "Item-9",
+      "description": "tech-design.md adapter sketch updated to 6-method contract",
+      "file": "docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/tech-design.md:212-224",
+      "status": "CLOSED",
+      "evidence": "collectCheckpointCandidate removed; providerKind property added; rebuildEnvironment return type corrected; matches implementation"
+    },
+    {
+      "id": "Item-10",
+      "description": "NullPlatformStore.hasCanonicalRecoveryMaterials returns false instead of true",
+      "file": "apps/platform/server/services/projects/platform-store.ts:836-838",
+      "status": "CLOSED",
+      "evidence": "return value changed from true to false; semantically correct for null-object store with no backing state"
+    },
+    {
+      "id": "Item-11",
+      "description": "Test counts in implementation-addendum updated",
+      "file": "docs/spec-build/v2/epics/03--process-environment-and-controlled-execution/implementation-addendum.md",
+      "status": "CLOSED",
+      "evidence": "counts updated to 36/167/157/12; my gate runs confirm exact match"
+    }
+  ],
+  "regression_checks": {
+    "new_silent_catches": false,
+    "zod_defaults_reintroduced_on_required_fields": false,
+    "existing_tests_weakened": false,
+    "new_test_fakes_hiding_production_behavior": false,
+    "scope_creep": false,
+    "stale_fixtures": false
+  },
+  "non_blocking_observations": [
+    {
+      "id": "OBS-1",
+      "description": "Convex schema breaking change for existing providerKind:null rows",
+      "severity": "deployment-note",
+      "detail": "The providerKind column now rejects null. Any live Convex deployment with providerKind:null rows would need a migration. Not actionable pre-production."
+    },
+    {
+      "id": "OBS-2",
+      "description": "ProcessRegistrationService constructor default for defaultEnvironmentProviderKind",
+      "severity": "low",
+      "detail": "Default param 'local' means tests constructing the service without explicit providerKind silently use local. Acceptable for tests; production app.ts wires env var correctly."
+    },
+    {
+      "id": "OBS-3",
+      "description": "NullPlatformStore.getProcessWorkingSetFingerprint always returns null",
+      "severity": "low",
+      "detail": "With the new throw in buildAdapterHydrationPlan, any test path through NullPlatformStore that triggers buildAdapterHydrationPlan would throw. This is correct failure behavior, not a hidden bug."
+    }
+  ],
+  "summary": "All P0 items independently verified as closed via tsx probe. All nine non-blocking items from the synthesis are implemented correctly. Both gates pass. No regressions found. Three hidden risks investigated and cleared. Verdict is PASS."
+}

@@ -1,0 +1,44 @@
+{
+  "reviewerId": "gpt53-codex-xhigh",
+  "verdict": "REVISE",
+  "gateRan": true,
+  "gateExitCode": 0,
+  "testCounts": {
+    "convex": 35,
+    "service": 163,
+    "client": 156,
+    "integration": 12
+  },
+  "structuralChecks": {
+    "realProviderWired": true,
+    "realOctokitWired": true,
+    "executionResultMatchesSpec": true,
+    "accessModeSchema": true,
+    "contentStorageIdSchema": true,
+    "fingerprintComputed": true,
+    "fingerprintComparedAtRead": true,
+    "clientRendersFromControls": true,
+    "zodDefaultsOnRequired": [
+      "apps/platform/shared/contracts/process-work-surface.ts:164 — disabledReason",
+      "apps/platform/shared/contracts/process-work-surface.ts:217 — targetRef",
+      "apps/platform/shared/contracts/process-work-surface.ts:219 — failureReason",
+      "apps/platform/shared/contracts/process-work-surface.ts:234 — environmentId",
+      "apps/platform/shared/contracts/process-work-surface.ts:237 — blockedReason",
+      "apps/platform/shared/contracts/process-work-surface.ts:238 — lastHydratedAt",
+      "apps/platform/shared/contracts/process-work-surface.ts:243 — lastCheckpointAt",
+      "apps/platform/shared/contracts/process-work-surface.ts:246 — lastCheckpointResult",
+      "apps/platform/shared/contracts/process-work-surface.ts:258 — controls",
+      "apps/platform/shared/contracts/process-work-surface.ts:259 — hasEnvironment",
+      "apps/platform/shared/contracts/process-work-surface.ts:328 — accessMode",
+      "apps/platform/shared/contracts/process-work-surface.ts:414 — currentRequest",
+      "apps/platform/shared/contracts/process-work-surface.ts:422 — currentRequest"
+    ]
+  },
+  "blockingFindings": [
+    "Contract mismatch: required work-surface fields still use Zod .default(...) in apps/platform/shared/contracts/process-work-surface.ts (including source accessMode at line 328), violating the no-defaults-on-required-fields rule."
+  ],
+  "nonblockingFindings": [
+    "No `.catch(() => {})` silent-swallow pattern found in process-environment.service.ts fire-and-forget lanes."
+  ],
+  "summary": "Both requested gates passed (verify + integration), and structural runtime/schema checks align with Epic 3 core contract for real provider/writer wiring, ExecutionResult shape, durable accessMode/contentStorageId fields, fingerprint compute-on-write, read-time fingerprint comparison, and controls-driven client rendering. The remaining blocker is unresolved required-field defaults in process-work-surface Zod schemas, so this needs a revise pass before ship."
+}

@@ -33,19 +33,31 @@ ships, the user can open a process-aware review workspace, inspect the current
 and prior versions of durable artifacts, read markdown artifacts with their
 headings, tables, code blocks, and Mermaid diagrams preserved, review bounded
 multi-artifact output sets as one package, and export the current package as a
-zip archive containing the reviewed member files and a manifest of the package
-and version identities. The review surface remains tied to one process and one
-artifact or package context rather than becoming a separate global document
-library.
+Liminal Build markdown package archive (`.mpkz`) containing the reviewed
+member files and an `_nav.md` manifest identifying the package and included
+artifact version identities. The review surface remains tied to one process
+and one artifact or package context rather than becoming a separate global
+document library.
+
+End-to-end user-facing package review and export require a process to have
+published a durable package snapshot. This epic ships the platform substrate
+that makes review and export work once a snapshot exists — storage tables,
+typed internal mutations, read/render surfaces, and the streaming export
+pipeline — but it does not itself include a production publisher. Snapshot
+creation lands in downstream process-module epics that call this epic's
+`publishPackageSnapshot` internal mutation when their publication decision
+fires. Artifact review (distinct from package review) is unconditionally
+user-deliverable in this epic: any durable artifact with at least one
+`artifactVersions` row is reviewable end-to-end after ship.
 
 ---
 
 ## Scope
 
-### In Scope
+### In Scope — User-Deliverable Unconditionally
 
-This epic delivers the first durable review and package slice above the current
-artifact/output summaries:
+These capabilities are end-user reviewable as soon as this epic ships,
+without any downstream epic having to land first:
 
 - Process-aware review entry from the active process surface
 - Dedicated review workspace for one process artifact or one process output set
@@ -54,11 +66,24 @@ artifact/output summaries:
 - Markdown review preserving headings, tables, code blocks, links, and normal
   readable structure
 - Mermaid rendering inside the review workspace
-- Package view for multi-artifact output sets that belong together
-- Export of the currently reviewed package as a bounded zip archive
 - Return-later and reopen behavior for the review workspace
 - Degraded and unavailable review behavior when one artifact, one version, or
   one render path fails independently
+
+### In Scope — Platform Substrate; End-User Behavior Lights Up When Downstream Process-Module Epics Publish
+
+These capabilities are fully built in this epic — storage, typed mutations,
+server services, client rendering, export pipeline — but a user can only
+exercise them end-to-end against real product data once a downstream
+process-module epic has called the `publishPackageSnapshot` internal
+mutation from its production flow. Until then, package review and export
+are exercisable via tests and manual Convex seeding:
+
+- Package view for multi-artifact output sets that belong together
+- Export of the currently reviewed package as a bounded Liminal Build markdown
+  package archive (`.mpkz`)
+- `publishPackageSnapshot` typed internal mutation (invoked by downstream
+  process-module code when it decides to publish)
 
 ### Out of Scope
 
@@ -70,8 +95,14 @@ artifact/output summaries:
 - Full artifact-library browsing across unrelated projects or processes
 - Review of arbitrary non-markdown rich media formats beyond a bounded
   unsupported-artifact fallback
-- Package-editing, package-authoring, or package-composition controls in the
-  review workspace
+- Package-editing, package-authoring, or package-composition UX in the review
+  workspace. **Distinct from the `publishPackageSnapshot` internal mutation
+  listed under "In Scope — Platform Substrate":** that mutation is a typed
+  server-side API that downstream process-module code invokes from
+  production logic — not a user-facing authoring workflow. "Package-authoring
+  UX" here refers specifically to a browser-facing control where a user picks
+  artifact versions interactively to compose a package. That UX is not in
+  this epic.
 - Process-type-specific approval policy or sign-off workflow beyond opening and
   reading the reviewed outputs
 
@@ -305,6 +336,14 @@ artifact does not exist.
 
 ### 4. Reviewing a Multi-Artifact Output Set as One Package
 
+**Prerequisite:** This flow presumes a process has published a durable package
+snapshot. Epic 4 provides the storage, read, render, and navigation surfaces
+for reviewing such a snapshot; it does not itself publish one. Snapshot
+creation happens when a downstream process-module epic calls Epic 4's
+`publishPackageSnapshot` internal mutation from its production publication
+flow. Until that downstream epic lands, this flow is exercisable through
+tests and manual Convex seeding.
+
 Some process outputs are meaningful as a set rather than as one standalone
 document. The user needs to open that set as one reviewable package, see which
 artifacts and versions belong together, and move within the set without losing
@@ -377,6 +416,13 @@ members.
 
 ### 5. Exporting the Current Reviewed Package
 
+**Prerequisite:** This flow presumes a reviewable package already exists (see
+Flow 4's prerequisite). Epic 4 ships the export pipeline — preflight
+validation, streaming archive generation, signed download URLs — for
+published snapshots, but it does not ship the publication path. The first
+production export run happens once a downstream process-module epic has
+published its first package snapshot.
+
 The user sometimes needs a bounded export of the current reviewed package. The
 export should reflect the versions currently included in the reviewed package
 and should not require leaving the review workspace first.
@@ -401,7 +447,7 @@ workspace.
 - **TC-5.1a: Export current package**
   - Given: User is reviewing one exportable package
   - When: User exports the package
-  - Then: The platform returns a zip export for that currently reviewed package
+  - Then: The platform returns a markdown package (`.mpkz`) export for that currently reviewed package
 - **TC-5.1b: Export not falsely offered for non-exportable target**
   - Given: User is reviewing a target that is not currently exportable
   - When: The review workspace renders
@@ -417,7 +463,7 @@ in the review package rather than an unrelated or stale package composition.
 - **TC-5.2b: Export includes manifest of package and version identities**
   - Given: User exports one reviewed package
   - When: The export is prepared
-  - Then: The export includes a manifest identifying the package and the artifact versions included in it
+  - Then: The export includes an `_nav.md` manifest identifying the package and the artifact versions included in it
 
 **AC-5.3:** If export preparation fails, the review workspace remains open and
 shows a clear export failure without erasing the current review state.
@@ -531,12 +577,15 @@ endpoint.
 
 ### Endpoints
 
+Export is a two-phase flow. The POST endpoint returns export metadata including a signed download URL with a bounded expiry; the browser then follows that URL to a GET endpoint that streams the archive bytes.
+
 | Operation | Method | Path | Description |
 |-----------|--------|------|-------------|
 | Get process review workspace | GET | `/api/projects/{projectId}/processes/{processId}/review` | Returns the current review workspace bootstrap for one process |
 | Get artifact review target | GET | `/api/projects/{projectId}/processes/{processId}/review/artifacts/{artifactId}` | Returns review data for one artifact and its versions; optional query state may select one version |
 | Get package review target | GET | `/api/projects/{projectId}/processes/{processId}/review/packages/{packageId}` | Returns review data for one output package; optional query state may select one member |
-| Export reviewed package | POST | `/api/projects/{projectId}/processes/{processId}/review/packages/{packageId}/export` | Exports the currently reviewed package |
+| Request package export | POST | `/api/projects/{projectId}/processes/{processId}/review/packages/{packageId}/export` | Phase 1 of export. Validates exportability, mints a signed download URL with bounded expiry, returns an `ExportPackageResponse` including `downloadUrl` and `expiresAt` |
+| Download package export | GET | `/api/projects/{projectId}/processes/{processId}/review/exports/{exportId}` | Phase 2 of export. Consumes the signed token issued by the POST, re-verifies access and exportability, and streams the `.mpkz` archive as `application/gzip`. Returns `404 REVIEW_TARGET_NOT_FOUND` when the token is expired, tampered, or missing |
 
 ### Review Endpoint Query Parameters
 
@@ -646,10 +695,15 @@ endpoint.
 | packageType | string | yes | non-empty | User-visible process-supplied package kind label |
 | members | array of Package Member | yes | present | Artifacts and versions that belong to this package |
 | selectedMemberId | string | no | non-empty when present | Currently selected package member |
-| selectedMember | Package Member Review | no | present when one member is selected | Currently reviewed package member detail within package context |
+| selectedMember | Package Member Review | no | present when one member is selected | Currently reviewed package member envelope within package context |
+| exportability | Package Exportability | yes | present | Whether the package is currently exportable and, when not, why. Drives client-side rendering of the export action |
 
 **Sort order:** Package members are ordered by the package's defined review
 order.
+
+**Default selection:** When no `memberId` is supplied in the query state, the
+server selects the first member with `status: ready`, falling through to the
+first member only when no member is in `ready` state.
 
 ### Package Member
 
@@ -665,24 +719,47 @@ order.
 
 ### Package Member Review
 
+Envelope for the currently selected member. Carries its own review-level
+status and optional error distinct from the inner artifact detail, so a
+member that cannot be reviewed still returns identity and an explanation
+without forcing a request-level failure.
+
 | Field | Type | Required | Validation | Description |
 |-------|------|----------|------------|-------------|
 | memberId | string | yes | non-empty | Stable package member identifier |
-| artifact | Artifact Review Target | yes | present | Reviewed artifact-version detail for the currently selected package member |
+| status | enum | yes | `ready`, `unsupported`, or `unavailable` | Review-level state for the selected member (may differ from the list-level `Package Member.status` only in that it is re-evaluated at selection time) |
+| error | Review Target Error | no | present when `status` is `unsupported` or `unavailable` | Bounded error describing why the selected member is not reviewable |
+| artifact | Artifact Review Target | no | present when `status` is `ready` | Reviewed artifact-version detail for the currently selected package member |
+
+### Package Exportability
+
+Tagged-union signal. Clients render the export action only when `available`
+is `true`; when `false`, `reason` carries a short human-readable explanation
+suitable for display.
+
+| `available` | Other fields | Semantics |
+|-------------|--------------|-----------|
+| `true` | *(no other fields)* | Every package member is `status: ready`; the export action is offered |
+| `false` | `reason: string` (required, non-empty) | At least one package member is `unsupported` or `unavailable`; the export action is hidden and the reason may be surfaced |
 
 ### Export Package Response
 
 | Field | Type | Required | Validation | Description |
 |-------|------|----------|------------|-------------|
 | exportId | string | yes | non-empty | Stable export identifier |
-| downloadName | string | yes | non-empty | Suggested file name for the export |
+| downloadName | string | yes | non-empty, ends in `.mpkz` for first-cut export | Suggested file name for the export |
 | downloadUrl | string | yes | valid URL | Download location for the exported package |
-| contentType | string | yes | `application/zip` | First-cut export content type |
+| contentType | string | yes | `application/gzip` | First-cut export content type |
+| packageFormat | enum | yes | `mpkz` | Liminal Build markdown package format identifier |
 | expiresAt | string | yes | ISO 8601 UTC | Time the export URL expires |
 
-The first-cut export format is a zip archive containing one file per package
-member plus a manifest describing the package identity and the included artifact
-version identities. After `expiresAt`, the user must request a new export.
+The first-cut export format is a Liminal Build markdown package (`.mpkz`): a
+gzip-wrapped tar archive containing one file per package member alongside an
+`_nav.md` manifest. The manifest is itself a reviewable markdown document that
+records the package identity, package-level metadata, and the included artifact
+version identities in a navigation tree. An uncompressed `.mpk` variant exists
+in the underlying format but is not emitted by first-cut web export. After
+`expiresAt`, the user must request a new export.
 
 ### Review Target Error
 
@@ -734,10 +811,21 @@ Technical dependencies:
 - Durable artifact and artifact-version persistence
 - Fastify-owned review routes and shared client/server contract surfaces
 - Markdown and Mermaid rendering inside the app-owned review workspace
+- Liminal Build markdown package library — `.mpk` / `.mpkz` tar-based format
+  with `_nav.md` manifest, providing create / extract / inspect / list /
+  manifest primitives (derived from the `mdv` reference project's `src/pkg/`,
+  `tar-stream` backed)
 
 Process dependencies:
 
-- Downstream process-specific epics to define which artifact sets constitute a reviewable package for each process type
+- Downstream process-specific epics to define which artifact sets constitute a
+  reviewable package for each process type **and to call this epic's
+  `publishPackageSnapshot` internal mutation from their production
+  publication flow.** Until the first such downstream epic ships, package
+  review and export in this epic are exercisable through tests and manual
+  Convex seeding, not through normal product flow. Artifact review (not
+  package review) is unconditionally user-deliverable as soon as this epic
+  ships.
 
 ---
 

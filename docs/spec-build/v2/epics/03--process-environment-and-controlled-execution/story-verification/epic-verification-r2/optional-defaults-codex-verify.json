@@ -1,0 +1,29 @@
+{
+  "reviewerId": "codex-optional-defaults-verify",
+  "commit": "2e27b1d",
+  "verdict": "PASS",
+  "gateRan": true,
+  "gateExitCode": 0,
+  "testCounts": {
+    "convex": 36,
+    "service": 167,
+    "client": 161,
+    "integration": 12
+  },
+  "defaultsRemoved": {
+    "environmentId": true,
+    "blockedReason": true,
+    "lastHydratedAt": true,
+    "lastCheckpointAt": true
+  },
+  "tsxProbe": {
+    "environmentId": "rejects",
+    "blockedReason": "rejects",
+    "lastHydratedAt": "rejects",
+    "lastCheckpointAt": "rejects"
+  },
+  "negativeTestsPresent": true,
+  "callerRegressions": [],
+  "blockingFindings": [],
+  "nonblockingFindings": []
+}
