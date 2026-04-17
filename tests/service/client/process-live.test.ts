@@ -7,6 +7,7 @@ import { renderProcessEnvironmentPanel } from '../../../apps/platform/client/fea
 import { buildProcessSurfaceSummary } from '../../../apps/platform/server/services/processes/process-work-surface.service.js';
 import {
   liveProcessUpdateMessageSchema,
+  sourceAttachmentSummarySchema,
   processSummarySchema,
   processWorkSurfaceResponseSchema,
   rebuildProcessResponseSchema,
@@ -38,6 +39,7 @@ import {
   readyProcessMaterialsFixture,
   revisedOutputProcessMaterialsFixture,
 } from '../../fixtures/materials.js';
+import { hydratedSourceFixture } from '../../fixtures/sources.js';
 import {
   buildEnvironmentSummaryFixture,
   checkpointSucceededEnvironmentFixture,
@@ -286,7 +288,7 @@ describe('process live foundation', () => {
     expect(failedState.environment?.blockedReason).not.toBeNull();
   });
 
-  it('TC-3.1a / TC-3.3a reducer keeps waiting distinct from active environment execution', () => {
+  it('TC-3.1a / TC-3.3a reducer leaves the environment unchanged until the server pairs it', () => {
     const nextState = applyLiveProcessMessage({
       state: buildConnectedExecutionState(1),
       message: buildLiveProcessMessageFixture({
@@ -301,7 +303,7 @@ describe('process live foundation', () => {
     });
 
     expect(nextState.process?.status).toBe('waiting');
-    expect(nextState.environment?.state).not.toBe('running');
+    expect(nextState.environment?.state).toBe('running');
   });
 
   it('TC-3.3b reducer applies checkpointing as a distinct coherent state', () => {
@@ -422,6 +424,157 @@ describe('process live foundation', () => {
       );
       expect(JSON.stringify(result.error?.issues)).toContain('"environment"');
     }
+  });
+
+  it('response schemas reject missing required nested environment, process, and source fields', () => {
+    const bootstrapCases = [
+      {
+        name: 'processWorkSurfaceResponseSchema missing environment.lastCheckpointResult',
+        result: processWorkSurfaceResponseSchema.safeParse({
+          ...readyEnvironmentProcessWorkSurfaceFixture,
+          environment: (() => {
+            const { lastCheckpointResult: _lastCheckpointResult, ...environmentWithoutCheckpoint } =
+              readyEnvironmentProcessWorkSurfaceFixture.environment;
+            return environmentWithoutCheckpoint;
+          })(),
+        }),
+        missingField: '"lastCheckpointResult"',
+      },
+      {
+        name: 'processWorkSurfaceResponseSchema missing process.controls',
+        result: processWorkSurfaceResponseSchema.safeParse({
+          ...readyEnvironmentProcessWorkSurfaceFixture,
+          process: (() => {
+            const { controls: _controls, ...processWithoutControls } =
+              readyEnvironmentProcessWorkSurfaceFixture.process;
+            return processWithoutControls;
+          })(),
+        }),
+        missingField: '"controls"',
+      },
+      {
+        name: 'processWorkSurfaceResponseSchema missing process.hasEnvironment',
+        result: processWorkSurfaceResponseSchema.safeParse({
+          ...readyEnvironmentProcessWorkSurfaceFixture,
+          process: (() => {
+            const { hasEnvironment: _hasEnvironment, ...processWithoutHasEnvironment } =
+              readyEnvironmentProcessWorkSurfaceFixture.process;
+            return processWithoutHasEnvironment;
+          })(),
+        }),
+        missingField: '"hasEnvironment"',
+      },
+      {
+        name: 'processWorkSurfaceResponseSchema missing materials.currentSources[].accessMode',
+        result: processWorkSurfaceResponseSchema.safeParse({
+          ...readyEnvironmentProcessWorkSurfaceFixture,
+          materials: {
+            ...readyEnvironmentProcessWorkSurfaceFixture.materials,
+            currentSources: readyEnvironmentProcessWorkSurfaceFixture.materials.currentSources.map(
+              (source, index) => {
+                if (index !== 0) {
+                  return source;
+                }
+
+                const { accessMode: _accessMode, ...sourceWithoutAccessMode } = source;
+                return sourceWithoutAccessMode;
+              },
+            ),
+          },
+        }),
+        missingField: '"accessMode"',
+      },
+    ];
+
+    const actionResponseSchemaCases = [
+      {
+        name: 'startProcessResponseSchema',
+        safeParse: (value: unknown) => startProcessResponseSchema.safeParse(value),
+        payload: {
+          ...startedProcessResponseFixture,
+          environment: readyEnvironmentFixture,
+        },
+      },
+      {
+        name: 'resumeProcessResponseSchema',
+        safeParse: (value: unknown) => resumeProcessResponseSchema.safeParse(value),
+        payload: {
+          ...resumedPausedProcessResponseFixture,
+          environment: readyEnvironmentFixture,
+        },
+      },
+      {
+        name: 'rehydrateProcessResponseSchema',
+        safeParse: (value: unknown) => rehydrateProcessResponseSchema.safeParse(value),
+        payload: {
+          ...rehydratedProcessResponseFixture,
+          environment: readyEnvironmentFixture,
+        },
+      },
+      {
+        name: 'rebuildProcessResponseSchema',
+        safeParse: (value: unknown) => rebuildProcessResponseSchema.safeParse(value),
+        payload: {
+          ...rebuiltProcessResponseFixture,
+          environment: readyEnvironmentFixture,
+        },
+      },
+    ];
+    const actionSchemaCases = actionResponseSchemaCases.flatMap((responseSchemaCase) => [
+      {
+        name: `${responseSchemaCase.name} missing environment.lastCheckpointResult`,
+        result: responseSchemaCase.safeParse({
+          ...responseSchemaCase.payload,
+          environment: (() => {
+            const { lastCheckpointResult: _lastCheckpointResult, ...environmentWithoutCheckpoint } =
+              responseSchemaCase.payload.environment;
+            return environmentWithoutCheckpoint;
+          })(),
+        }),
+        missingField: '"lastCheckpointResult"',
+      },
+      {
+        name: `${responseSchemaCase.name} missing process.controls`,
+        result: responseSchemaCase.safeParse({
+          ...responseSchemaCase.payload,
+          process: (() => {
+            const { controls: _controls, ...processWithoutControls } =
+              responseSchemaCase.payload.process;
+            return processWithoutControls;
+          })(),
+        }),
+        missingField: '"controls"',
+      },
+      {
+        name: `${responseSchemaCase.name} missing process.hasEnvironment`,
+        result: responseSchemaCase.safeParse({
+          ...responseSchemaCase.payload,
+          process: (() => {
+            const { hasEnvironment: _hasEnvironment, ...processWithoutHasEnvironment } =
+              responseSchemaCase.payload.process;
+            return processWithoutHasEnvironment;
+          })(),
+        }),
+        missingField: '"hasEnvironment"',
+      },
+    ]);
+
+    for (const testCase of [...bootstrapCases, ...actionSchemaCases]) {
+      expect(testCase.result.success, `${testCase.name} should reject malformed payloads`).toBe(
+        false,
+      );
+      expect(JSON.stringify(testCase.result.error?.issues)).toContain(testCase.missingField);
+    }
+
+    const { accessMode: _accessMode, ...sourceWithoutAccessMode } = hydratedSourceFixture;
+    const missingSourceAccessMode =
+      sourceAttachmentSummarySchema.safeParse(sourceWithoutAccessMode);
+
+    expect(
+      missingSourceAccessMode.success,
+      'sourceAttachmentSummarySchema should reject missing accessMode',
+    ).toBe(false);
+    expect(JSON.stringify(missingSourceAccessMode.error?.issues)).toContain('"accessMode"');
   });
 
   it('TC-3.3e malformed ready environment live messages with empty statusLabel are rejected', () => {
@@ -732,6 +885,7 @@ describe('process live foundation', () => {
       nextActionLabel: waitingProcessSurfaceFixture.nextActionLabel,
       availableActions: ['respond'],
     });
+    expect(nextState.environment).toEqual(state.environment);
   });
 
   it('TC-2.4 paused transition is reflected in the visible process state', () => {

@@ -229,7 +229,7 @@ export const unavailableEnvironmentProcessSurfaceFixture = buildProcessSurfaceSu
   status: 'running',
   availableActions: ['review'],
   controls: unavailableEnvironmentProcessControlsFixture,
-  hasEnvironment: false,
+  hasEnvironment: true,
 });
 
 export const currentProcessRequestFixture = currentProcessRequestSchema.parse({

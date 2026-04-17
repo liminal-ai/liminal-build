@@ -95,9 +95,11 @@ export const rebuildingEnvironmentFixture = buildEnvironmentSummaryFixture({
 });
 
 export const unavailableEnvironmentFixture = buildEnvironmentSummaryFixture({
+  environmentId: 'environment-unavailable-001',
   state: 'unavailable',
   statusLabel: 'Environment unavailable',
   blockedReason: 'Environment lifecycle work is currently unavailable.',
+  lastHydratedAt: '2026-04-13T12:20:00.000Z',
 });
 
 export const checkpointSucceededEnvironmentFixture = buildEnvironmentSummaryFixture({

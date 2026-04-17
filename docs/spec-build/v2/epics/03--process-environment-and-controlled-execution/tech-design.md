@@ -212,12 +212,12 @@ The shared adapter contract should be:
 
 ```ts
 interface EnvironmentProviderAdapter {
+  providerKind: 'daytona' | 'local';
   ensureEnvironment(args: EnsureEnvironmentArgs): Promise<EnsuredEnvironment>;
   hydrateEnvironment(args: HydrateEnvironmentArgs): Promise<HydrationResult>;
   executeScript(args: ExecuteEnvironmentScriptArgs): Promise<ExecutionResult>;
-  collectCheckpointCandidate(args: CollectCheckpointCandidateArgs): Promise<CheckpointCandidate>;
   rehydrateEnvironment(args: RehydrateEnvironmentArgs): Promise<HydrationResult>;
-  rebuildEnvironment(args: RebuildEnvironmentArgs): Promise<EnsuredEnvironment>;
+  rebuildEnvironment(args: RebuildEnvironmentArgs): Promise<HydrationResult & EnsuredEnvironment>;
   teardownEnvironment(args: TeardownEnvironmentArgs): Promise<void>;
 }
 ```

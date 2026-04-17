@@ -241,9 +241,7 @@ export const environmentSummarySchema = z.object({
     .min(1)
     .nullable()
     .default(defaultEnvironmentSummary.lastCheckpointAt),
-  lastCheckpointResult: lastCheckpointResultSchema
-    .nullable()
-    .default(defaultEnvironmentSummary.lastCheckpointResult),
+  lastCheckpointResult: lastCheckpointResultSchema.nullable(),
 });
 export type EnvironmentSummary = z.infer<typeof environmentSummarySchema>;
 
@@ -255,8 +253,8 @@ export const processSurfaceSummarySchema = z.object({
   phaseLabel: z.string().min(1),
   nextActionLabel: z.string().min(1).nullable(),
   availableActions: z.array(processSurfaceAvailableActionSchema),
-  controls: z.array(processSurfaceControlStateSchema).default(defaultProcessSurfaceControls),
-  hasEnvironment: z.boolean().default(false),
+  controls: z.array(processSurfaceControlStateSchema),
+  hasEnvironment: z.boolean(),
   updatedAt: z.string().min(1),
 });
 export type ProcessSurfaceSummary = z.infer<typeof processSurfaceSummarySchema>;
@@ -325,7 +323,7 @@ export const processSourceReferenceSchema = z.object({
   sourceAttachmentId: z.string().min(1),
   displayName: z.string().min(1),
   purpose: sourcePurposeSchema,
-  accessMode: sourceAccessModeSchema.default('read_only'),
+  accessMode: sourceAccessModeSchema,
   // Canonical clone URL for the source. Mirrored from the durable
   // `sourceAttachments` row so the process surface and the orchestrator's
   // checkpoint stage both see the same address the writer will push to.

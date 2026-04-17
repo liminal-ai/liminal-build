@@ -4,7 +4,7 @@ import {
 } from '../../../shared/contracts/index.js';
 import { AppError } from '../../errors/app-error.js';
 import type { AuthenticatedActor } from '../auth/auth-session.service.js';
-import type { PlatformStore } from './platform-store.js';
+import type { EnvironmentProviderKind, PlatformStore } from './platform-store.js';
 import type { ProcessDisplayLabelService } from './process-display-label.service.js';
 import type { ProjectAccessService } from './project-access.service.js';
 
@@ -13,6 +13,7 @@ export class ProcessRegistrationService {
     private readonly platformStore: PlatformStore,
     private readonly processDisplayLabelService: ProcessDisplayLabelService,
     private readonly projectAccessService: ProjectAccessService,
+    private readonly defaultEnvironmentProviderKind: EnvironmentProviderKind = 'local',
   ) {}
 
   async createProcess(args: {
@@ -42,6 +43,7 @@ export class ProcessRegistrationService {
       projectId: args.projectId,
       processType: parsedProcessType.data,
       displayLabel,
+      providerKind: this.defaultEnvironmentProviderKind,
     });
 
     return {

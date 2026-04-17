@@ -65,6 +65,7 @@ export class ProcessResumeService {
       ]);
       await this.platformStore.setProcessHydrationPlan({
         processId: access.process.processId,
+        providerKind,
         plan: planHydrationWorkingSet({
           ...materialRefs,
           outputIds: currentOutputs.map((o) => o.outputId),

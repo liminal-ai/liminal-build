@@ -106,6 +106,7 @@ class RecordingPlatformStore implements PlatformStore {
     projectId: string;
     processType: ProcessSummary['processType'];
     displayLabel: string;
+    providerKind: 'daytona' | 'local';
   }): Promise<ProcessCreateResult> {
     const existing = this.processesByProjectId.get(args.projectId) ?? [];
     const now = `2026-04-13T12:00:0${existing.length}.000Z`;
@@ -277,7 +278,7 @@ class RecordingPlatformStore implements PlatformStore {
 
   async upsertProcessEnvironmentState(args: {
     processId: string;
-    providerKind: 'daytona' | 'local' | null;
+    providerKind: 'daytona' | 'local';
     state: EnvironmentSummary['state'];
     environmentId: string | null;
     blockedReason: string | null;
@@ -292,6 +293,10 @@ class RecordingPlatformStore implements PlatformStore {
     };
   }
 
+  async getProcessWorkingSetFingerprint(): Promise<string | null> {
+    return null;
+  }
+
   async getProcessHydrationPlan(): Promise<{
     artifactIds: string[];
     sourceAttachmentIds: string[];
@@ -302,6 +307,7 @@ class RecordingPlatformStore implements PlatformStore {
 
   async setProcessHydrationPlan(args: {
     processId: string;
+    providerKind: 'daytona' | 'local';
     plan: { artifactIds: string[]; sourceAttachmentIds: string[]; outputIds: string[] };
   }): Promise<{ artifactIds: string[]; sourceAttachmentIds: string[]; outputIds: string[] }> {
     return {
@@ -633,6 +639,7 @@ describe('processes api', () => {
       projectId: projectA.projectId,
       processType: 'FeatureSpecification',
       displayLabel: 'Feature Specification #1',
+      providerKind: 'local',
     });
     const app = await buildApp({
       authSessionService: createTestAuthSessionService({

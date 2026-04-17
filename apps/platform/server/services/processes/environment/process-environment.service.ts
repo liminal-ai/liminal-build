@@ -124,6 +124,7 @@ export class ProcessEnvironmentService {
     const plan = await this.buildHydrationPlan(access.process.processId);
     await this.platformStore.setProcessHydrationPlan({
       processId: access.process.processId,
+      providerKind,
       plan,
     });
 
@@ -189,6 +190,7 @@ export class ProcessEnvironmentService {
 
     await this.platformStore.setProcessHydrationPlan({
       processId: access.process.processId,
+      providerKind,
       plan,
     });
 
@@ -599,11 +601,7 @@ export class ProcessEnvironmentService {
         sideWork,
       });
 
-      if (
-        this.checkpointPlanner !== undefined ||
-        this.codeCheckpointWriter !== undefined ||
-        this.artifactCheckpointPersistence !== this.platformStore
-      ) {
+      if (this.checkpointPlanner !== undefined && this.codeCheckpointWriter !== undefined) {
         this.runCheckpointAsync({
           projectId: args.projectId,
           processId: args.processId,
@@ -1285,31 +1283,34 @@ export class ProcessEnvironmentService {
    * richer projection so it can write meaningful filenames into the working
    * tree and decide what to clone.
    *
-   * `fingerprint` rides through unchanged for now — Chunk 1 introduced the
-   * stored fingerprint, and Chunk 2 propagates it without recomputation here.
+   * `fingerprint` is the persisted `workingSetFingerprint` from the durable
+   * env-state row. The adapter sees the same digest the stale-projection path
+   * uses, rather than a placeholder or a recomputed server-local hash.
    */
   private async buildAdapterHydrationPlan(args: {
     projectId: string;
     processId: string;
     plan: WorkingSetPlan;
   }): Promise<HydrationPlan> {
-    const [artifacts, sources, outputs] = await Promise.all([
+    const [artifacts, sources, outputs, fingerprint] = await Promise.all([
       this.platformStore.listProjectArtifacts({ projectId: args.projectId }),
       this.platformStore.listProjectSourceAttachments({ projectId: args.projectId }),
       this.platformStore.listProcessOutputs({ processId: args.processId }),
+      this.platformStore.getProcessWorkingSetFingerprint({ processId: args.processId }),
     ]);
 
     const artifactById = new Map(artifacts.map((artifact) => [artifact.artifactId, artifact]));
     const sourceById = new Map(sources.map((source) => [source.sourceAttachmentId, source]));
     const outputById = new Map(outputs.map((output) => [output.outputId, output]));
 
-    // Chunk 1 added the durable `workingSetFingerprint` on the Convex env state
-    // row but did not extend the `EnvironmentSummary` contract with that field.
-    // Until that contract addition lands, propagate an empty fingerprint to the
-    // adapter — the adapter currently echoes it back into HydrationResult and
-    // the orchestrator does not yet stale-compare here.
+    if (fingerprint === null) {
+      throw new Error(
+        `HydrationPlan is missing a persisted workingSetFingerprint for process '${args.processId}'.`,
+      );
+    }
+
     return {
-      fingerprint: '',
+      fingerprint,
       artifactInputs: args.plan.artifactIds.map((artifactId) => {
         const artifact = artifactById.get(artifactId);
         return {

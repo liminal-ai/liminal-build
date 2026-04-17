@@ -134,7 +134,12 @@ export async function createApp(options: CreateAppOptions = {}) {
   const processDisplayLabelService = new ProcessDisplayLabelService(platformStore);
   const processRegistrationService =
     options.processRegistrationService ??
-    new ProcessRegistrationService(platformStore, processDisplayLabelService, projectAccessService);
+    new ProcessRegistrationService(
+      platformStore,
+      processDisplayLabelService,
+      projectAccessService,
+      env.DEFAULT_ENVIRONMENT_PROVIDER_KIND,
+    );
   const processResponseService =
     options.processResponseService ??
     new ProcessResponseService(platformStore, processAccessService, processLiveHub);

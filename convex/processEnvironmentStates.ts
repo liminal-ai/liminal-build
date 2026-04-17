@@ -48,7 +48,7 @@ export const workingSetPlanValidator = v.object({
 
 export const processEnvironmentStatesTableFields = {
   processId: v.id('processes'),
-  providerKind: v.union(v.literal('daytona'), v.literal('local'), v.null()),
+  providerKind: v.union(v.literal('daytona'), v.literal('local')),
   environmentId: v.union(v.string(), v.null()),
   state: environmentStateValidator,
   blockedReason: v.union(v.string(), v.null()),
@@ -78,6 +78,7 @@ const ENV_STATES_WITH_ENVIRONMENT: ReadonlyArray<Doc<'processEnvironmentStates'>
   'rebuilding',
   'stale',
   'failed',
+  'unavailable',
 ];
 
 function deriveHasEnvironment(state: Doc<'processEnvironmentStates'>['state']): boolean {
@@ -419,7 +420,7 @@ export const getProcessEnvironmentProviderKind = query({
 export const upsertProcessEnvironmentState = mutation({
   args: {
     processId: v.string(),
-    providerKind: v.union(v.literal('daytona'), v.literal('local'), v.null()),
+    providerKind: v.union(v.literal('daytona'), v.literal('local')),
     state: environmentStateValidator,
     environmentId: v.union(v.string(), v.null()),
     blockedReason: v.union(v.string(), v.null()),
@@ -463,7 +464,7 @@ export const upsertProcessEnvironmentState = mutation({
       });
     } else {
       await ctx.db.patch(existing._id, {
-        providerKind: args.providerKind ?? existing.providerKind,
+        providerKind: args.providerKind,
         environmentId: args.environmentId,
         state: args.state,
         blockedReason: args.blockedReason,
@@ -526,9 +527,36 @@ export const getProcessHydrationPlan = query({
   },
 });
 
+export const getProcessWorkingSetFingerprint = query({
+  args: {
+    processId: v.string(),
+  },
+  handler: async (ctx, args): Promise<string | null> => {
+    let processRecord: Doc<'processes'> | null = null;
+
+    try {
+      processRecord = await ctx.db.get(args.processId as Id<'processes'>);
+    } catch {
+      return null;
+    }
+
+    if (processRecord === null) {
+      return null;
+    }
+
+    const state = await ctx.db
+      .query('processEnvironmentStates')
+      .withIndex('by_processId', (indexQuery) => indexQuery.eq('processId', processRecord._id))
+      .unique();
+
+    return state?.workingSetFingerprint ?? null;
+  },
+});
+
 export const setProcessHydrationPlan = mutation({
   args: {
     processId: v.string(),
+    providerKind: v.union(v.literal('daytona'), v.literal('local')),
     plan: workingSetPlanValidator,
   },
   handler: async (ctx, args): Promise<WorkingSetPlan> => {
@@ -553,7 +581,7 @@ export const setProcessHydrationPlan = mutation({
     if (existing === null) {
       await ctx.db.insert('processEnvironmentStates', {
         processId: processRecord._id,
-        providerKind: null,
+        providerKind: args.providerKind,
         environmentId: null,
         state: 'absent',
         blockedReason: null,

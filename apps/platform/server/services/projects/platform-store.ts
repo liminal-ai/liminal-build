@@ -72,6 +72,8 @@ export interface WorkingSetPlan {
   outputIds: string[];
 }
 
+export type EnvironmentProviderKind = 'daytona' | 'local';
+
 export type PlatformProcessOutputSummary = ProcessOutputReference & {
   linkedArtifactId: string | null;
 };
@@ -111,6 +113,7 @@ export interface PlatformStore {
     projectId: string;
     processType: ProcessSummary['processType'];
     displayLabel: string;
+    providerKind: EnvironmentProviderKind;
   }): Promise<ProcessCreateResult>;
   startProcess(args: { processId: string }): Promise<ProcessActionStoreResult>;
   resumeProcess(args: { processId: string }): Promise<ProcessActionStoreResult>;
@@ -148,10 +151,10 @@ export interface PlatformStore {
   getProcessEnvironmentSummary(args: { processId: string }): Promise<EnvironmentSummary>;
   getProcessEnvironmentProviderKind(args: {
     processId: string;
-  }): Promise<'daytona' | 'local' | null>;
+  }): Promise<EnvironmentProviderKind | null>;
   upsertProcessEnvironmentState(args: {
     processId: string;
-    providerKind: 'daytona' | 'local' | null;
+    providerKind: EnvironmentProviderKind;
     state: EnvironmentSummary['state'];
     environmentId: string | null;
     blockedReason: string | null;
@@ -159,6 +162,7 @@ export interface PlatformStore {
     lastCheckpointAt?: string | null;
     lastCheckpointResult?: EnvironmentSummary['lastCheckpointResult'];
   }): Promise<EnvironmentSummary>;
+  getProcessWorkingSetFingerprint(args: { processId: string }): Promise<string | null>;
   getCurrentProcessMaterialRefs(args: { processId: string }): Promise<CurrentProcessMaterialRefs>;
   setCurrentProcessMaterialRefs(args: {
     processId: string;
@@ -168,6 +172,7 @@ export interface PlatformStore {
   getProcessHydrationPlan(args: { processId: string }): Promise<WorkingSetPlan | null>;
   setProcessHydrationPlan(args: {
     processId: string;
+    providerKind: EnvironmentProviderKind;
     plan: WorkingSetPlan;
   }): Promise<WorkingSetPlan>;
   listProcessOutputs(args: { processId: string }): Promise<PlatformProcessOutputSummary[]>;
@@ -201,6 +206,72 @@ function buildDefaultEnvironmentSummary(): EnvironmentSummary {
 
 function cloneEnvironmentSummary(summary: EnvironmentSummary): EnvironmentSummary {
   return environmentSummarySchema.parse(summary);
+}
+
+type NodeCryptoModule = {
+  createHash(algorithm: 'sha256'): {
+    update(value: string): {
+      digest(encoding: 'hex'): string;
+    };
+  };
+};
+
+let cachedNodeCryptoModule: NodeCryptoModule | null = null;
+
+function getNodeCryptoModule(): NodeCryptoModule {
+  if (cachedNodeCryptoModule !== null) {
+    return cachedNodeCryptoModule;
+  }
+
+  const builtinModuleLoader = (
+    globalThis as typeof globalThis & {
+      process?: {
+        getBuiltinModule?: (id: string) => unknown;
+      };
+    }
+  ).process?.getBuiltinModule;
+  const cryptoModule = builtinModuleLoader?.('node:crypto') as NodeCryptoModule | undefined;
+
+  if (cryptoModule === undefined) {
+    throw new Error('node:crypto is unavailable in this runtime.');
+  }
+
+  cachedNodeCryptoModule = cryptoModule;
+  return cachedNodeCryptoModule;
+}
+
+function computeWorkingSetFingerprint(args: {
+  artifacts: Array<Pick<ArtifactSummary, 'artifactId' | 'currentVersionLabel'>>;
+  outputs: Array<Pick<PlatformProcessOutputSummary, 'outputId' | 'revisionLabel'>>;
+  sources: Array<
+    Pick<SourceAttachmentSummary, 'sourceAttachmentId' | 'targetRef' | 'hydrationState'>
+  >;
+  providerKind: EnvironmentProviderKind | null;
+}): string {
+  const stableJson = JSON.stringify({
+    artifacts: [...args.artifacts]
+      .sort((left, right) => left.artifactId.localeCompare(right.artifactId))
+      .map((artifact) => ({
+        artifactId: artifact.artifactId,
+        versionLabel: artifact.currentVersionLabel,
+      })),
+    outputs: [...args.outputs]
+      .sort((left, right) => left.outputId.localeCompare(right.outputId))
+      .map((output) => ({
+        outputId: output.outputId,
+        revisionLabel: output.revisionLabel,
+      })),
+    providerKind: args.providerKind,
+    sources: [...args.sources]
+      .sort((left, right) => left.sourceAttachmentId.localeCompare(right.sourceAttachmentId))
+      .map((source) => ({
+        hydrationState: source.hydrationState,
+        sourceAttachmentId: source.sourceAttachmentId,
+        targetRef: source.targetRef,
+      })),
+  });
+
+  return getNodeCryptoModule().createHash('sha256').update(stableJson).digest('hex');
 }
 
 const upsertUserMutation = makeFunctionReference<
@@ -237,6 +308,7 @@ const createProcessMutation = makeFunctionReference<
     projectId: string;
     processType: ProcessSummary['processType'];
     displayLabel: string;
+    providerKind: EnvironmentProviderKind;
   },
   ProcessCreateResult
 >('processes:createProcess');
@@ -361,14 +433,14 @@ const getProcessEnvironmentSummaryQuery = makeFunctionReference<
 const getProcessEnvironmentProviderKindQuery = makeFunctionReference<
   'query',
   { processId: string },
-  'daytona' | 'local' | null
+  EnvironmentProviderKind | null
 >('processEnvironmentStates:getProcessEnvironmentProviderKind');
 
 const upsertProcessEnvironmentStateMutation = makeFunctionReference<
   'mutation',
   {
     processId: string;
-    providerKind: 'daytona' | 'local' | null;
+    providerKind: EnvironmentProviderKind;
     state: EnvironmentSummary['state'];
     environmentId: string | null;
     blockedReason: string | null;
@@ -378,6 +450,12 @@ const upsertProcessEnvironmentStateMutation = makeFunctionReference<
   },
   EnvironmentSummary
 >('processEnvironmentStates:upsertProcessEnvironmentState');
+
+const getProcessWorkingSetFingerprintQuery = makeFunctionReference<
+  'query',
+  { processId: string },
+  string | null
+>('processEnvironmentStates:getProcessWorkingSetFingerprint');
 
 const getCurrentProcessMaterialRefsQuery = makeFunctionReference<
   'query',
@@ -403,7 +481,7 @@ const getProcessHydrationPlanQuery = makeFunctionReference<
 
 const setProcessHydrationPlanMutation = makeFunctionReference<
   'mutation',
-  { processId: string; plan: WorkingSetPlan },
+  { processId: string; providerKind: EnvironmentProviderKind; plan: WorkingSetPlan },
   WorkingSetPlan
 >('processEnvironmentStates:setProcessHydrationPlan');
 
@@ -500,6 +578,7 @@ export class NullPlatformStore implements PlatformStore {
     projectId: string;
     processType: ProcessSummary['processType'];
     displayLabel: string;
+    providerKind: EnvironmentProviderKind;
   }): Promise<ProcessCreateResult> {
     const now = new Date().toISOString();
     const availableActions: ProcessSummary['availableActions'] = ['open'];
@@ -729,13 +808,13 @@ export class NullPlatformStore implements PlatformStore {
     return buildDefaultEnvironmentSummary();
   }
 
-  async getProcessEnvironmentProviderKind(): Promise<'daytona' | 'local' | null> {
+  async getProcessEnvironmentProviderKind(): Promise<EnvironmentProviderKind | null> {
     return null;
   }
 
   async upsertProcessEnvironmentState(args: {
     processId: string;
-    providerKind: 'daytona' | 'local' | null;
+    providerKind: EnvironmentProviderKind;
     state: EnvironmentSummary['state'];
     environmentId: string | null;
     blockedReason: string | null;
@@ -752,6 +831,10 @@ export class NullPlatformStore implements PlatformStore {
       lastCheckpointAt: args.lastCheckpointAt ?? null,
       lastCheckpointResult: args.lastCheckpointResult ?? null,
     });
+  }
+
+  async getProcessWorkingSetFingerprint(_args: { processId: string }): Promise<string | null> {
+    return null;
   }
 
   async getCurrentProcessMaterialRefs(): Promise<CurrentProcessMaterialRefs> {
@@ -778,6 +861,7 @@ export class NullPlatformStore implements PlatformStore {
 
   async setProcessHydrationPlan(args: {
     processId: string;
+    providerKind: EnvironmentProviderKind;
     plan: WorkingSetPlan;
   }): Promise<WorkingSetPlan> {
     return {
@@ -835,8 +919,10 @@ export class NullPlatformStore implements PlatformStore {
     }));
   }
 
-  async hasCanonicalRecoveryMaterials(): Promise<boolean> {
-    return true;
+  async hasCanonicalRecoveryMaterials(_args: { processId: string }): Promise<boolean> {
+    // `NullPlatformStore` has no durable backing state, so it cannot
+    // truthfully claim canonical recovery materials exist.
+    return false;
   }
 
   async getArtifactContent(_args: { artifactId: string }): Promise<string | null> {
@@ -893,6 +979,7 @@ export class ConvexPlatformStore implements PlatformStore {
     projectId: string;
     processType: ProcessSummary['processType'];
     displayLabel: string;
+    providerKind: EnvironmentProviderKind;
   }): Promise<ProcessCreateResult> {
     return this.client.mutation(createProcessMutation, args, {
       skipQueue: true,
@@ -1012,13 +1099,13 @@ export class ConvexPlatformStore implements PlatformStore {
 
   async getProcessEnvironmentProviderKind(args: {
     processId: string;
-  }): Promise<'daytona' | 'local' | null> {
+  }): Promise<EnvironmentProviderKind | null> {
     return this.client.query(getProcessEnvironmentProviderKindQuery, args);
   }
 
   async upsertProcessEnvironmentState(args: {
     processId: string;
-    providerKind: 'daytona' | 'local' | null;
+    providerKind: EnvironmentProviderKind;
     state: EnvironmentSummary['state'];
     environmentId: string | null;
     blockedReason: string | null;
@@ -1029,6 +1116,10 @@ export class ConvexPlatformStore implements PlatformStore {
     return this.client.mutation(upsertProcessEnvironmentStateMutation, args, {
       skipQueue: true,
     });
+  }
+
+  async getProcessWorkingSetFingerprint(args: { processId: string }): Promise<string | null> {
+    return this.client.query(getProcessWorkingSetFingerprintQuery, args);
   }
 
   async getCurrentProcessMaterialRefs(args: {
@@ -1055,6 +1146,7 @@ export class ConvexPlatformStore implements PlatformStore {
 
   async setProcessHydrationPlan(args: {
     processId: string;
+    providerKind: EnvironmentProviderKind;
     plan: WorkingSetPlan;
   }): Promise<WorkingSetPlan> {
     return this.client.mutation(setProcessHydrationPlanMutation, args, {
@@ -1149,8 +1241,9 @@ export class InMemoryPlatformStore implements PlatformStore {
   private readonly processEnvironmentSummariesByProcessId = new Map<string, EnvironmentSummary>();
   private readonly processEnvironmentProviderKindsByProcessId = new Map<
     string,
-    'daytona' | 'local' | null
+    EnvironmentProviderKind | null
   >();
+  private readonly processWorkingSetFingerprintsByProcessId = new Map<string, string>();
   private readonly currentMaterialRefsByProcessId = new Map<string, CurrentProcessMaterialRefs>();
   private readonly processHydrationPlansByProcessId = new Map<string, WorkingSetPlan>();
   private readonly processOutputsByProcessId = new Map<string, PlatformProcessOutputSummary[]>();
@@ -1179,7 +1272,8 @@ export class InMemoryPlatformStore implements PlatformStore {
       processHistoryItemsByProcessId?: Record<string, ProcessHistoryItem[]>;
       currentRequestsByProcessId?: Record<string, CurrentProcessRequest | null>;
       processEnvironmentSummariesByProcessId?: Record<string, EnvironmentSummary>;
-      processEnvironmentProviderKindsByProcessId?: Record<string, 'daytona' | 'local' | null>;
+      processEnvironmentProviderKindsByProcessId?: Record<string, EnvironmentProviderKind | null>;
+      processWorkingSetFingerprintsByProcessId?: Record<string, string | null>;
       currentMaterialRefsByProcessId?: Record<string, CurrentProcessMaterialRefs>;
       processOutputsByProcessId?: Record<string, PlatformProcessOutputSeed[]>;
       processSideWorkItemsByProcessId?: Record<string, SideWorkItem[]>;
@@ -1233,6 +1327,14 @@ export class InMemoryPlatformStore implements PlatformStore {
       this.processEnvironmentProviderKindsByProcessId.set(processId, providerKind);
     }
 
+    for (const [processId, fingerprint] of Object.entries(
+      args.processWorkingSetFingerprintsByProcessId ?? {},
+    )) {
+      if (fingerprint !== null) {
+        this.processWorkingSetFingerprintsByProcessId.set(processId, fingerprint);
+      }
+    }
+
     for (const [processId, refs] of Object.entries(args.currentMaterialRefsByProcessId ?? {})) {
       this.currentMaterialRefsByProcessId.set(processId, refs);
     }
@@ -1269,6 +1371,55 @@ export class InMemoryPlatformStore implements PlatformStore {
       args.submitProcessResponseFailuresByProcessId ?? {},
     )) {
       this.submitProcessResponseFailuresByProcessId.set(processId, error);
+    }
+  }
+
+  private findProcessRecord(processId: string): (ProcessSummary & { projectId: string }) | null {
+    for (const [projectId, processes] of this.processesByProjectId.entries()) {
+      const match = processes.find((process) => process.processId === processId);
+
+      if (match !== undefined) {
+        return {
+          ...match,
+          projectId,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  private computeCurrentWorkingSetFingerprint(processId: string): string | null {
+    const processRecord = this.findProcessRecord(processId);
+
+    if (processRecord === null) {
+      return null;
+    }
+
+    const refs = this.currentMaterialRefsByProcessId.get(processId) ?? {
+      artifactIds: [],
+      sourceAttachmentIds: [],
+    };
+    const projectArtifacts = this.artifactsByProjectId.get(processRecord.projectId) ?? [];
+    const projectSources = this.sourceAttachmentsByProjectId.get(processRecord.projectId) ?? [];
+    const artifactIds = new Set(refs.artifactIds);
+    const sourceAttachmentIds = new Set(refs.sourceAttachmentIds);
+
+    return computeWorkingSetFingerprint({
+      artifacts: projectArtifacts.filter((artifact) => artifactIds.has(artifact.artifactId)),
+      outputs: this.processOutputsByProcessId.get(processId) ?? [],
+      sources: projectSources.filter((source) =>
+        sourceAttachmentIds.has(source.sourceAttachmentId),
+      ),
+      providerKind: this.processEnvironmentProviderKindsByProcessId.get(processId) ?? null,
+    });
+  }
+
+  private refreshStoredWorkingSetFingerprint(processId: string): void {
+    const fingerprint = this.computeCurrentWorkingSetFingerprint(processId);
+
+    if (fingerprint !== null) {
+      this.processWorkingSetFingerprintsByProcessId.set(processId, fingerprint);
     }
   }
 
@@ -1372,6 +1523,7 @@ export class InMemoryPlatformStore implements PlatformStore {
     projectId: string;
     processType: ProcessSummary['processType'];
     displayLabel: string;
+    providerKind: EnvironmentProviderKind;
   }): Promise<ProcessCreateResult> {
     const existingProcesses = this.processesByProjectId.get(args.projectId) ?? [];
     const now = new Date().toISOString();
@@ -1393,7 +1545,8 @@ export class InMemoryPlatformStore implements PlatformStore {
       process.processId,
       buildDefaultEnvironmentSummary(),
     );
-    this.processEnvironmentProviderKindsByProcessId.set(process.processId, null);
+    this.processEnvironmentProviderKindsByProcessId.set(process.processId, args.providerKind);
+    void this.refreshStoredWorkingSetFingerprint(process.processId);
     this.updateProjectSummary(args.projectId, (project) => ({
       ...project,
       processCount: project.processCount + 1,
@@ -1502,18 +1655,7 @@ export class InMemoryPlatformStore implements PlatformStore {
   async getProcessRecord(args: {
     processId: string;
   }): Promise<(ProcessSummary & { projectId: string }) | null> {
-    for (const [projectId, processes] of this.processesByProjectId.entries()) {
-      const match = processes.find((process) => process.processId === args.processId);
-
-      if (match !== undefined) {
-        return {
-          ...match,
-          projectId,
-        };
-      }
-    }
-
-    return null;
+    return this.findProcessRecord(args.processId);
   }
 
   async listProjectProcesses(args: { projectId: string }): Promise<ProcessSummary[]> {
@@ -1568,21 +1710,44 @@ export class InMemoryPlatformStore implements PlatformStore {
   }
 
   async getProcessEnvironmentSummary(args: { processId: string }): Promise<EnvironmentSummary> {
-    return cloneEnvironmentSummary(
+    const summary =
       this.processEnvironmentSummariesByProcessId.get(args.processId) ??
-        buildDefaultEnvironmentSummary(),
-    );
+      buildDefaultEnvironmentSummary();
+    if (
+      summary.state === 'ready' &&
+      !this.processWorkingSetFingerprintsByProcessId.has(args.processId)
+    ) {
+      this.refreshStoredWorkingSetFingerprint(args.processId);
+    }
+    const storedFingerprint = this.processWorkingSetFingerprintsByProcessId.get(args.processId);
+    const currentFingerprint =
+      summary.state === 'ready' ? this.computeCurrentWorkingSetFingerprint(args.processId) : null;
+
+    if (
+      summary.state === 'ready' &&
+      storedFingerprint !== undefined &&
+      currentFingerprint !== null &&
+      currentFingerprint !== storedFingerprint
+    ) {
+      return environmentSummarySchema.parse({
+        ...summary,
+        state: 'stale',
+        statusLabel: deriveEnvironmentStatusLabel('stale'),
+      });
+    }
+
+    return cloneEnvironmentSummary(summary);
   }
 
   async getProcessEnvironmentProviderKind(args: {
     processId: string;
-  }): Promise<'daytona' | 'local' | null> {
+  }): Promise<EnvironmentProviderKind | null> {
     return this.processEnvironmentProviderKindsByProcessId.get(args.processId) ?? null;
   }
 
   async upsertProcessEnvironmentState(args: {
     processId: string;
-    providerKind: 'daytona' | 'local' | null;
+    providerKind: EnvironmentProviderKind;
     state: EnvironmentSummary['state'];
     environmentId: string | null;
     blockedReason: string | null;
@@ -1607,13 +1772,16 @@ export class InMemoryPlatformStore implements PlatformStore {
           : args.lastCheckpointResult,
     });
     this.processEnvironmentSummariesByProcessId.set(args.processId, next);
-    this.processEnvironmentProviderKindsByProcessId.set(
-      args.processId,
-      args.providerKind ??
-        this.processEnvironmentProviderKindsByProcessId.get(args.processId) ??
-        null,
-    );
+    this.processEnvironmentProviderKindsByProcessId.set(args.processId, args.providerKind);
+    void this.refreshStoredWorkingSetFingerprint(args.processId);
     return cloneEnvironmentSummary(next);
+  }
+
+  async getProcessWorkingSetFingerprint(args: { processId: string }): Promise<string | null> {
+    if (!this.processWorkingSetFingerprintsByProcessId.has(args.processId)) {
+      this.refreshStoredWorkingSetFingerprint(args.processId);
+    }
+    return this.processWorkingSetFingerprintsByProcessId.get(args.processId) ?? null;
   }
 
   async getCurrentProcessMaterialRefs(args: {
@@ -1646,6 +1814,7 @@ export class InMemoryPlatformStore implements PlatformStore {
 
   async setProcessHydrationPlan(args: {
     processId: string;
+    providerKind: EnvironmentProviderKind;
     plan: WorkingSetPlan;
   }): Promise<WorkingSetPlan> {
     const next: WorkingSetPlan = {
@@ -1654,6 +1823,11 @@ export class InMemoryPlatformStore implements PlatformStore {
       outputIds: [...args.plan.outputIds],
     };
     this.processHydrationPlansByProcessId.set(args.processId, next);
+    this.processEnvironmentProviderKindsByProcessId.set(
+      args.processId,
+      this.processEnvironmentProviderKindsByProcessId.get(args.processId) ?? args.providerKind,
+    );
+    void this.refreshStoredWorkingSetFingerprint(args.processId);
     return next;
   }
 

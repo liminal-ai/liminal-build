@@ -557,6 +557,9 @@ describe('auth routes', () => {
           lastHydratedAt: args.lastHydratedAt,
         };
       },
+      async getProcessWorkingSetFingerprint() {
+        return null;
+      },
       async getProcessHydrationPlan() {
         return null;
       },

@@ -329,6 +329,94 @@ describe('process live updates websocket', () => {
     await app.close();
   });
 
+  it('publishes paired environment data before a waiting process upsert', async () => {
+    const processLiveHub = new InMemoryProcessLiveHub();
+    const platformStore = buildPopulatedStore();
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+      processLiveHub,
+    });
+    await app.listen({
+      port: 0,
+      host: '127.0.0.1',
+    });
+    const address = app.server.address();
+
+    if (address === null || typeof address === 'string') {
+      throw new Error('Expected an ephemeral address for websocket tests.');
+    }
+
+    const messages = [] as Array<ReturnType<typeof liveProcessUpdateMessageSchema.parse>>;
+    const socket = new WebSocket(
+      `ws://127.0.0.1:${address.port}/ws/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}`,
+    );
+
+    socket.addEventListener('message', (event) => {
+      messages.push(liveProcessUpdateMessageSchema.parse(JSON.parse(String(event.data))));
+    });
+
+    await waitFor(() => messages.length >= 11);
+
+    processLiveHub.publish({
+      projectId: projectSummary.projectId,
+      processId: waitingProcessSummary.processId,
+      publication: {
+        messageType: 'upsert',
+        process: buildProcessSurfaceSummary(
+          processSummarySchema.parse({
+            ...runningProcessFixture,
+            processId: waitingProcessSummary.processId,
+            displayLabel: waitingProcessSummary.displayLabel,
+            processType: waitingProcessSummary.processType,
+            status: 'waiting',
+            nextActionLabel: 'Waiting for user response',
+            availableActions: ['respond'],
+            hasEnvironment: true,
+          }),
+          readyEnvironmentFixture,
+        ),
+        currentRequest: currentProcessRequestFixture,
+        environment: readyEnvironmentFixture,
+      },
+    });
+
+    await waitFor(() => messages.length >= 14);
+
+    const lastThree = messages.slice(-3);
+
+    socket.close();
+    await app.close();
+
+    expect(lastThree.map((message) => message.entityType)).toEqual([
+      'environment',
+      'process',
+      'current_request',
+    ]);
+    expect(lastThree[0]).toMatchObject({
+      entityType: 'environment',
+      payload: {
+        state: 'ready',
+      },
+    });
+    expect(lastThree[1]).toMatchObject({
+      entityType: 'process',
+      payload: {
+        status: 'waiting',
+        hasEnvironment: true,
+      },
+    });
+  });
+
   it('rejects websocket subscribe for an inaccessible process', async () => {
     const platformStore = new InMemoryPlatformStore({
       projectAccessByProjectId: {

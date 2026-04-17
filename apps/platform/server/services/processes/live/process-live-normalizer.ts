@@ -53,6 +53,22 @@ export function normalizeProcessLiveMessages(args: {
 
   const messages: LiveProcessUpdateMessage[] = [];
 
+  const shouldLeadWithEnvironment =
+    args.publication.messageType === 'upsert' &&
+    args.publication.process?.status === 'waiting' &&
+    args.publication.environment !== undefined;
+
+  if (shouldLeadWithEnvironment) {
+    messages.push(
+      nextMessage({
+        messageType: args.publication.messageType,
+        entityType: 'environment',
+        entityId: 'environment',
+        payload: args.publication.environment as NonNullable<ProcessLivePublication['environment']>,
+      }),
+    );
+  }
+
   if (args.publication.process !== undefined && args.publication.messageType !== 'error') {
     messages.push(
       nextMessage({
@@ -110,7 +126,11 @@ export function normalizeProcessLiveMessages(args: {
     );
   }
 
-  if (args.publication.environment !== undefined && args.publication.messageType !== 'error') {
+  if (
+    args.publication.environment !== undefined &&
+    args.publication.messageType !== 'error' &&
+    !shouldLeadWithEnvironment
+  ) {
     messages.push(
       nextMessage({
         messageType: args.publication.messageType,

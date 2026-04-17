@@ -32,6 +32,7 @@ const createProcessHandler = getHandler<
     projectId: string;
     processType: 'ProductDefinition' | 'FeatureSpecification' | 'FeatureImplementation';
     displayLabel: string;
+    providerKind: 'daytona' | 'local';
   },
   {
     kind: 'created';
@@ -246,6 +247,7 @@ describe('convex/processes createProcess initial fingerprint', () => {
       projectId: 'project-create-1',
       processType: 'FeatureSpecification',
       displayLabel: 'Created Process',
+      providerKind: 'local',
     });
 
     const envStateRows = db.list('processEnvironmentStates');
@@ -257,6 +259,7 @@ describe('convex/processes createProcess initial fingerprint', () => {
     expect(envStateRow.workingSetFingerprint).not.toBeNull();
     expect(typeof envStateRow.workingSetFingerprint).toBe('string');
     expect(envStateRow.workingSetFingerprint as string).toMatch(/^[0-9a-f]{64}$/);
+    expect(envStateRow.providerKind).toBe('local');
 
     // The stored fingerprint must equal a fresh computation against the same
     // process, so subsequent comparisons hold.
@@ -279,6 +282,7 @@ describe('convex/processes createProcess initial fingerprint', () => {
         projectId: 'project-create-1',
         processType,
         displayLabel: `Created ${processType}`,
+        providerKind: 'local',
       });
 
       const envStateRow = db.list('processEnvironmentStates')[0] as Record<string, unknown>;

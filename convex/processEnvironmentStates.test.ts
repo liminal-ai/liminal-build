@@ -17,7 +17,7 @@ function getHandler<TArgs, TReturn>(
 const upsertProcessEnvironmentStateHandler = getHandler<
   {
     processId: string;
-    providerKind: 'daytona' | 'local' | null;
+    providerKind: 'daytona' | 'local';
     state:
       | 'absent'
       | 'preparing'
@@ -75,6 +75,7 @@ const getProcessHydrationPlanHandler = getHandler<
 const setProcessHydrationPlanHandler = getHandler<
   {
     processId: string;
+    providerKind: 'daytona' | 'local';
     plan: {
       artifactIds: string[];
       sourceAttachmentIds: string[];
@@ -268,6 +269,7 @@ describe('convex/processEnvironmentStates checkpoint durability', () => {
     const { ctx } = createFakeConvexContext(buildSeed());
     const stored = await setProcessHydrationPlanHandler(ctx, {
       processId: 'process-1',
+      providerKind: 'local',
       plan: {
         artifactIds: ['artifact-1'],
         sourceAttachmentIds: ['source-1', 'source-2'],
@@ -572,5 +574,26 @@ describe('convex/processEnvironmentStates derives processes.hasEnvironment', () 
     });
 
     expect((db.list('processes')[0] as Record<string, unknown>).hasEnvironment).toBe(false);
+  });
+
+  it("treats 'unavailable' as environment-present because the working copy still exists", async () => {
+    const seed = buildFingerprintSeed();
+    const seedProcess = seed.processes[0];
+    if (seedProcess === undefined) {
+      throw new Error('Expected seeded process.');
+    }
+    seedProcess.hasEnvironment = false;
+    const { ctx, db } = createFakeConvexContext(seed);
+
+    await upsertProcessEnvironmentStateHandler(ctx, {
+      processId: 'process-fp-1',
+      providerKind: 'local',
+      state: 'unavailable',
+      environmentId: 'env-fp-unavailable-1',
+      blockedReason: 'Environment lifecycle work is currently unavailable.',
+      lastHydratedAt: '2026-04-15T12:10:00.000Z',
+    });
+
+    expect((db.list('processes')[0] as Record<string, unknown>).hasEnvironment).toBe(true);
   });
 });

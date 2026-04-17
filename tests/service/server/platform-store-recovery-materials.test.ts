@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { InMemoryPlatformStore } from '../../../apps/platform/server/services/projects/platform-store.js';
+import {
+  InMemoryPlatformStore,
+  NullPlatformStore,
+} from '../../../apps/platform/server/services/projects/platform-store.js';
 
 describe('hasCanonicalRecoveryMaterials parity', () => {
+  it('NullPlatformStore returns false because it has no durable recovery materials', async () => {
+    const store = new NullPlatformStore();
+
+    await expect(store.hasCanonicalRecoveryMaterials({ processId: 'process-null' })).resolves.toBe(
+      false,
+    );
+  });
+
   it('returns false when no materials, no outputs, and no sources are seeded', async () => {
     const store = new InMemoryPlatformStore();
 

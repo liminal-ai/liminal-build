@@ -58,6 +58,7 @@ describe('Epic 03 Story 0 foundation contracts', () => {
       enabled: false,
       disabledReason: 'Environment lifecycle work is currently unavailable.',
     });
+    expect(unavailableSummary.hasEnvironment).toBe(true);
   });
 
   it('fixtures cover checkpoint, environment, and mixed source-access vocabulary', () => {

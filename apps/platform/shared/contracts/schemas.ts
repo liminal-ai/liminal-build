@@ -155,7 +155,7 @@ export const sourceAttachmentSummarySchema = z.object({
   sourceAttachmentId: z.string().min(1),
   displayName: z.string().min(1),
   purpose: sourcePurposeSchema,
-  accessMode: sourceAccessModeSchema.default('read_only'),
+  accessMode: sourceAccessModeSchema,
   // Canonical clone URL for the source. `LocalProviderAdapter` uses this for
   // `git clone` at hydration, and `OctokitCodeCheckpointWriter` parses it to
   // resolve the GitHub `owner/repo` coordinates for direct writes back to the

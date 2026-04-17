@@ -245,6 +245,7 @@ export const createProcess = mutation({
     projectId: v.string(),
     processType: supportedProcessTypeValidator,
     displayLabel: v.string(),
+    providerKind: v.union(v.literal('daytona'), v.literal('local')),
   },
   handler: async (ctx, args) => {
     const now = new Date().toISOString();
@@ -263,7 +264,7 @@ export const createProcess = mutation({
 
     const envStateRowId = await ctx.db.insert('processEnvironmentStates', {
       processId,
-      providerKind: null,
+      providerKind: args.providerKind,
       environmentId: null,
       state: 'absent',
       blockedReason: null,

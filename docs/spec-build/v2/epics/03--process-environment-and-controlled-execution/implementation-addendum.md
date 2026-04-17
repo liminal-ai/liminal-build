@@ -41,7 +41,7 @@ verifier returned PASS.
 Also landed during the closure work:
 - `3b6b9f2` — chore: drop dead Buffer references blocking convex dev typecheck (pre-Chunk 1 unblock)
 
-**Test counts:** 34 convex / 152 service / 152 client / 9 integration. All
+**Test counts:** 36 convex / 167 service / 157 client / 12 integration. All
 gates green at every commit. `corepack pnpm run verify` + `test:integration`
 + Convex `tsc --noEmit` all exit 0.
 

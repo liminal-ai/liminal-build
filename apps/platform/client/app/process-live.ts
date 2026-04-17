@@ -1,4 +1,3 @@
-import { deriveEnvironmentStatusLabel } from '../../shared/contracts/index.js';
 import type {
   CurrentProcessRequest,
   EnvironmentSummary,
@@ -76,17 +75,6 @@ function applyCurrentRequest(next: CurrentProcessRequest | null): CurrentProcess
   return next;
 }
 
-function normalizeEnvironmentState(
-  environment: EnvironmentSummary,
-  state: EnvironmentSummary['state'],
-): EnvironmentSummary {
-  return {
-    ...environment,
-    state,
-    statusLabel: deriveEnvironmentStatusLabel(state),
-  };
-}
-
 function shouldPreserveCheckpointContext(state: EnvironmentSummary['state']): boolean {
   return state === 'rehydrating' || state === 'rebuilding';
 }
@@ -155,11 +143,6 @@ export function applyLiveProcessMessage(args: ApplyLiveProcessMessageArgs): Proc
 
   if (args.message.entityType === 'process') {
     nextState.process = args.message.payload;
-
-    if (nextState.process.status === 'waiting' && nextState.environment?.state === 'running') {
-      nextState.environment = normalizeEnvironmentState(nextState.environment, 'ready');
-    }
-
     return nextState;
   }
 
