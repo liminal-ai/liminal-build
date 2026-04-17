@@ -184,6 +184,18 @@ function applyExecutionFailurePublication(state: ReturnType<typeof buildConnecte
   };
 }
 
+function buildProcessWorkSurfacePayloadWithoutEnvironmentField(
+  field: 'environmentId' | 'blockedReason' | 'lastHydratedAt' | 'lastCheckpointAt',
+) {
+  const { [field]: _omitted, ...environmentWithoutField } =
+    readyEnvironmentProcessWorkSurfaceFixture.environment;
+
+  return {
+    ...readyEnvironmentProcessWorkSurfaceFixture,
+    environment: environmentWithoutField,
+  };
+}
+
 describe('process live foundation', () => {
   it('TC-2.3a hydration progress becomes visible through environment live updates', () => {
     const nextState = applyLiveProcessMessage({
@@ -424,6 +436,26 @@ describe('process live foundation', () => {
       );
       expect(JSON.stringify(result.error?.issues)).toContain('"environment"');
     }
+  });
+
+  it.each([
+    'environmentId',
+    'blockedReason',
+    'lastHydratedAt',
+    'lastCheckpointAt',
+  ] as const)('processWorkSurfaceResponseSchema rejects missing environment.%s with ZodError', (field) => {
+    const malformedPayload = buildProcessWorkSurfacePayloadWithoutEnvironmentField(field);
+
+    let parseError: unknown = null;
+    try {
+      processWorkSurfaceResponseSchema.parse(malformedPayload);
+    } catch (error) {
+      parseError = error;
+    }
+
+    expect(parseError).not.toBeNull();
+    expect((parseError as { name?: string }).name).toBe('ZodError');
+    expect(JSON.stringify((parseError as { issues?: unknown }).issues)).toContain(`"${field}"`);
   });
 
   it('response schemas reject missing required nested environment, process, and source fields', () => {

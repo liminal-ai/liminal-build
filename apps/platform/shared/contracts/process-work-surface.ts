@@ -231,16 +231,12 @@ export const defaultEnvironmentSummary = {
 } as const;
 
 export const environmentSummarySchema = z.object({
-  environmentId: z.string().min(1).nullable().default(defaultEnvironmentSummary.environmentId),
+  environmentId: z.string().min(1).nullable(),
   state: environmentStateSchema,
   statusLabel: z.string().min(1),
-  blockedReason: z.string().min(1).nullable().default(defaultEnvironmentSummary.blockedReason),
-  lastHydratedAt: z.string().min(1).nullable().default(defaultEnvironmentSummary.lastHydratedAt),
-  lastCheckpointAt: z
-    .string()
-    .min(1)
-    .nullable()
-    .default(defaultEnvironmentSummary.lastCheckpointAt),
+  blockedReason: z.string().min(1).nullable(),
+  lastHydratedAt: z.string().min(1).nullable(),
+  lastCheckpointAt: z.string().min(1).nullable(),
   lastCheckpointResult: lastCheckpointResultSchema.nullable(),
 });
 export type EnvironmentSummary = z.infer<typeof environmentSummarySchema>;
