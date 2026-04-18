@@ -15,7 +15,7 @@ export class ProcessStartService {
     private readonly processAccessService: ProcessAccessService,
     private readonly processLiveHub: ProcessLiveHub,
     private readonly processEnvironmentService?: ProcessEnvironmentService,
-    private readonly defaultEnvironmentProviderKind: 'daytona' | 'local' = 'local',
+    private readonly defaultEnvironmentProviderKind: 'daytona' | 'local' = 'daytona',
   ) {}
 
   async start(args: {

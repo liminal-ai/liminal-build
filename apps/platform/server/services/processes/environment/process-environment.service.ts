@@ -1,5 +1,3 @@
-import { promises as fs } from 'node:fs';
-import * as path from 'node:path';
 import type {
   CurrentProcessRequest,
   EnvironmentSummary,
@@ -40,7 +38,9 @@ import type {
   ExecutionResult,
   HydrationPlan,
   ProviderAdapter,
+  ProviderFailureState,
 } from './provider-adapter.js';
+import { ProviderLifecycleError } from './provider-adapter.js';
 import type { ScriptExecutionService } from './script-execution.service.js';
 
 export class ProcessEnvironmentService {
@@ -52,7 +52,7 @@ export class ProcessEnvironmentService {
     private readonly scriptExecutionService?: ScriptExecutionService,
     private readonly checkpointPlanner?: CheckpointPlanner,
     private readonly codeCheckpointWriter?: CodeCheckpointWriter,
-    private readonly defaultEnvironmentProviderKind: 'daytona' | 'local' = 'local',
+    private readonly defaultEnvironmentProviderKind: 'daytona' | 'local' = 'daytona',
     private readonly artifactCheckpointPersistence: Pick<
       PlatformStore,
       'persistCheckpointArtifacts'
@@ -293,6 +293,7 @@ export class ProcessEnvironmentService {
 
     let hydratedEnvironment: EnvironmentSummary | null = null;
     let hydrationError: string | null = null;
+    let hydrationFailureState: ProviderFailureState = 'failed';
 
     try {
       const ensured = await adapter.ensureEnvironment({
@@ -313,6 +314,7 @@ export class ProcessEnvironmentService {
       });
     } catch (error) {
       hydrationError = error instanceof Error ? error.message : 'Unknown hydration error';
+      hydrationFailureState = mapProviderFailureState(error);
     }
 
     if (hydratedEnvironment !== null) {
@@ -355,6 +357,7 @@ export class ProcessEnvironmentService {
         environmentId: existing.environmentId,
         previousLastHydratedAt: existing.lastHydratedAt,
         failureReason: hydrationError,
+        failureState: hydrationFailureState,
       });
     }
   }
@@ -403,6 +406,7 @@ export class ProcessEnvironmentService {
         processId: args.processId,
         environmentId: args.environmentId,
         failureReason: error instanceof Error ? error.message : 'Unknown rehydrate error',
+        failureState: mapProviderFailureState(error),
       });
     }
   }
@@ -413,9 +417,12 @@ export class ProcessEnvironmentService {
     environmentId: string;
     plan: WorkingSetPlan;
   }): Promise<void> {
-    const [providerKind, currentProcess] = await Promise.all([
+    const [providerKind, currentProcess, existingEnvironment] = await Promise.all([
       this.getAuthoritativeProviderKind(args.processId),
       this.platformStore.getProcessRecord({
+        processId: args.processId,
+      }),
+      this.platformStore.getProcessEnvironmentSummary({
         processId: args.processId,
       }),
     ]);
@@ -430,6 +437,10 @@ export class ProcessEnvironmentService {
     try {
       const result = await adapter.rebuildEnvironment({
         processId: args.processId,
+        previousEnvironmentId:
+          args.environmentId === buildRebuildingEnvironmentId(args.processId)
+            ? existingEnvironment.environmentId
+            : args.environmentId,
         providerKind,
         plan: hydrationPlan,
       });
@@ -452,6 +463,7 @@ export class ProcessEnvironmentService {
         processId: args.processId,
         environmentId: args.environmentId,
         failureReason: error instanceof Error ? error.message : 'Unknown rebuild error',
+        failureState: mapProviderFailureState(error),
       });
     }
   }
@@ -614,7 +626,7 @@ export class ProcessEnvironmentService {
         const failedEnvironment = await this.upsertEnvironmentState({
           processId: args.processId,
           providerKind,
-          state: 'failed',
+          state: mapProviderFailureState(error),
           environmentId: args.environmentId,
           blockedReason: error instanceof Error ? error.message : 'Unknown execution error',
           lastHydratedAt,
@@ -750,15 +762,11 @@ export class ProcessEnvironmentService {
 
     try {
       const adapter = this.providerAdapterRegistry.resolve(providerKind);
-      const ensuredWorkspaceHandle = await this.resolveWorkspaceHandle({
-        adapter,
-        processId: args.processId,
-        environmentId: args.environmentId,
-      });
       const candidate = await this.buildLegacyCheckpointCandidate({
+        adapter,
+        environmentId: args.environmentId,
         artifactCandidates: args.executionResult.artifactCheckpointCandidates,
         codeCandidates: args.executionResult.codeCheckpointCandidates,
-        workspaceHandle: ensuredWorkspaceHandle,
         sourceSummariesById,
       });
       const plan = await args.checkpointPlanner.planFor({
@@ -963,7 +971,7 @@ export class ProcessEnvironmentService {
       const failedEnvironment = await this.upsertEnvironmentState({
         processId: args.processId,
         providerKind,
-        state: 'failed',
+        state: mapProviderFailureState(error),
         environmentId: args.environmentId,
         blockedReason: failureReason,
         lastHydratedAt: existingEnvironment.lastHydratedAt,
@@ -985,46 +993,18 @@ export class ProcessEnvironmentService {
   }
 
   /**
-   * Resolves the absolute filesystem workspace handle for `environmentId`. For
-   * `LocalProviderAdapter`, this is the actual working tree the script ran in.
-   * For other providers (`InMemory`, `Daytona` skeleton), there is no usable
-   * workspace handle for the orchestrator, so we return `null` and let
-   * `resolveCandidateContents` decide whether the ref is a supported synthetic
-   * URI (`mem://...`) or an unreadable filesystem path that should fail.
-   */
-  private async resolveWorkspaceHandle(args: {
-    adapter: ProviderAdapter;
-    processId: string;
-    environmentId: string;
-  }): Promise<string | null> {
-    // Adapters that expose `getWorkspaceHandle` (LocalProviderAdapter) can
-    // return the working-tree path directly. For others we leave the handle
-    // null and fail later if a filesystem-backed candidate cannot be resolved.
-    const candidate = args.adapter as ProviderAdapter & {
-      getWorkspaceHandle?: (args: { environmentId: string }) => string | null;
-    };
-    if (typeof candidate.getWorkspaceHandle === 'function') {
-      try {
-        return candidate.getWorkspaceHandle({ environmentId: args.environmentId });
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  }
-
-  /**
    * Bridges the spec'd `ExecutionResult` checkpoint candidates into the
    * `CheckpointPlanner`'s legacy `CheckpointCandidate` shape. The planner still
    * thinks in `{ artifacts: [{ contents }], codeDiffs: [{ diff }] }` — Chunk 2
-   * reuses that planner unchanged and resolves `contentsRef` / `workspaceRef`
-   * to actual content here, failing fast if a filesystem-backed ref cannot be
-   * read.
+   * reuses that planner unchanged and resolves provider-owned `contentsRef` /
+   * `workspaceRef` values into actual content here, failing fast if the active
+   * provider cannot materialize them.
    */
   private async buildLegacyCheckpointCandidate(args: {
+    adapter: ProviderAdapter;
+    environmentId: string;
     artifactCandidates: ArtifactCheckpointCandidate[];
     codeCandidates: CodeCheckpointCandidate[];
-    workspaceHandle: string | null;
     sourceSummariesById: Map<string, SourceAttachmentSummary>;
   }): Promise<{ artifacts: CheckpointArtifact[]; codeDiffs: CodeDiff[] }> {
     const nowIso = new Date().toISOString();
@@ -1034,8 +1014,9 @@ export class ProcessEnvironmentService {
         artifactId: candidate.artifactId,
         producedAt: nowIso,
         contents: await resolveCandidateContents({
+          adapter: args.adapter,
+          environmentId: args.environmentId,
           ref: candidate.contentsRef,
-          workspaceHandle: args.workspaceHandle,
         }),
         targetLabel: candidate.displayName,
       })),
@@ -1059,8 +1040,9 @@ export class ProcessEnvironmentService {
           targetRef: candidate.targetRef ?? undefined,
           filePath: candidate.filePath,
           diff: await resolveCandidateContents({
+            adapter: args.adapter,
+            environmentId: args.environmentId,
             ref: candidate.workspaceRef,
-            workspaceHandle: args.workspaceHandle,
           }),
           commitMessage: candidate.commitMessage,
         };
@@ -1121,6 +1103,7 @@ export class ProcessEnvironmentService {
     processId: string;
     environmentId: string;
     failureReason: string;
+    failureState?: ProviderFailureState;
   }): Promise<void> {
     try {
       const currentEnvironment = await this.platformStore.getProcessEnvironmentSummary({
@@ -1128,7 +1111,7 @@ export class ProcessEnvironmentService {
       });
       const failedEnvironment = await this.upsertEnvironmentState({
         processId: args.processId,
-        state: 'failed',
+        state: args.failureState ?? 'failed',
         environmentId: args.environmentId,
         blockedReason: args.failureReason,
         lastHydratedAt: currentEnvironment.lastHydratedAt,
@@ -1173,9 +1156,10 @@ export class ProcessEnvironmentService {
         const existing = await this.platformStore.getProcessEnvironmentSummary({
           processId: args.processId,
         });
+        const failureState = mapProviderFailureState(args.error);
         const failed = await this.upsertEnvironmentState({
           processId: args.processId,
-          state: 'failed',
+          state: failureState,
           environmentId: args.environmentId ?? existing.environmentId,
           blockedReason: failureReason,
           lastHydratedAt: existing.lastHydratedAt,
@@ -1222,11 +1206,12 @@ export class ProcessEnvironmentService {
     environmentId: string | null;
     previousLastHydratedAt: string | null;
     failureReason: string | null;
+    failureState?: ProviderFailureState;
   }): Promise<void> {
     try {
       const failedEnvironment = await this.upsertEnvironmentState({
         processId: args.processId,
-        state: 'failed',
+        state: args.failureState ?? 'failed',
         environmentId: args.environmentId,
         blockedReason: args.failureReason,
         lastHydratedAt: args.previousLastHydratedAt,
@@ -1569,33 +1554,21 @@ function extractExecutionFailureReason(executionResult: ExecutionResult): string
  * pass-through placeholders for deterministic tests.
  */
 async function resolveCandidateContents(args: {
+  adapter: ProviderAdapter;
+  environmentId: string;
   ref: string;
-  workspaceHandle: string | null;
 }): Promise<string> {
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(args.ref)) {
     // Non-filesystem URI scheme (mem://, data://, etc.) — test-fake territory.
     return args.ref;
   }
 
-  const absolutePath = path.isAbsolute(args.ref)
-    ? args.ref
-    : args.workspaceHandle === null
-      ? null
-      : path.resolve(args.workspaceHandle, args.ref);
+  return args.adapter.resolveCandidateContents({
+    environmentId: args.environmentId,
+    ref: args.ref,
+  });
+}
 
-  if (absolutePath === null) {
-    throw new Error(
-      `Checkpoint candidate '${args.ref}' could not be resolved because no workspace handle was available.`,
-    );
-  }
-
-  try {
-    return await fs.readFile(absolutePath, 'utf8');
-  } catch (error) {
-    throw new Error(
-      `Checkpoint candidate '${args.ref}' could not be read from '${absolutePath}': ${
-        error instanceof Error ? error.message : 'unknown error'
-      }`,
-    );
-  }
+function mapProviderFailureState(error: unknown): ProviderFailureState {
+  return error instanceof ProviderLifecycleError ? error.environmentState : 'failed';
 }

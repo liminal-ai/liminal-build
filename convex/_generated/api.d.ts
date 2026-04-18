@@ -19,6 +19,7 @@ import type * as processSideWorkItems from "../processSideWorkItems.js";
 import type * as processes from "../processes.js";
 import type * as projectMembers from "../projectMembers.js";
 import type * as projects from "../projects.js";
+import type * as serviceApiKey from "../serviceApiKey.js";
 import type * as sourceAttachments from "../sourceAttachments.js";
 import type * as test_helpers_fake_convex_context from "../test_helpers/fake_convex_context.js";
 import type * as users from "../users.js";
@@ -41,6 +42,7 @@ declare const fullApi: ApiFromModules<{
   processes: typeof processes;
   projectMembers: typeof projectMembers;
   projects: typeof projects;
+  serviceApiKey: typeof serviceApiKey;
   sourceAttachments: typeof sourceAttachments;
   "test_helpers/fake_convex_context": typeof test_helpers_fake_convex_context;
   users: typeof users;

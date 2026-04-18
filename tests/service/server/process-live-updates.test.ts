@@ -837,6 +837,7 @@ describe('server-driven environment execution', () => {
         fingerprint: plan.fingerprint,
       }),
       teardownEnvironment: async () => undefined,
+      resolveCandidateContents: async ({ ref }) => ref,
     };
   }
 
@@ -1141,6 +1142,7 @@ describe('server-driven environment execution', () => {
         fingerprint: plan.fingerprint,
       }),
       teardownEnvironment: async () => undefined,
+      resolveCandidateContents: async ({ ref }) => ref,
     };
     const app = await buildApp({
       authSessionService: createTestAuthSessionService({

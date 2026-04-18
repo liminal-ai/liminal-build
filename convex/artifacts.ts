@@ -7,6 +7,7 @@ import type {
 import type { Doc, Id } from './_generated/dataModel.js';
 import {
   type ActionCtx,
+  action,
   internalAction,
   internalMutation,
   internalQuery,
@@ -15,6 +16,7 @@ import {
   type QueryCtx,
   query,
 } from './_generated/server.js';
+import { assertValidApiKey } from './serviceApiKey.js';
 
 export const artifactsTableFields = {
   projectId: v.string(),
@@ -73,8 +75,48 @@ export const listProjectArtifactSummaries = query({
   },
 });
 
+const persistCheckpointArtifactsInternalRef = makeFunctionReference<
+  'action',
+  {
+    processId: string;
+    artifacts: Array<{
+      artifactId?: string;
+      producedAt: string;
+      contents: string;
+      targetLabel: string;
+    }>;
+  },
+  Array<ProcessOutputReference & { linkedArtifactId: string | null }>
+>('artifacts:persistCheckpointArtifactsInternal');
+
 /**
- * Public action that persists checkpoint artifacts via Convex File Storage.
+ * Public service-only action that validates the shared API key before
+ * delegating to the internal artifact persistence action.
+ */
+export const persistCheckpointArtifactsForService = action({
+  args: {
+    apiKey: v.string(),
+    processId: v.string(),
+    artifacts: v.array(checkpointArtifactInputValidator),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<Array<ProcessOutputReference & { linkedArtifactId: string | null }>> => {
+    assertValidApiKey(args.apiKey);
+
+    const result: Array<ProcessOutputReference & { linkedArtifactId: string | null }> =
+      await ctx.runAction(persistCheckpointArtifactsInternalRef, {
+        processId: args.processId,
+        artifacts: args.artifacts,
+      });
+
+    return result;
+  },
+});
+
+/**
+ * Internal action that persists checkpoint artifacts via Convex File Storage.
  *
  * Convex mutations cannot call `ctx.storage.store`, so each artifact's contents
  * are uploaded as a Blob from this action and the resulting storageIds are
@@ -86,7 +128,7 @@ export const listProjectArtifactSummaries = query({
  * delete every storage blob already uploaded in this invocation. Otherwise
  * partial failures leak orphan blobs into Convex File Storage.
  */
-export const persistCheckpointArtifacts = internalAction({
+export const persistCheckpointArtifactsInternal = internalAction({
   args: {
     processId: v.string(),
     artifacts: v.array(checkpointArtifactInputValidator),
@@ -234,6 +276,32 @@ export const deleteArtifactWithContent = mutation({
   },
 });
 
+const fetchArtifactContentInternalRef = makeFunctionReference<
+  'action',
+  { artifactId: string },
+  string | null
+>('artifacts:fetchArtifactContentInternal');
+
+/**
+ * Public service-only action that validates the shared API key before
+ * delegating to the internal artifact-content fetch action.
+ */
+export const fetchArtifactContentForService = action({
+  args: {
+    apiKey: v.string(),
+    artifactId: v.string(),
+  },
+  handler: async (ctx, args): Promise<string | null> => {
+    assertValidApiKey(args.apiKey);
+
+    const result: string | null = await ctx.runAction(fetchArtifactContentInternalRef, {
+      artifactId: args.artifactId,
+    });
+
+    return result;
+  },
+});
+
 /**
  * Internal action that returns an artifact's stored content as a UTF-8 string.
  *
@@ -245,7 +313,7 @@ export const deleteArtifactWithContent = mutation({
  * This is an action (not a query) because `ctx.storage.get` is only available
  * to actions, per the Convex storage guidelines.
  */
-export const fetchArtifactContent = internalAction({
+export const fetchArtifactContentInternal = internalAction({
   args: {
     artifactId: v.string(),
   },

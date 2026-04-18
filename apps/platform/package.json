@@ -5,6 +5,7 @@
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
     "dev": "tsx watch server/index.ts",
+    "daytona:smoke": "tsx server/scripts/daytona-smoke.ts",
     "start": "node dist/server/index.js",
     "build": "corepack pnpm run clean && corepack pnpm run build:server && corepack pnpm run build:client",
     "build:server": "tsc -p tsconfig.server.json",
@@ -12,6 +13,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.client.json"
   },
   "dependencies": {
+    "@daytonaio/sdk": "0.167.0",
     "@fastify/cookie": "11.0.2",
     "@fastify/csrf-protection": "7.1.0",
     "@fastify/vite": "9.0.0",

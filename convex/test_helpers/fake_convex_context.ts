@@ -211,10 +211,11 @@ class FakeStorage {
 
 export interface FakeConvexFunctionRegistry {
   /**
-   * Register an internal mutation / query / action handler under its canonical
-   * Convex reference name (`module:function`). The fake `ctx.runMutation` /
-   * `ctx.runQuery` then resolves `makeFunctionReference(name)` calls back to
-   * this handler by reading `Symbol(functionName)` on the reference.
+   * Register a mutation / query / action handler under its canonical Convex
+   * reference name (`module:function`). The fake `ctx.runMutation` /
+   * `ctx.runQuery` / `ctx.runAction` then resolves
+   * `makeFunctionReference(name)` calls back to this handler by reading
+   * `Symbol(functionName)` on the reference.
    */
   register(functionName: string, handler: (ctx: unknown, args: unknown) => Promise<unknown>): void;
 }
@@ -276,7 +277,7 @@ export function createFakeConvexContext(seed: SeedTables = {}) {
         'Fake runMutation could not resolve a handler — register the internal binding with createFakeConvexContext().registry.register(name, handler).',
       );
     }
-    return handler({ db, storage, runMutation, runQuery }, args);
+    return handler({ db, storage, runMutation, runQuery, runAction }, args);
   }
 
   async function runQuery(ref: unknown, args: unknown): Promise<unknown> {
@@ -286,7 +287,17 @@ export function createFakeConvexContext(seed: SeedTables = {}) {
         'Fake runQuery could not resolve a handler — register the internal binding with createFakeConvexContext().registry.register(name, handler).',
       );
     }
-    return handler({ db, storage, runMutation, runQuery }, args);
+    return handler({ db, storage, runMutation, runQuery, runAction }, args);
+  }
+
+  async function runAction(ref: unknown, args: unknown): Promise<unknown> {
+    const handler = resolveHandler(ref);
+    if (handler === undefined) {
+      throw new Error(
+        'Fake runAction could not resolve a handler — register the internal binding with createFakeConvexContext().registry.register(name, handler).',
+      );
+    }
+    return handler({ db, storage, runMutation, runQuery, runAction }, args);
   }
 
   const registry: FakeConvexFunctionRegistry = {
@@ -301,6 +312,7 @@ export function createFakeConvexContext(seed: SeedTables = {}) {
       storage,
       runMutation,
       runQuery,
+      runAction,
     },
     db,
     storage,

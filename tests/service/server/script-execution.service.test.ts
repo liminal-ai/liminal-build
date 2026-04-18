@@ -33,6 +33,7 @@ function buildProvider(result: ExecutionResult): ProviderAdapter {
       fingerprint: plan.fingerprint,
     })),
     teardownEnvironment: vi.fn(async () => undefined),
+    resolveCandidateContents: vi.fn(async ({ ref }) => ref),
   };
 }
 

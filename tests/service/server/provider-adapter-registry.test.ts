@@ -10,11 +10,27 @@ import {
   InMemoryProviderAdapter,
   type ProviderAdapter,
 } from '../../../apps/platform/server/services/processes/environment/provider-adapter.js';
+import { InMemoryPlatformStore } from '../../../apps/platform/server/services/projects/platform-store.js';
+
+function buildDaytonaAdapter() {
+  return new DaytonaProviderAdapter(new InMemoryPlatformStore(), {
+    apiKey: 'daytona-api-key',
+    clientFactory: () =>
+      ({
+        create: async () => {
+          throw new Error('not used');
+        },
+        get: async () => {
+          throw new Error('not used');
+        },
+      }) as never,
+  });
+}
 
 describe('DefaultProviderAdapterRegistry', () => {
   it('resolves a registered local adapter by providerKind', () => {
     const local = new InMemoryProviderAdapter();
-    const daytona = new DaytonaProviderAdapter();
+    const daytona = buildDaytonaAdapter();
     const registry = new DefaultProviderAdapterRegistry([local, daytona]);
 
     expect(registry.resolve('local')).toBe(local);
@@ -22,7 +38,7 @@ describe('DefaultProviderAdapterRegistry', () => {
 
   it('resolves a registered daytona adapter by providerKind', () => {
     const local = new InMemoryProviderAdapter();
-    const daytona = new DaytonaProviderAdapter();
+    const daytona = buildDaytonaAdapter();
     const registry = new DefaultProviderAdapterRegistry([local, daytona]);
 
     expect(registry.resolve('daytona')).toBe(daytona);

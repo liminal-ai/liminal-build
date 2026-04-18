@@ -16,6 +16,7 @@ import type {
   ProcessExecutionStatus,
   ProviderAdapter,
   ProviderKind,
+  ResolveCandidateContentsArgs,
 } from './provider-adapter.js';
 
 export const DEFAULT_LOCAL_WORKSPACE_ROOT_SUFFIX = 'liminal-build-sandboxes';
@@ -257,17 +258,12 @@ export class LocalProviderAdapter implements ProviderAdapter {
 
   async rebuildEnvironment(args: {
     processId: string;
+    previousEnvironmentId: string | null;
     providerKind: ProviderKind;
     plan: HydrationPlan;
   }): Promise<HydrationResult & EnsuredEnvironment> {
-    // Tear down any prior environment for this processId so we rebuild from a
-    // clean working tree. Iterate a snapshot so we can mutate the map during
-    // teardown.
-    const priorEnvironmentIds = [...this.environmentProcessIds.entries()]
-      .filter(([, processId]) => processId === args.processId)
-      .map(([environmentId]) => environmentId);
-    for (const environmentId of priorEnvironmentIds) {
-      await this.teardownEnvironment({ environmentId });
+    if (args.previousEnvironmentId !== null) {
+      await this.teardownEnvironment({ environmentId: args.previousEnvironmentId });
     }
 
     const ensured = await this.ensureEnvironment({
@@ -297,15 +293,23 @@ export class LocalProviderAdapter implements ProviderAdapter {
     this.environmentProcessIds.delete(args.environmentId);
   }
 
-  /**
-   * Optional accessor used by the orchestrator's checkpoint stage to translate
-   * `contentsRef` / `workspaceRef` paths into absolute filesystem paths inside
-   * the working tree. Returns `null` if the environment is no longer tracked
-   * (already torn down). Not part of the spec'd `ProviderAdapter` contract;
-   * other adapters simply do not expose it.
-   */
-  getWorkspaceHandle(args: { environmentId: string }): string | null {
-    return this.environmentRoots.get(args.environmentId) ?? null;
+  async resolveCandidateContents(args: ResolveCandidateContentsArgs): Promise<string> {
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(args.ref)) {
+      return args.ref;
+    }
+
+    const workingTree = this.resolveWorkingTree(args.environmentId);
+    const absolutePath = path.isAbsolute(args.ref) ? args.ref : path.resolve(workingTree, args.ref);
+
+    try {
+      return await fs.readFile(absolutePath, 'utf8');
+    } catch (error) {
+      throw new Error(
+        `Checkpoint candidate '${args.ref}' could not be read from '${absolutePath}': ${
+          error instanceof Error ? error.message : 'unknown error'
+        }`,
+      );
+    }
   }
 
   private resolveWorkingTree(environmentId: string): string {

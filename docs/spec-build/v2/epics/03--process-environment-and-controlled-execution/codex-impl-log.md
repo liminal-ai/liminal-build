@@ -2561,12 +2561,11 @@ All 14 gap items closed. Current tree post `7ea7c30`:
    were implicitly relying on the default. When doing this kind of
    cleanup, expect a ripple of test-fixture fixes.
 
-4. **Convex `setAdminAuth` is `@internal` in the public types.** The
-   fix-batch used a narrowed type cast. Worth tracking for Convex
-   upgrades but not worth sidestepping via alternative patterns
-   (the internal-action+internal-mutation pattern is canonical;
-   admin auth is the canonical way to call it from a long-lived
-   Fastify-side ConvexHttpClient).
+4. **Convex `setAdminAuth` was only a temporary closure-stage bridge.**
+   It unblocked the original internal-action path at that point in the run,
+   but later auth cleanup replaced it with a shared `CONVEX_API_KEY` passed
+   to service-only public Convex wrappers. Deploy/admin auth is no longer the
+   intended Fastify→Convex runtime pattern for this repo.
 
 5. **Real external integration (Octokit) adds value to the test
    suite.** The 3 integration tests against `liminal-ai/liminal-build`
@@ -2601,4 +2600,3 @@ After all three chunks closed, the final Epic 3 acceptance work:
    (`3b6b9f2` unblocked typecheck; re-verify post-Chunk-3).
 
 Only after both (1) and (2) pass does Epic 3 close.
-

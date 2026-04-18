@@ -434,6 +434,9 @@ describe('process environment fire-and-forget cleanup', () => {
       async teardownEnvironment() {
         return;
       },
+      async resolveCandidateContents({ ref }) {
+        return ref;
+      },
     };
     const app = await buildApp({
       authSessionService: createTestAuthSessionService({ actor, reason: null }),

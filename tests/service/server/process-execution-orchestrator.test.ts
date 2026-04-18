@@ -269,6 +269,9 @@ function buildProviderAdapter(args: {
     async teardownEnvironment() {
       return;
     },
+    async resolveCandidateContents({ ref }) {
+      return ref;
+    },
   };
 }
 

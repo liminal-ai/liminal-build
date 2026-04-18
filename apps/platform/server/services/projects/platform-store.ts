@@ -510,17 +510,18 @@ const replaceCurrentProcessOutputsMutation = makeFunctionReference<
 const persistCheckpointArtifactsAction = makeFunctionReference<
   'action',
   {
+    apiKey: string;
     processId: string;
     artifacts: ArtifactCheckpointTarget[];
   },
   PlatformProcessOutputSummary[]
->('artifacts:persistCheckpointArtifacts');
+>('artifacts:persistCheckpointArtifactsForService');
 
 const fetchArtifactContentAction = makeFunctionReference<
   'action',
-  { artifactId: string },
+  { apiKey: string; artifactId: string },
   string | null
->('artifacts:fetchArtifactContent');
+>('artifacts:fetchArtifactContentForService');
 
 const listProcessSideWorkItemsQuery = makeFunctionReference<
   'query',
@@ -932,20 +933,16 @@ export class NullPlatformStore implements PlatformStore {
 
 export class ConvexPlatformStore implements PlatformStore {
   private readonly client: ConvexHttpClient;
+  private readonly apiKey: string;
 
   /**
-   * `adminDeployKey` is required so the client can call Convex internal
-   * functions (`internalQuery` / `internalMutation` / `internalAction`).
-   * Epic 3 introduced `artifacts:persistCheckpointArtifacts` as an
-   * `internalAction` invoked from the server; per `ConvexHttpClient`,
-   * internal calls require `setAdminAuth(deployKey)` to be authorized.
-   *
-   * `setAdminAuth` is marked `@internal` in Convex's public types so we
-   * narrow the cast to just the method we use rather than `as any`.
+   * `apiKey` authenticates the Fastify control plane to the service-only
+   * Convex artifact wrappers. Runtime auth stays scoped to those public
+   * wrappers instead of relying on Convex admin auth.
    */
-  constructor(convexUrl: string, adminDeployKey: string) {
+  constructor(convexUrl: string, apiKey: string) {
     this.client = new ConvexHttpClient(convexUrl);
-    (this.client as unknown as { setAdminAuth(token: string): void }).setAdminAuth(adminDeployKey);
+    this.apiKey = apiKey;
   }
 
   async upsertUserFromWorkOS(args: {
@@ -1180,6 +1177,7 @@ export class ConvexPlatformStore implements PlatformStore {
     artifacts: ArtifactCheckpointTarget[];
   }): Promise<PlatformProcessOutputSummary[]> {
     return this.client.action(persistCheckpointArtifactsAction, {
+      apiKey: this.apiKey,
       processId: args.processId,
       artifacts: args.artifacts.map((artifact) => ({
         artifactId: artifact.artifactId,
@@ -1225,7 +1223,10 @@ export class ConvexPlatformStore implements PlatformStore {
   }
 
   async getArtifactContent(args: { artifactId: string }): Promise<string | null> {
-    return this.client.action(fetchArtifactContentAction, args);
+    return this.client.action(fetchArtifactContentAction, {
+      apiKey: this.apiKey,
+      artifactId: args.artifactId,
+    });
   }
 }
 

@@ -15,12 +15,16 @@ const runtimeEnvSchema = z.object({
   WORKOS_LOGIN_RETURN_URI: z.string().url(),
   CONVEX_DEPLOYMENT: z.string().min(1),
   CONVEX_URL: z.string().url(),
-  // Required: ConvexHttpClient.setAdminAuth(deployKey) authorizes the server to
-  // call internal queries/mutations/actions. Epic 3 introduced the artifact
-  // persistence internalAction (`artifacts:persistCheckpointArtifacts`) which
-  // is callable only with admin auth. Without this key the live checkpoint
-  // path returns 401 from Convex.
-  CONVEX_DEPLOY_KEY: z.string().min(1),
+  // Required: shared API key used by the Fastify control plane when calling
+  // the service-only Convex artifact wrappers. This is runtime service auth,
+  // not a Convex deploy/admin key.
+  CONVEX_API_KEY: z.string().min(1),
+  // Required: Daytona API key. Fastify boots the real Daytona provider by
+  // default, so local/shared runtime must be able to authenticate to Daytona
+  // before the app starts.
+  DAYTONA_API_KEY: z.string().min(1),
+  DAYTONA_API_URL: z.string().url().optional(),
+  DAYTONA_TARGET: z.string().min(1).optional(),
   // Spec default for shared/remote: hosted Daytona. Trusted local development
   // overrides via `.env` to `'local'`. See tech-design-server.md:107 and the
   // Epic 3 implementation addendum (item 12).
@@ -50,7 +54,8 @@ export const story0PlaceholderEnv: ServerEnv = runtimeEnvSchema.parse({
   WORKOS_LOGIN_RETURN_URI: 'http://localhost:5001/projects',
   CONVEX_DEPLOYMENT: 'dev:story0',
   CONVEX_URL: 'https://story0.example.convex.cloud',
-  CONVEX_DEPLOY_KEY: 'story0-deploy-key-placeholder',
+  CONVEX_API_KEY: 'story0-convex-api-key-placeholder',
+  DAYTONA_API_KEY: 'story0-daytona-api-key-placeholder',
   // story0 placeholder: dev-shaped. Tests and Story 0 fixtures expect `local`
   // so they don't try to construct the Daytona-default adapter chain.
   DEFAULT_ENVIRONMENT_PROVIDER_KIND: 'local',

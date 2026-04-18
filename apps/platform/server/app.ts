@@ -99,14 +99,13 @@ declare module 'fastify' {
 
 export async function createApp(options: CreateAppOptions = {}) {
   const env = options.env ?? story0PlaceholderEnv;
-  // ConvexPlatformStore needs admin auth so it can call internal Convex
-  // functions — notably the Epic 3 artifact persistence internalAction
-  // (`artifacts:persistCheckpointArtifacts`). The deploy key is plumbed
-  // through to the constructor and passed to `ConvexHttpClient.setAdminAuth`.
+  // ConvexPlatformStore uses the shared Convex API key when calling the
+  // service-only artifact wrappers. This keeps runtime auth scoped to the
+  // specific server-to-Convex seams Fastify needs.
   const platformStore =
     options.platformStore ??
     (hasLiveConvexConfig(env)
-      ? new ConvexPlatformStore(env.CONVEX_URL, env.CONVEX_DEPLOY_KEY)
+      ? new ConvexPlatformStore(env.CONVEX_URL, env.CONVEX_API_KEY)
       : new NullPlatformStore());
   const authSessionService =
     options.authSessionService ??
@@ -155,7 +154,12 @@ export async function createApp(options: CreateAppOptions = {}) {
           new LocalProviderAdapter(platformStore, {
             workspaceRoot: env.LOCAL_PROVIDER_WORKSPACE_ROOT ?? undefined,
           }),
-          new DaytonaProviderAdapter(),
+          new DaytonaProviderAdapter(platformStore, {
+            apiKey: env.DAYTONA_API_KEY,
+            apiUrl: env.DAYTONA_API_URL,
+            target: env.DAYTONA_TARGET,
+            gitHubToken: env.GITHUB_TOKEN,
+          }),
         ]));
   const scriptExecutionService =
     options.scriptExecutionService ?? new ScriptExecutionService(providerAdapterRegistry);

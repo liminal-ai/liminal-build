@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "pnpm --filter @liminal-build/platform dev",
+    "daytona:smoke": "pnpm --filter @liminal-build/platform daytona:smoke",
     "build": "corepack pnpm --filter @liminal-build/platform build",
     "lint": "corepack pnpm exec biome lint apps convex tests docs/setup README.md package.json pnpm-workspace.yaml tsconfig.base.json tsconfig.json biome.json playwright.config.ts vitest.workspace.ts .env.example .gitignore",
     "format:check": "corepack pnpm exec biome check --formatter-enabled=true --linter-enabled=false --assist-enabled=false apps convex tests docs/setup README.md package.json pnpm-workspace.yaml tsconfig.base.json tsconfig.json biome.json playwright.config.ts vitest.workspace.ts .env.example .gitignore",

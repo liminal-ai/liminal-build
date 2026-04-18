@@ -607,6 +607,7 @@ describe('LocalProviderAdapter', () => {
 
     const rebuilt = await adapter.rebuildEnvironment({
       processId: 'proc-rebuild-1',
+      previousEnvironmentId: first.environmentId,
       providerKind: 'local',
       plan: { fingerprint: 'fp', artifactInputs: [], outputInputs: [], sourceInputs: [] },
     });
@@ -629,20 +630,21 @@ describe('LocalProviderAdapter', () => {
     await adapter.teardownEnvironment({ environmentId: rebuilt.environmentId });
   });
 
-  it('getWorkspaceHandle returns the directory while the env exists and null after teardown', async () => {
+  it('resolveCandidateContents reads a relative file from the tracked working tree', async () => {
     const platformStore = new InMemoryPlatformStore();
     const adapter = new LocalProviderAdapter(platformStore, { workspaceRoot });
     const ensured = await adapter.ensureEnvironment({
       processId: 'proc-handle-1',
       providerKind: 'local',
     });
+    const targetPath = path.join(ensured.workspaceHandle, 'result.txt');
+    await fs.writeFile(targetPath, 'candidate body', 'utf8');
 
-    expect(adapter.getWorkspaceHandle({ environmentId: ensured.environmentId })).toBe(
-      ensured.workspaceHandle,
-    );
-
-    await adapter.teardownEnvironment({ environmentId: ensured.environmentId });
-
-    expect(adapter.getWorkspaceHandle({ environmentId: ensured.environmentId })).toBeNull();
+    await expect(
+      adapter.resolveCandidateContents({
+        environmentId: ensured.environmentId,
+        ref: 'result.txt',
+      }),
+    ).resolves.toBe('candidate body');
   });
 });

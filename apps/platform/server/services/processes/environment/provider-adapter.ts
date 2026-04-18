@@ -63,6 +63,11 @@ export interface ExecuteEnvironmentScriptArgs {
   scriptPayload: ScriptPayload;
 }
 
+export interface ResolveCandidateContentsArgs {
+  environmentId: string;
+  ref: string;
+}
+
 export interface PlatformProcessOutputWriteInput {
   outputId?: string;
   linkedArtifactId: string | null;
@@ -140,10 +145,24 @@ export interface ProviderAdapter {
   }): Promise<HydrationResult>;
   rebuildEnvironment(args: {
     processId: string;
+    previousEnvironmentId: string | null;
     providerKind: ProviderKind;
     plan: HydrationPlan;
   }): Promise<HydrationResult & EnsuredEnvironment>;
   teardownEnvironment(args: { environmentId: string }): Promise<void>;
+  resolveCandidateContents(args: ResolveCandidateContentsArgs): Promise<string>;
+}
+
+export type ProviderFailureState = 'failed' | 'unavailable' | 'lost';
+
+export class ProviderLifecycleError extends Error {
+  readonly environmentState: ProviderFailureState;
+
+  constructor(environmentState: ProviderFailureState, message: string) {
+    super(message);
+    this.name = 'ProviderLifecycleError';
+    this.environmentState = environmentState;
+  }
 }
 
 /**
@@ -227,6 +246,7 @@ export class InMemoryProviderAdapter implements ProviderAdapter {
 
   async rebuildEnvironment(args: {
     processId: string;
+    previousEnvironmentId: string | null;
     providerKind: ProviderKind;
     plan: HydrationPlan;
   }): Promise<HydrationResult & EnsuredEnvironment> {
@@ -243,6 +263,10 @@ export class InMemoryProviderAdapter implements ProviderAdapter {
 
   async teardownEnvironment(args: { environmentId: string }): Promise<void> {
     this.processIdByEnvironmentId.delete(args.environmentId);
+  }
+
+  async resolveCandidateContents(args: ResolveCandidateContentsArgs): Promise<string> {
+    return args.ref;
   }
 }
 
@@ -294,6 +318,7 @@ export class FailingProviderAdapter implements ProviderAdapter {
 
   async rebuildEnvironment(_args: {
     processId: string;
+    previousEnvironmentId: string | null;
     providerKind: ProviderKind;
     plan: HydrationPlan;
   }): Promise<never> {
@@ -302,5 +327,9 @@ export class FailingProviderAdapter implements ProviderAdapter {
 
   async teardownEnvironment(_args: { environmentId: string }): Promise<void> {
     return;
+  }
+
+  async resolveCandidateContents(_args: ResolveCandidateContentsArgs): Promise<string> {
+    throw new Error(this.reason);
   }
 }

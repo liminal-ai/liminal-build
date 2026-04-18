@@ -1,10 +1,42 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   deleteArtifactWithContent,
-  persistCheckpointArtifacts,
+  fetchArtifactContentForService,
+  fetchArtifactContentInternal,
+  lookupArtifactStorageIdInternal,
+  persistCheckpointArtifactsForService,
+  persistCheckpointArtifactsInternal,
   recordCheckpointArtifactsInternal,
 } from './artifacts.js';
 import { createFakeConvexContext } from './test_helpers/fake_convex_context.js';
+
+type RuntimeProcess = {
+  env?: Record<string, string | undefined>;
+};
+
+function readRuntimeApiKey(): string | undefined {
+  const runtime = globalThis as {
+    process?: unknown;
+  };
+  const processValue = runtime.process as RuntimeProcess | undefined;
+  return processValue?.env?.CONVEX_API_KEY;
+}
+
+function writeRuntimeApiKey(value: string | undefined): void {
+  const runtime = globalThis as {
+    process?: unknown;
+  };
+  const processValue = (runtime.process as RuntimeProcess | undefined) ?? {};
+  processValue.env ??= {};
+  runtime.process = processValue;
+
+  if (value === undefined) {
+    delete processValue.env.CONVEX_API_KEY;
+    return;
+  }
+
+  processValue.env.CONVEX_API_KEY = value;
+}
 
 function getHandler<TArgs, TReturn>(
   registered: unknown,
@@ -30,7 +62,28 @@ const persistCheckpointArtifactsHandler = getHandler<
     state: string;
     updatedAt: string;
   }>
->(persistCheckpointArtifacts);
+>(persistCheckpointArtifactsInternal);
+
+const persistCheckpointArtifactsForServiceHandler = getHandler<
+  {
+    apiKey: string;
+    processId: string;
+    artifacts: Array<{
+      artifactId?: string;
+      producedAt: string;
+      contents: string;
+      targetLabel: string;
+    }>;
+  },
+  Array<{
+    outputId: string;
+    linkedArtifactId: string | null;
+    displayName: string;
+    revisionLabel: string | null;
+    state: string;
+    updatedAt: string;
+  }>
+>(persistCheckpointArtifactsForService);
 
 const recordCheckpointArtifactsInternalHandler = getHandler<
   {
@@ -51,6 +104,19 @@ const recordCheckpointArtifactsInternalHandler = getHandler<
     updatedAt: string;
   }>
 >(recordCheckpointArtifactsInternal);
+
+const fetchArtifactContentInternalHandler = getHandler<{ artifactId: string }, string | null>(
+  fetchArtifactContentInternal,
+);
+
+const fetchArtifactContentForServiceHandler = getHandler<
+  { apiKey: string; artifactId: string },
+  string | null
+>(fetchArtifactContentForService);
+
+const lookupArtifactStorageIdInternalHandler = getHandler<{ artifactId: string }, string | null>(
+  lookupArtifactStorageIdInternal,
+);
 
 const deleteArtifactWithContentHandler = getHandler<{ artifactId: string }, null>(
   deleteArtifactWithContent,
@@ -104,11 +170,33 @@ function buildArtifactSeed() {
 
 function buildArtifactCtx() {
   const fixture = createFakeConvexContext(buildArtifactSeed());
-  // Wire the internal mutation reference used by `persistCheckpointArtifacts`
-  // so the fake `ctx.runMutation` can resolve it by canonical Convex name.
+  // Wire the internal mutation/query/action references used by the public
+  // service wrappers so the fake `ctx.runMutation` / `ctx.runQuery` /
+  // `ctx.runAction` can resolve them by canonical Convex name.
   fixture.registry.register(
     'artifacts:recordCheckpointArtifactsInternal',
     recordCheckpointArtifactsInternalHandler as unknown as (
+      ctx: unknown,
+      args: unknown,
+    ) => Promise<unknown>,
+  );
+  fixture.registry.register(
+    'artifacts:persistCheckpointArtifactsInternal',
+    persistCheckpointArtifactsHandler as unknown as (
+      ctx: unknown,
+      args: unknown,
+    ) => Promise<unknown>,
+  );
+  fixture.registry.register(
+    'artifacts:fetchArtifactContentInternal',
+    fetchArtifactContentInternalHandler as unknown as (
+      ctx: unknown,
+      args: unknown,
+    ) => Promise<unknown>,
+  );
+  fixture.registry.register(
+    'artifacts:lookupArtifactStorageIdInternal',
+    lookupArtifactStorageIdInternalHandler as unknown as (
       ctx: unknown,
       args: unknown,
     ) => Promise<unknown>,
@@ -117,6 +205,55 @@ function buildArtifactCtx() {
 }
 
 describe('convex/artifacts checkpoint persistence with file storage', () => {
+  const originalApiKey = readRuntimeApiKey();
+
+  beforeEach(() => {
+    writeRuntimeApiKey('test-convex-api-key');
+  });
+
+  afterEach(() => {
+    writeRuntimeApiKey(originalApiKey);
+  });
+
+  it('delegates artifact persistence through the public service wrapper when the api key is valid', async () => {
+    const { ctx, db } = buildArtifactCtx();
+
+    const outputs = await persistCheckpointArtifactsForServiceHandler(ctx, {
+      apiKey: 'test-convex-api-key',
+      processId: 'process-artifacts-1',
+      artifacts: [
+        {
+          producedAt: '2026-04-15T12:25:00.000Z',
+          contents: '# Public Wrapper\n\nBody.',
+          targetLabel: 'Service Wrapper Artifact',
+        },
+      ],
+    });
+
+    expect(outputs).toHaveLength(1);
+    expect(db.list('artifacts')).toHaveLength(1);
+  });
+
+  it('rejects artifact persistence through the public service wrapper when the api key is invalid', async () => {
+    const { ctx, storage } = buildArtifactCtx();
+
+    await expect(
+      persistCheckpointArtifactsForServiceHandler(ctx, {
+        apiKey: 'wrong-api-key',
+        processId: 'process-artifacts-1',
+        artifacts: [
+          {
+            producedAt: '2026-04-15T12:26:00.000Z',
+            contents: 'should not persist',
+            targetLabel: 'Rejected Artifact',
+          },
+        ],
+      }),
+    ).rejects.toThrow('Unauthorized service API key.');
+
+    expect(storage.list()).toHaveLength(0);
+  });
+
   it('uploads contents through ctx.storage.store and writes the storageId on the row', async () => {
     const { ctx, db, storage } = buildArtifactCtx();
 
@@ -170,6 +307,41 @@ describe('convex/artifacts checkpoint persistence with file storage', () => {
     if (blob !== null) {
       expect(await blob.text()).toBe('second body');
     }
+  });
+
+  it('delegates artifact content reads through the public service wrapper when the api key is valid', async () => {
+    const { ctx, db } = buildArtifactCtx();
+
+    await persistCheckpointArtifactsHandler(ctx, {
+      processId: 'process-artifacts-1',
+      artifacts: [
+        {
+          producedAt: '2026-04-15T12:30:00.000Z',
+          contents: 'public fetch body',
+          targetLabel: 'Fetch Wrapper Artifact',
+        },
+      ],
+    });
+
+    const artifactId = (db.list('artifacts')[0] as Record<string, unknown>)._id as string;
+
+    await expect(
+      fetchArtifactContentForServiceHandler(ctx, {
+        apiKey: 'test-convex-api-key',
+        artifactId,
+      }),
+    ).resolves.toBe('public fetch body');
+  });
+
+  it('rejects artifact content reads through the public service wrapper when the api key is invalid', async () => {
+    const { ctx } = buildArtifactCtx();
+
+    await expect(
+      fetchArtifactContentForServiceHandler(ctx, {
+        apiKey: 'wrong-api-key',
+        artifactId: 'artifacts:1',
+      }),
+    ).rejects.toThrow('Unauthorized service API key.');
   });
 
   it('writes contentStorageId via the internal mutation when called directly', async () => {

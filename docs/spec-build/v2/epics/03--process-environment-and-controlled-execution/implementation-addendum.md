@@ -63,6 +63,13 @@ contract shapes; they do not affect Epic 3 behavior.
    against `npx convex dev` + Fastify/Vite dev server with LocalProviderAdapter
    and the real Octokit code writer.
 
+Later runtime-auth cleanup:
+- Fastify no longer uses `CONVEX_DEPLOY_KEY` / Convex admin auth at runtime.
+- The live app now uses a shared `CONVEX_API_KEY` passed to service-only public
+  Convex wrappers, which validate the key and delegate to internal functions.
+- Deploy keys remain a CLI/deployment concern rather than the app-runtime auth
+  mechanism for local or production web execution.
+
 ---
 
 ## Why this exists
