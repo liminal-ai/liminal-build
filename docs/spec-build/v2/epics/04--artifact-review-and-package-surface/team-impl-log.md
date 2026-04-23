@@ -3,9 +3,45 @@
 ## Run Overview
 - State: BETWEEN_STORIES
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/04--artifact-review-and-package-surface
-- Current Story: 02-artifact-versions-and-revision-review (next)
+- Current Story: 03-markdown-and-mermaid-review (next)
 - Current Phase: —
-- Last Completed Checkpoint: Story 1 re-accepted; follow-up commit pending (round 1 integrated real Convex package read path; round 2 added unsupported-fallback + cross-kind ordering)
+- Last Completed Checkpoint: Story 2 accepted; commit pending
+
+## Orchestrator failure mode — Story 2 "verify-round churn from under-configured fixer + unchecked fix spillover" (2026-04-23 ~16:50Z)
+
+**The failure mode.** Story 2 accumulated **6 verify rounds + 5 quick-fixes + 2 `story-continue`s** before the final-round Story 2 findings converged on zero. Story 0 needed 4 rounds, Story 1 needed 3 rounds, Story 2 reached 6 and was still compounding — not because verifiers were nitpicking, but because every fix pass **either missed part of the fix's spillover or introduced a new defect the next round caught**.
+
+**Concrete chain on Story 2:**
+- Round 1 revise: two explicit tech-design deviations the initial implementor declared as `specDeviations` hoping acceptance (extracting `artifact-review.service.ts`; replacing Convex storage-URL pattern with a service-only bytes action). Fixed via `story-continue`.
+- Round 2 revise: real 50-version history cap + producedAt ordering gap in InMemory. Fixed via bundled quick-fix. **Quick-fix server-stamped `createdAt` in InMemory but did NOT touch the real Convex production checkpoint writer** — the fixer missed the spillover.
+- Round 3 revise: XSS via placeholder renderer's `innerHTML = selectedVersion.body`. Real safety issue pre-Story-3. Fixed via quick-fix.
+- Round 4 revise: production checkpoint writer still using caller-supplied `producedAt` (spillover from round 2 quick-fix). PLUS scoping-should-be-durable-version-linkage vs current-material-refs — tech-design-explicit. Fixed via `story-continue` (attempt 1 hung 41 min — CLI issue #20) then re-dispatched as quick-fix.
+- Round 5 revise: the scoping fix itself **introduced a new regression** — using `artifactVersions.createdByProcessId` as ownership check for the single-artifact review path made zero-version artifacts return 404 (broke AC-2.4). Fixed via quick-fix with version-agnostic `artifacts.processId` ownership guard.
+- Round 6 (pending result at write time): verifying the fix-on-the-fix.
+
+**Three root causes:**
+
+1. **Quick-fixer under-configured for the work it was doing.** Config had `quick_fixer` at `gpt-5.4 / medium` — the model-tier assumption is that quick-fixes are one-line corrections (typo, rename, dead-code removal). The Story 2 fixes routed through quick-fix were non-trivial integrations (three-surface scoping change, Convex mutation rewrite, server/client contract shape change). Medium reasoning effort + no reading journey → fixer focused narrowly on the flagged evidence and missed adjacent call sites that needed the same treatment. **Mitigation applied at 16:55Z: bumped `quick_fixer.reasoning_effort` from `medium` → `xhigh` in `impl-run.config.json` for the remainder of the run.**
+
+2. **Orchestrator routed to quick-fix when `story-continue` was the right channel for integration-complex work.** Quick-fixer is story-agnostic — it doesn't receive the full reading journey (story + tech-design + test plan). `story-continue` does, via the retained implementor session. For work that touches multiple surfaces or changes an invariant the story depends on, `story-continue` is the right primitive; quick-fix should stay narrow. **Rule going forward (logged in user directive at ~16:50Z):**
+   - `story-implement` at gpt-5.4 / high — unchanged
+   - **Integration-complex fixes** → `story-continue` with retained session (full context, high effort)
+   - **Small bounded corrections** (typo, comment, dead code, one-line) → `quick-fix` (now at xhigh)
+
+3. **Orchestrator treated verify rounds as the integration-checking loop instead of as final sign-off.** After each quick-fix landed, the orchestrator (me) dispatched `story-verify` immediately rather than spending 2-3 minutes reading the adjacent code surface to check whether the fix had obvious spillover. The scoping-fix → AC-2.4-regression case is the textbook example: a 30-second grep across `artifact-review.service.ts` for the ownership-guard call sites would have surfaced the zero-version break before the next verify round. **Mitigation for Stories 3-6:** after every fix lands, orchestrator will grep/read the adjacent surface (same service, same contract, same route) and run the story gate locally before re-dispatching `story-verify`. This moves the integration-consistency loop from fresh-codex-session to orchestrator-time, which is cheaper and lower-variance.
+
+**Churn cost.** Each verify round is 4–9 min of provider time + a fresh codex session ($$ + wallclock) + orchestrator routing time. 6 rounds on one story is ~40 min of provider + ~20 min of orchestrator routing — about **60 min of compounding cost for one story**. Extrapolated naively across 7 stories that's 7+ hours just in verify-round churn, most of which should be avoidable. The `ls-claude-impl` skill's cost model currently assumes ~2 verify rounds per story as the happy path; at 6 it's off by 3×.
+
+**What this means for the skill (to be surfaced to skill maintainer):**
+
+- **The skill's fix-routing guidance should be stronger about when quick-fix vs story-continue applies.** Current `phases/21-verification-and-fix-routing.md` gives abstract criteria; it should explicitly call out that any fix touching 2+ surfaces or changing an invariant the story depends on routes to `story-continue` by default, not quick-fix.
+- **The config-schema defaults should probably set `quick_fixer.reasoning_effort` to `high` (not `medium`)** to absorb the typical case where orchestrators route non-trivial work through quick-fix because it's quicker than re-loading the reading journey. This is a low-cost change that would have prevented several of the Story 2 rounds.
+- **The skill should introduce an orchestrator-side "post-fix consistency check" step** between quick-fix and `story-verify` — even a one-paragraph guidance to grep/read the adjacent surface before re-dispatching would materially reduce round churn.
+- **The skill's cost model and stage-map guidance should acknowledge verify-round churn as a real failure mode**, not just flag "verifier disagreement" as the pause condition. Rounds-per-story should be a tracked metric; crossing a threshold (e.g. 4+ rounds) should trigger an orchestrator review of whether the fix-routing choices are mis-calibrated.
+
+**Accepted for now / not reopening.** Story 2 round 6 is in flight. Letting it finish. Regardless of outcome, Story 2 acceptance stands or gets one more bounded correction — not another full `story-implement` reset. The lessons above are booked for Stories 3-6.
+
+---
 
 ## Orchestrator failure mode — Story 1 "test-shim-as-scope-decision" (2026-04-23 ~11:00Z)
 
@@ -64,7 +100,9 @@ Every CLI / skill issue or observation raised during this run, with current stat
 | 16 | Orchestrator's first quick-fix monitor used wrong glob and fell through to stale status | **RESOLVED — orchestrator's bug** | Not a CLI issue. Fixed by re-arming the monitor on the explicit `artifacts/quick-fix/progress/001-quick-fix.status.json` path. Kept on record so future orchestrators know story-agnostic ops live elsewhere. |
 | 17 | 🚨 BLOCKING — `codex_output_schema` invalid for OpenAI strict structured outputs | **RESOLVED 2026-04-23 ~04:30Z (user patch)** | Coder agent's fix: `tests.totalAfterStory` / `tests.deltaFromPriorBaseline` made required-and-nullable internally, normalized out of final envelope if null. Shared `codex-output-schema.ts` helper now wired into every fresh Codex exec (so all ops with fresh codex sessions are hardened, not just story-implement). Also: schema-rejection failures now surface the real `invalid_json_schema` detail instead of the misleading `PROVIDER_UNAVAILABLE` surface. Story 1 `story-implement` re-dispatched at ~10:20Z, running successfully at the time of this update. |
 | 18 | CLI prints "Default sub command ... not found in subCommands." when run without args | **OPEN (minor UX)** | Running `node bin/ls-impl-cli.cjs` with no args now prints a help block then a literal `Default sub command [hint text] not found in subCommands.` error. The hint itself is helpful but the trailing "not found" line looks like a bug in the arg-parser library. Cosmetic; doesn't affect real use since operators always pass a subcommand. |
-| 19 (new) | `story-continue` envelope returns `continuationHandle: null` on follow-up pass | **OPEN (minor)** | At 2026-04-23 ~11:20Z, Story 1 `story-continue` finished `ready-for-verification` cleanly, but the result envelope's `continuationHandle` field is null. The codex session underneath the continue call is obviously still valid (the continue succeeded against the same `019db9dc-dacb-76f3-b2d3-56a6594da7bb` handle), the CLI just doesn't echo it back. Orchestrator workaround: continue using the last known handle from the log's `Current Continuation Handles` section — the session id from the first `story-implement` envelope is still the authoritative one. Fix direction: surface the reused handle in every follow-up envelope so recovery doesn't need to walk back to the initial implementor result. |
+| 19 | `story-continue` envelope returns `continuationHandle: null` on follow-up pass | **OPEN (minor)** | At 2026-04-23 ~11:20Z, Story 1 `story-continue` finished `ready-for-verification` cleanly, but the result envelope's `continuationHandle` field is null. The codex session underneath the continue call is obviously still valid (the continue succeeded against the same `019db9dc-dacb-76f3-b2d3-56a6594da7bb` handle), the CLI just doesn't echo it back. Orchestrator workaround: continue using the last known handle from the log's `Current Continuation Handles` section — the session id from the first `story-implement` envelope is still the authoritative one. Fix direction: surface the reused handle in every follow-up envelope so recovery doesn't need to walk back to the initial implementor result. |
+| 21 (new) | Artifact-slot numbering collides when a prior op aborts without envelope | **OPEN (minor, orchestrator confusion)** | At 2026-04-23 16:29Z, the round-5 `story-verify` dispatch reused slot `011` (`011-verify-batch.status.json`) even though slot `011-continue.*` already existed from the hung continue at 15:37Z. Orchestrator monitors scoped to `012-verify-batch` returned "no status yet" events for 5+ minutes while the verify was actually running and progressing on slot `011-verify-batch`. Per `operations/33-artifact-contracts.md` the numbering is supposed to be globally monotonic per story dir, so a killed op shouldn't leave its slot re-usable by a later op. Fix direction: either bump past any existing `NNN-*` basename regardless of suffix, or surface a clearer "slot reused after abort" signal in the envelope. |
+| 20 | `story-continue` hung for 41 minutes with codex subprocess at ~1s CPU, no output progression | **OPEN (intermittent)** | At 2026-04-23 ~15:37Z, Story 2 `story-continue` against session `019dbaae-361e-78b0-a7e2-13d94df6f0ea` advanced to `phase=initial-implement`, emitted one chunk of stdout (first few seed fixtures being read) at 15:38:47Z, and then went silent. `status.json` `lastOutputAt` stayed at 15:38:47 while the codex process accumulated just ~1 second of CPU over the next 41 minutes — effectively idle, not actively reasoning. Per the 30-min "hard-stall" threshold in `operations/30-cli-operations.md` this needed intervention. Orchestrator killed the subprocess at 16:22Z. No envelope was written; the CLI reported "completed exit 0" only because my kill broke the pipe. Recovery: retry the same fix as a `quick-fix` (fresh codex, no reading-journey). Fix direction for CLI/adapter: surface a watchdog in the CLI itself that detects N-minute output silence and fails with a clear `PROVIDER_STALLED` code instead of hanging indefinitely. Alternatively, add a heartbeat line to the progress stream so orchestrators can distinguish "codex is reasoning slowly" from "codex is wedged". The continuation session handle (`019dbaae-...`) may or may not still be valid; safer to treat it as invalidated after a hard-kill and fall back to fresh implementor if retry fails. |
 
 ### Open items requiring no code fix (user-side or run-level decisions)
 
@@ -130,6 +168,49 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 - Story 0 implementor: codex / 019db7b8-474f-7ec2-8880-c5fa78a33561 (extracted from stdout after adapter failure; used in round-1 self-review retry post-patch)
 
 ## Story Receipts
+
+### 02-artifact-versions-and-revision-review (accepted 2026-04-23 ~17:15Z)
+- Story Title: Story 2: Artifact Versions and Revision Review
+- Implementor Evidence:
+  - Initial: `artifacts/02-.../001-implementor.json` (codex session `019dbaae-361e-78b0-a7e2-13d94df6f0ea`, outcome `ready-for-verification`, 19 files, 2 declared spec deviations against tech design)
+  - Follow-up 1 (tech-design compliance): `artifacts/02-.../002-continue.json` — extracted `artifact-review.service.ts`, switched to `ctx.storage.getUrl()` + Fastify proxy-fetch pattern, `specDeviations: []`
+  - Follow-up 2 (scoping + durable-time): `011-continue` attempt hung 41 min (CLI issue #20), killed. Re-dispatched as `quick-fix 007`, succeeded.
+- Self-Review Evidence: `artifacts/02-.../006-self-review-batch.json` (3/3 passes, 0 deviations)
+- Verifier Evidence (6 rounds):
+  - Round 1: `artifacts/02-.../007-verify-batch.json` — revise on 2 tech-design deviations
+  - Round 2: `artifacts/02-.../008-verify-batch.json` — revise (convergent 50-version cap + V2 AC-2.1 test-coverage gap)
+  - Round 3: `artifacts/02-.../009-verify-batch.json` — revise on placeholder renderer XSS (V1), V2 clean
+  - Round 4: `artifacts/02-.../010-verify-batch.json` — revise on scoping + durable-time (V1), V2 raised zero-version question
+  - Round 5: `artifacts/02-.../011-verify-batch.json` — revise on scoping-fix regression for AC-2.4 zero-version path (convergent V1+V2)
+  - Round 6: `artifacts/02-.../012-verify-batch.json` — revise on `listProjectArtifactSummaries` 200-cap (V1 blocking) + 2 non-blocking NFR observations
+- Quick-fix Evidence (5 rounds):
+  - `artifacts/quick-fix/004-quick-fix.json` — same-artifact two-revision integration regression test
+  - `artifacts/quick-fix/005-quick-fix.json` — InMemory createdAt server-stamp + version list cap 50→500 + checkpoint test
+  - `artifacts/quick-fix/006-quick-fix.json` — placeholder renderer textContent (XSS fix) + regression test
+  - `artifacts/quick-fix/007-quick-fix.json` — scoping to `createdByProcessId` + production checkpoint writer server-stamps `createdAt`
+  - `artifacts/quick-fix/008-quick-fix.json` — zero-version empty-state fix (artifact-based ownership guard)
+  - `artifacts/quick-fix/009-quick-fix.json` — `listProjectArtifactSummaries` cap 200→500 (first quick-fix at xhigh config)
+- Story Gate: `corepack pnpm run green-verify` — **pass** (final orchestrator-owned run)
+- Epic Gate: `corepack pnpm run verify-all` — **pass** (all 425 tests)
+- Gate Tests: convex 43 / service 187 / client 175 / packages 2 / integration 18 = **425 total**
+- Dispositions:
+  - (rd 1) artifact-review.service extraction + storage-URL pattern → **fixed** (follow-up 1)
+  - (rd 2) 50-version history cap + AC-2.1 test gap → **fixed** (quick-fix 005: cap 50→500, test added)
+  - (rd 3) XSS via placeholder renderer → **fixed** (quick-fix 006: textContent + regression test)
+  - (rd 4) scoping via currentMaterialRefs + producedAt-caller-stamp in Convex → **fixed** (quick-fix 007: createdByProcessId linkage + server-stamp in `upsertArtifactCheckpoint`)
+  - (rd 5) scoping-fix AC-2.4 regression (zero-version 404 instead of empty state) → **fixed** (quick-fix 008: artifact-based ownership guard)
+  - (rd 6) `listProjectArtifactSummaries` 200-cap → **fixed** (quick-fix 009: cap 200→500, regression test with 300 artifacts)
+  - (rd 6) NFR 1-second version-switch timing test coverage → **defer to Story 6** (NFR + observability + a11y is Story 6's explicit scope per test-plan.md)
+  - (rd 4 + rd 5 carry) zero-version artifacts appear in `availableTargets`? → **accepted-risk / spec-tension**: Story 1 line 121+123 say zero-version = not a reviewable target (excluded from list); Story 2 AC-2.4 says workspace shows no-version state when reached. Interpretation: AC-2.4 is for deep-link navigation, not target-list discovery. Both server (line 259 test) and client (line 44 test) now correctly return the no-version state through direct URL. **Carrying to epic verification as a spec-clarification ask**: is AC-2.4's reachability meant to include process-surface entry? If yes, Story 1 line 123 should soften.
+- Open Risks:
+  - Convex dev-DB schema-mismatch (already surfaced from Story 0; unchanged).
+  - Spec tension on AC-2.4 reachability (see dispositions).
+- Baseline Before: 409
+- Baseline After: 425 (+16; prior-round fix contributions + 300-artifact regression test)
+- User Acceptance: pending commit
+- Acceptance Rationale: 6 verify rounds (above happy-path of 2; documented as churn failure mode with mitigations at the top of this log), 5 quick-fix rounds + 2 story-continues. Zero blocking findings remain. All 4 gates pass in both final verifier sessions and orchestrator-independent gate run. Baseline +16 with no regressions. NFR coverage explicitly deferred to Story 6. Remaining spec tension on AC-2.4 reachability is carried to epic verification for potential user ruling.
+
+---
 
 ### 01-review-entry-and-workspace-bootstrap (updated 2026-04-23 ~14:05Z — receipt amended after reopen + two follow-up rounds)
 - Story Title: Story 1: Review Entry and Workspace Bootstrap
@@ -222,7 +303,7 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 - Acceptance Rationale: 4 verifier rounds, 0 blocking findings remain, story gate pass, baseline up with no regressions, self-review + implementor work intact on disk, all spec-pack contract vocabulary in place as Story 0 foundation for Stories 1–6. Residual findings are disposed per rationale above.
 
 ## Cumulative Baselines
-- Baseline Before Current Story: 409 (post-Story-1-amended accepted; next story's "before")
+- Baseline Before Current Story: 425 (post-Story-2 accepted; next story's "before")
 - Expected After Current Story: TBD at Story 2 start
 - Latest Actual Total: 409 (post-Story-1-amended verify-all at ~14:05Z, exit 0)
 
@@ -233,6 +314,7 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 | 00-foundation | 370 | 381 | +11 | +4 from `review-foundation-contracts.test.ts` TC-0 + 2 from `packages/markdown-package/tests/scaffold.test.ts` + 5 from 3 quick-fix contract-validation tests |
 | 01-review-entry-and-workspace-bootstrap (initial) | 381 | 406 | +25 | +3 new test files (review-workspace-api, review-workspace-page, review-router); +tests from 7 modified suites; 1 round of verify |
 | 01-review-entry-and-workspace-bootstrap (amended) | 406 | 409 | +3 | +1 new integration test file `tests/integration/review-workspace.test.ts` seeded via `publishPackageSnapshot`; +2 subtests for unsupported-fallback + cross-kind newest-first ordering |
+| 02-artifact-versions-and-revision-review | 409 | 425 | +16 | +3 new test files (artifact-review-api, artifact-review-panel, version-switcher); +tests from 7 modified suites + regression tests added by 5 quick-fix rounds (revision append, checkpoint writer, XSS, zero-version, 300-artifact cap) |
 
 ## Cleanup / Epic Verification
 - Cleanup Artifact: pending

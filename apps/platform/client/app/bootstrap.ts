@@ -37,7 +37,7 @@ import {
   getProjectShell,
   listProjects,
 } from '../browser-api/projects-api.js';
-import { getReviewWorkspace } from '../browser-api/review-workspace-api.js';
+import { getArtifactReview, getReviewWorkspace } from '../browser-api/review-workspace-api.js';
 import { getRequiredRootElement, getShellBootstrapPayload } from './dom.js';
 import { applyLiveProcessMessage } from './process-live.js';
 import { navigateTo, parseRoute } from './router.js';
@@ -996,6 +996,102 @@ export async function bootstrapApp(
     await loadParsedRoute(route);
   };
 
+  const selectArtifactVersion = async (
+    projectId: string,
+    processId: string,
+    artifactId: string,
+    versionId: string,
+  ): Promise<void> => {
+    const currentReviewWorkspace = store.get().reviewWorkspace;
+
+    if (
+      currentReviewWorkspace.projectId !== projectId ||
+      currentReviewWorkspace.processId !== processId
+    ) {
+      return;
+    }
+
+    const selection: ReviewWorkspaceSelection = {
+      targetKind: 'artifact',
+      targetId: artifactId,
+      versionId,
+    };
+
+    try {
+      const artifact = await getArtifactReview({
+        projectId,
+        processId,
+        artifactId,
+        versionId,
+      });
+
+      const nextTarget =
+        artifact.versions.length === 0
+          ? {
+              targetKind: 'artifact' as const,
+              displayName: artifact.displayName,
+              status: 'empty' as const,
+              artifact,
+            }
+          : artifact.selectedVersion?.contentKind === 'unsupported'
+            ? {
+                targetKind: 'artifact' as const,
+                displayName: artifact.displayName,
+                status: 'unsupported' as const,
+                error: {
+                  code: 'REVIEW_TARGET_UNSUPPORTED' as const,
+                  message: 'This artifact format is not reviewable in the current release.',
+                },
+                artifact,
+              }
+            : {
+                targetKind: 'artifact' as const,
+                displayName: artifact.displayName,
+                status: 'ready' as const,
+                artifact,
+              };
+
+      store.patch('route', {
+        pathname: getRoutePathname({
+          kind: 'review-workspace',
+          projectId,
+          selectedProcessId: null,
+          processId,
+          reviewSelection: selection,
+        }),
+        projectId,
+        selectedProcessId: null,
+      });
+      store.patch('reviewWorkspace', {
+        ...currentReviewWorkspace,
+        selection,
+        target: nextTarget,
+        error: null,
+      });
+      navigateTo(
+        {
+          kind: 'review-workspace',
+          projectId,
+          selectedProcessId: null,
+          processId,
+          reviewSelection: selection,
+        },
+        {},
+        targetWindow,
+      );
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        store.patch('reviewWorkspace', {
+          ...currentReviewWorkspace,
+          error: error.payload,
+        });
+        return;
+      }
+
+      throw error;
+    }
+  };
+
   const startCurrentProcess = async (projectId: string, processId: string): Promise<void> => {
     clearProcessActionError(projectId, processId);
 
@@ -1234,6 +1330,9 @@ export async function bootstrapApp(
     },
     onOpenReview: (projectId: string, processId: string, selection) => {
       void openReview(projectId, processId, selection ?? null);
+    },
+    onSelectArtifactVersion: (projectId, processId, artifactId, versionId) => {
+      void selectArtifactVersion(projectId, processId, artifactId, versionId);
     },
     onStartProcess: startCurrentProcess,
     onResumeProcess: resumeCurrentProcess,

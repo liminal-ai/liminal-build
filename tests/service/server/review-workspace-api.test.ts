@@ -87,6 +87,32 @@ function buildStore(args: { includeArtifact?: boolean; includePackage?: boolean 
           ]
         : [],
     },
+    artifactVersionsByArtifactId: args.includeArtifact
+      ? {
+          [readyArtifactReviewTargetFixture.artifactId]: [
+            {
+              versionId:
+                readyArtifactReviewTargetFixture.currentVersionId ?? 'artifact-version-001',
+              artifactId: readyArtifactReviewTargetFixture.artifactId,
+              versionLabel:
+                readyArtifactReviewTargetFixture.currentVersionLabel ?? 'checkpoint-20260422120000',
+              contentStorageId: 'storage-ready-artifact-review',
+              contentKind: 'markdown',
+              bytes: 48,
+              createdAt:
+                readyArtifactReviewTargetFixture.versions[0]?.createdAt ??
+                '2026-04-23T12:00:00.000Z',
+              createdByProcessId: processSummary.processId,
+            },
+          ],
+        }
+      : {},
+    artifactContentsByVersionId: args.includeArtifact
+      ? {
+          [readyArtifactReviewTargetFixture.currentVersionId ?? 'artifact-version-001']:
+            '# Feature Specification\n\nCurrent review body.',
+        }
+      : {},
     currentMaterialRefsByProcessId: {
       [processSummary.processId]: {
         artifactIds: args.includeArtifact ? [readyArtifactReviewTargetFixture.artifactId] : [],
@@ -97,13 +123,6 @@ function buildStore(args: { includeArtifact?: boolean; includePackage?: boolean 
       [processSummary.processId]: args.includePackage ? [exportablePackageFixture] : [],
     },
   });
-
-  if (args.includeArtifact) {
-    platformStore.seedArtifactContentForTesting(
-      readyArtifactReviewTargetFixture.artifactId,
-      '# Feature Specification\n\nCurrent review body.',
-    );
-  }
 
   return platformStore;
 }

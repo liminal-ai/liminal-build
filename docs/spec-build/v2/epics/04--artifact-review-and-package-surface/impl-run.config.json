@@ -9,7 +9,7 @@
   "quick_fixer": {
     "secondary_harness": "codex",
     "model": "gpt-5.4",
-    "reasoning_effort": "medium"
+    "reasoning_effort": "xhigh"
   },
   "story_verifier_1": {
     "secondary_harness": "codex",

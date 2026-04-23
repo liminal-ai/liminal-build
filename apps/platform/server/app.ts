@@ -45,6 +45,10 @@ import {
 } from './services/processes/process-work-surface.service.js';
 import { MarkdownRendererService } from './services/rendering/markdown-renderer.service.js';
 import {
+  DefaultArtifactReviewService,
+  type ArtifactReviewService,
+} from './services/review/artifact-review.service.js';
+import {
   DefaultReviewWorkspaceService,
   type ReviewWorkspaceService,
 } from './services/review/review-workspace.service.js';
@@ -82,6 +86,7 @@ export interface CreateAppOptions {
   processResponseService?: ProcessResponseService;
   processRegistrationService?: ProcessRegistrationService;
   processResumeService?: ProcessResumeService;
+  artifactReviewService?: ArtifactReviewService;
   reviewWorkspaceService?: ReviewWorkspaceService;
   processStartService?: ProcessStartService;
   processWorkSurfaceService?: ProcessWorkSurfaceService;
@@ -99,6 +104,7 @@ declare module 'fastify' {
     processResponseService: ProcessResponseService;
     processRegistrationService: ProcessRegistrationService;
     processResumeService: ProcessResumeService;
+    artifactReviewService: ArtifactReviewService;
     reviewWorkspaceService: ReviewWorkspaceService;
     processStartService: ProcessStartService;
     processWorkSurfaceService: ProcessWorkSurfaceService;
@@ -214,9 +220,12 @@ export async function createApp(options: CreateAppOptions = {}) {
     options.processWorkSurfaceService ??
     new DefaultProcessWorkSurfaceService(platformStore, processAccessService);
   const markdownRenderer = await MarkdownRendererService.create();
+  const artifactReviewService =
+    options.artifactReviewService ??
+    new DefaultArtifactReviewService(platformStore, markdownRenderer);
   const reviewWorkspaceService =
     options.reviewWorkspaceService ??
-    new DefaultReviewWorkspaceService(platformStore, processAccessService, markdownRenderer);
+    new DefaultReviewWorkspaceService(platformStore, processAccessService, artifactReviewService);
   const app = Fastify({
     logger: options.logger ?? false,
   });
@@ -233,6 +242,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.decorate('processResponseService', processResponseService);
   app.decorate('processRegistrationService', processRegistrationService);
   app.decorate('processResumeService', processResumeService);
+  app.decorate('artifactReviewService', artifactReviewService);
   app.decorate('reviewWorkspaceService', reviewWorkspaceService);
   app.decorate('processStartService', processStartService);
   app.decorate('processWorkSurfaceService', processWorkSurfaceService);

@@ -28,6 +28,16 @@ export const markdownArtifactVersionDetailFixture = artifactVersionDetailSchema.
   createdAt: currentArtifactVersionFixture.createdAt,
 });
 
+export const priorMarkdownArtifactVersionDetailFixture = artifactVersionDetailSchema.parse({
+  versionId: priorArtifactVersionFixture.versionId,
+  versionLabel: priorArtifactVersionFixture.versionLabel,
+  contentKind: 'markdown',
+  bodyStatus: 'ready',
+  body: '<h1>Feature Specification - Prior</h1>',
+  mermaidBlocks: [],
+  createdAt: priorArtifactVersionFixture.createdAt,
+});
+
 export const readyArtifactReviewTargetFixture = artifactReviewTargetSchema.parse({
   artifactId: 'artifact-001',
   displayName: 'Feature Specification',
@@ -36,6 +46,16 @@ export const readyArtifactReviewTargetFixture = artifactReviewTargetSchema.parse
   selectedVersionId: currentArtifactVersionFixture.versionId,
   versions: [currentArtifactVersionFixture, priorArtifactVersionFixture],
   selectedVersion: markdownArtifactVersionDetailFixture,
+});
+
+export const priorSelectedArtifactReviewTargetFixture = artifactReviewTargetSchema.parse({
+  artifactId: 'artifact-001',
+  displayName: 'Feature Specification',
+  currentVersionId: currentArtifactVersionFixture.versionId,
+  currentVersionLabel: currentArtifactVersionFixture.versionLabel,
+  selectedVersionId: priorArtifactVersionFixture.versionId,
+  versions: [currentArtifactVersionFixture, priorArtifactVersionFixture],
+  selectedVersion: priorMarkdownArtifactVersionDetailFixture,
 });
 
 export const emptyArtifactReviewTargetFixture = artifactReviewTargetSchema.parse({

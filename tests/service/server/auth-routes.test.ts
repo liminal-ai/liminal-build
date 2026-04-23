@@ -617,6 +617,15 @@ describe('auth routes', () => {
       async getArtifactContent() {
         return null;
       },
+      async listArtifactVersions() {
+        return [];
+      },
+      async getArtifactVersion() {
+        return null;
+      },
+      async getArtifactVersionContentUrl() {
+        return null;
+      },
       async getLatestArtifactVersion() {
         return null;
       },

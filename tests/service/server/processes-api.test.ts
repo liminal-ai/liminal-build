@@ -395,6 +395,18 @@ class RecordingPlatformStore implements PlatformStore {
     return null;
   }
 
+  async listArtifactVersions() {
+    return [];
+  }
+
+  async getArtifactVersion() {
+    return null;
+  }
+
+  async getArtifactVersionContentUrl() {
+    return null;
+  }
+
   async getLatestArtifactVersion() {
     return null;
   }

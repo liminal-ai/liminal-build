@@ -3,7 +3,11 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { buildShellBootstrapPayload } from '../config.js';
 import { AppError } from '../errors/app-error.js';
 import { sessionCookieName } from '../services/auth/auth-session.service.js';
-import { getReviewWorkspaceRouteSchema, reviewHtmlRouteSchema } from '../schemas/review.js';
+import {
+  getReviewArtifactRouteSchema,
+  getReviewWorkspaceRouteSchema,
+  reviewHtmlRouteSchema,
+} from '../schemas/review.js';
 import {
   reviewWorkspaceApiPathnamePattern,
   reviewWorkspaceRoutePathnamePattern,
@@ -161,6 +165,68 @@ export async function registerReviewRoutes(app: FastifyInstance): Promise<void> 
         );
 
         return reply.send(workspace);
+      } catch (error) {
+        if (error instanceof AppError) {
+          const requestError = buildRequestError(error);
+
+          switch (error.statusCode) {
+            case 401:
+              return reply.code(401).send(requestError);
+            case 403:
+              return reply.code(403).send(requestError);
+            case 404:
+              return reply.code(404).send(requestError);
+            default:
+              throw error;
+          }
+        }
+
+        throw error;
+      }
+    },
+  );
+
+  typedApp.get(
+    '/api/projects/:projectId/processes/:processId/review/artifacts/:artifactId',
+    {
+      schema: getReviewArtifactRouteSchema,
+    },
+    async (request, reply) => {
+      if (request.actor === null) {
+        if (request.authFailureReason === 'invalid_session') {
+          reply.clearCookie(sessionCookieName, { path: '/' });
+        }
+
+        return reply.code(401).send({
+          code: 'UNAUTHENTICATED',
+          message: 'Authenticated access is required.',
+          status: 401,
+        });
+      }
+
+      try {
+        await app.processAccessService.assertProcessAccess({
+          actor: request.actor,
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+        });
+
+        const artifactReview = await app.artifactReviewService.getArtifactReview({
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+          artifactId: request.params.artifactId,
+          versionId: request.query.versionId,
+        });
+
+        if (artifactReview === null) {
+          return reply.code(404).send({
+            code: 'REVIEW_TARGET_NOT_FOUND',
+            message: 'The requested review target could not be found.',
+            status: 404,
+          });
+        }
+
+        return reply.send(artifactReview);
       } catch (error) {
         if (error instanceof AppError) {
           const requestError = buildRequestError(error);

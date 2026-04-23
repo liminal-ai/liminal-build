@@ -6,8 +6,11 @@ import {
   lookupArtifactStorageIdInternal,
   persistCheckpointArtifactsForService,
   persistCheckpointArtifactsInternal,
+  listProjectArtifactSummaries,
+  PROJECT_ARTIFACT_LIST_DEFAULT_LIMIT,
   recordCheckpointArtifactsInternal,
 } from './artifacts.js';
+import { insertArtifactVersion } from './artifactVersions.js';
 import { createFakeConvexContext } from './test_helpers/fake_convex_context.js';
 
 type RuntimeProcess = {
@@ -123,6 +126,19 @@ const deleteArtifactWithContentHandler = getHandler<{ artifactId: string }, null
   deleteArtifactWithContent,
 );
 
+const listProjectArtifactSummariesHandler = getHandler<
+  { projectId: string },
+  Array<{
+    artifactId: string;
+    displayName: string;
+    currentVersionLabel: string | null;
+    attachmentScope: 'project' | 'process';
+    processId: string | null;
+    processDisplayLabel: string | null;
+    updatedAt: string;
+  }>
+>(listProjectArtifactSummaries);
+
 function buildArtifactSeed() {
   return {
     projects: [
@@ -202,8 +218,48 @@ function buildArtifactCtx() {
       args: unknown,
     ) => Promise<unknown>,
   );
+  fixture.registry.register(
+    'artifactVersions:insertArtifactVersion',
+    getHandler<
+      {
+        artifactId: string;
+        versionLabel: string;
+        contentStorageId: string;
+        contentKind: 'markdown' | 'unsupported';
+        bytes: number;
+        createdByProcessId: string;
+      },
+      string
+    >(insertArtifactVersion) as unknown as (ctx: unknown, args: unknown) => Promise<unknown>,
+  );
   return fixture;
 }
+
+describe('convex/artifacts project summaries', () => {
+  it('lists more than 200 project artifacts up to the default ceiling', async () => {
+    const artifactCount = 300;
+    const createdAtStart = Date.parse('2026-04-15T12:00:00.000Z');
+    const { ctx } = createFakeConvexContext({
+      ...buildArtifactSeed(),
+      artifacts: Array.from({ length: artifactCount }, (_, index) => ({
+        _id: `artifact-bulk-${index + 1}`,
+        _creationTime: 100 + index,
+        projectId: 'project-artifacts-1',
+        processId: null,
+        displayName: `Bulk Artifact ${index + 1}`,
+        createdAt: new Date(createdAtStart + index * 1_000).toISOString(),
+      })),
+    });
+
+    const summaries = await listProjectArtifactSummariesHandler(ctx, {
+      projectId: 'project-artifacts-1',
+    });
+
+    expect(PROJECT_ARTIFACT_LIST_DEFAULT_LIMIT).toBe(500);
+    expect(summaries).toHaveLength(artifactCount);
+    expect(summaries[0]?.artifactId).toBe(`artifact-bulk-${artifactCount}`);
+  });
+});
 
 describe('convex/artifacts checkpoint persistence with file storage', () => {
   const originalApiKey = readRuntimeApiKey();
@@ -312,6 +368,53 @@ describe('convex/artifacts checkpoint persistence with file storage', () => {
     if (blob !== null) {
       expect(await blob.text()).toBe('second body');
     }
+  });
+
+  it('keeps the later checkpoint current even when its producedAt is older than the prior revision', async () => {
+    const { ctx, db } = buildArtifactCtx();
+
+    await persistCheckpointArtifactsHandler(ctx, {
+      processId: 'process-artifacts-1',
+      artifacts: [
+        {
+          artifactId: 'artifact-ordered-1',
+          producedAt: '2026-04-15T12:30:00.000Z',
+          contents: '# Checkpoint A',
+          targetLabel: 'Ordered Artifact',
+        },
+      ],
+    });
+
+    const firstVersion = db.list('artifactVersions')[0] as Record<string, unknown>;
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    await persistCheckpointArtifactsHandler(ctx, {
+      processId: 'process-artifacts-1',
+      artifacts: [
+        {
+          artifactId: 'artifact-ordered-1',
+          producedAt: '2026-04-15T11:30:00.000Z',
+          contents: '# Checkpoint B',
+          targetLabel: 'Ordered Artifact',
+        },
+      ],
+    });
+
+    const artifactVersions = db.list('artifactVersions') as Array<Record<string, unknown>>;
+    expect(artifactVersions).toHaveLength(2);
+
+    const orderedVersions = [...artifactVersions].sort((left, right) =>
+      String(right.createdAt).localeCompare(String(left.createdAt)),
+    );
+    const latestVersion = orderedVersions[0];
+    const earlierVersion = orderedVersions[1];
+
+    expect(
+      String(latestVersion?.createdAt).localeCompare(String(firstVersion.createdAt)),
+    ).toBeGreaterThan(0);
+    expect(latestVersion?.versionLabel).toBe('checkpoint-20260415113000');
+    expect(earlierVersion?.versionLabel).toBe('checkpoint-20260415123000');
   });
 
   it('delegates artifact content reads through the public service wrapper when the api key is valid', async () => {

@@ -4,6 +4,7 @@ import type {
   ArtifactSummary,
   ProcessOutputReference,
 } from '../apps/platform/shared/contracts/index.js';
+import { internal } from './_generated/api.js';
 import type { Doc, Id } from './_generated/dataModel.js';
 import {
   type ActionCtx,
@@ -24,6 +25,9 @@ export const artifactsTableFields = {
   displayName: v.string(),
   createdAt: v.string(),
 };
+
+// Pre-customer ceiling: raise the default list size until a downstream epic adds pagination.
+export const PROJECT_ARTIFACT_LIST_DEFAULT_LIMIT = 500;
 
 const checkpointArtifactInputValidator = v.object({
   artifactId: v.optional(v.string()),
@@ -48,7 +52,7 @@ export const listProjectArtifactSummaries = query({
     const artifacts = await ctx.db
       .query('artifacts')
       .withIndex('by_projectId', (indexQuery) => indexQuery.eq('projectId', args.projectId))
-      .take(200);
+      .take(PROJECT_ARTIFACT_LIST_DEFAULT_LIMIT);
 
     const summaries = await Promise.all(
       artifacts.map(async (artifact) => {
@@ -424,13 +428,12 @@ async function upsertArtifactCheckpoint(
     });
   }
 
-  await ctx.db.insert('artifactVersions', {
+  await ctx.runMutation(internal.artifactVersions.insertArtifactVersion, {
     artifactId,
     versionLabel,
     contentStorageId: args.contentStorageId,
     contentKind: 'markdown',
     bytes: args.bytes,
-    createdAt: args.producedAt,
     createdByProcessId: args.processRecord._id,
   });
 

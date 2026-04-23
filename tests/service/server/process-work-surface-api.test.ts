@@ -928,6 +928,23 @@ describe('process work surface api', () => {
           },
         ],
       },
+      artifactVersionsByArtifactId: {
+        [reviewArtifactId]: [
+          {
+            versionId: 'artifact-version-running-review-001',
+            artifactId: reviewArtifactId,
+            versionLabel: 'review-1',
+            contentStorageId: 'storage-running-review-001',
+            contentKind: 'markdown',
+            bytes: 26,
+            createdAt: '2026-04-13T12:14:00.000Z',
+            createdByProcessId: runningProcessSummary.processId,
+          },
+        ],
+      },
+      artifactContentsByVersionId: {
+        'artifact-version-running-review-001': '# Running review artifact',
+      },
       processHistoryItemsByProcessId: {
         [runningProcessSummary.processId]: readyProcessHistoryFixture.items,
       },
@@ -1014,6 +1031,23 @@ describe('process work surface api', () => {
             updatedAt: '2026-04-13T12:15:00.000Z',
           },
         ],
+      },
+      artifactVersionsByArtifactId: {
+        [reviewArtifactId]: [
+          {
+            versionId: 'artifact-version-completed-review-001',
+            artifactId: reviewArtifactId,
+            versionLabel: 'review-2',
+            contentStorageId: 'storage-completed-review-001',
+            contentKind: 'markdown',
+            bytes: 28,
+            createdAt: '2026-04-13T12:15:00.000Z',
+            createdByProcessId: completedProcessSummary.processId,
+          },
+        ],
+      },
+      artifactContentsByVersionId: {
+        'artifact-version-completed-review-001': '# Completed review artifact',
       },
       currentRequestsByProcessId: {
         [completedProcessSummary.processId]: null,

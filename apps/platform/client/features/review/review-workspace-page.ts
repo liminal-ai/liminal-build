@@ -6,6 +6,7 @@ import {
   renderMissingProcessState,
   renderMissingProjectState,
 } from '../projects/unavailable-state.js';
+import { renderArtifactReviewPanel } from './artifact-review-panel.js';
 
 function formatProcessTypeLabel(processType: string): string {
   return processType.replace(/([a-z])([A-Z])/g, '$1 $2');
@@ -32,6 +33,12 @@ export function renderReviewWorkspacePage(args: {
     projectId: string,
     processId: string,
     selection?: ReviewWorkspaceSelection | null,
+  ) => void;
+  onSelectArtifactVersion: (
+    projectId: string,
+    processId: string,
+    artifactId: string,
+    versionId: string,
   ) => void;
 }): HTMLElement {
   const container = args.targetDocument.createElement('section');
@@ -169,11 +176,21 @@ export function renderReviewWorkspacePage(args: {
   );
 
   if (target.targetKind === 'artifact' && target.artifact !== undefined) {
+    const artifact = target.artifact;
+
     container.append(
-      createParagraph(
-        args.targetDocument,
-        `Version: ${target.artifact.currentVersionLabel ?? 'No durable version selected'}`,
-      ),
+      renderArtifactReviewPanel({
+        artifact,
+        targetDocument: args.targetDocument,
+        onSelectVersion: (versionId) => {
+          args.onSelectArtifactVersion(
+            project.projectId,
+            process.processId,
+            artifact.artifactId,
+            versionId,
+          );
+        },
+      }),
     );
   }
 

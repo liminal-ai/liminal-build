@@ -1,27 +1,25 @@
 import type {
-  ArtifactVersionDetail,
   ReviewTarget,
   ReviewTargetSummary,
   ReviewWorkspaceResponse,
   ReviewWorkspaceSelection,
 } from '../../../shared/contracts/index.js';
 import {
-  artifactReviewTargetSchema,
   reviewTargetSchema,
   reviewWorkspaceResponseSchema,
 } from '../../../shared/contracts/index.js';
+import { AppError } from '../../errors/app-error.js';
+import { reviewTargetNotFoundErrorCode } from '../../errors/codes.js';
 import type { AuthenticatedActor } from '../auth/auth-session.service.js';
-import type { MarkdownRendererService } from '../rendering/markdown-renderer.service.js';
 import type { ProcessAccessService } from '../processes/process-access.service.js';
 import type { PlatformStore } from '../projects/platform-store.js';
+import type { ArtifactReviewService } from './artifact-review.service.js';
 
-function buildArtifactVersionId(args: {
-  artifactId: string;
-  versionLabel: string;
-  updatedAt: string;
-}) {
-  return `${args.artifactId}:${args.versionLabel}:${args.updatedAt}`;
-}
+type SelectedTargetRequest = {
+  explicit: boolean;
+  targetId: string;
+  targetKind: ReviewTargetSummary['targetKind'];
+};
 
 export interface ReviewWorkspaceService {
   getWorkspace(args: {
@@ -36,7 +34,7 @@ export class DefaultReviewWorkspaceService implements ReviewWorkspaceService {
   constructor(
     private readonly platformStore: PlatformStore,
     private readonly processAccessService: ProcessAccessService,
-    private readonly markdownRenderer: MarkdownRendererService,
+    private readonly artifactReviewService: ArtifactReviewService,
   ) {}
 
   async getWorkspace(args: {
@@ -50,14 +48,18 @@ export class DefaultReviewWorkspaceService implements ReviewWorkspaceService {
       projectId: args.projectId,
       processId: args.processId,
     });
-    const selectedSummary = this.resolveSelectedTarget(availableTargets, args.selection);
+    const selectedTargetRequest = this.resolveSelectedTargetRequest(
+      availableTargets,
+      args.selection,
+    );
     const target =
-      selectedSummary === null
+      selectedTargetRequest === null
         ? undefined
         : await this.buildSelectedTarget({
             projectId: args.projectId,
             processId: args.processId,
-            summary: selectedSummary,
+            request: selectedTargetRequest,
+            selection: args.selection,
           });
 
     return reviewWorkspaceResponseSchema.parse({
@@ -71,28 +73,35 @@ export class DefaultReviewWorkspaceService implements ReviewWorkspaceService {
         displayLabel: access.process.displayLabel,
         processType: access.process.processType,
         reviewTargetKind: target?.targetKind,
-        reviewTargetId: selectedSummary?.targetId,
+        reviewTargetId: selectedTargetRequest?.targetId,
       },
       availableTargets,
       target,
     });
   }
 
-  private resolveSelectedTarget(
+  private resolveSelectedTargetRequest(
     availableTargets: ReviewTargetSummary[],
     selection: ReviewWorkspaceSelection | null,
-  ): ReviewTargetSummary | null {
+  ): SelectedTargetRequest | null {
     if (selection?.targetKind !== undefined && selection.targetId !== undefined) {
-      return (
-        availableTargets.find(
-          (target) =>
-            target.targetKind === selection.targetKind && target.targetId === selection.targetId,
-        ) ?? null
-      );
+      return {
+        explicit: true,
+        targetKind: selection.targetKind,
+        targetId: selection.targetId,
+      };
     }
 
     if (availableTargets.length === 1) {
-      return availableTargets[0] ?? null;
+      const onlyTarget = availableTargets[0];
+
+      return onlyTarget === undefined
+        ? null
+        : {
+            explicit: false,
+            targetKind: onlyTarget.targetKind,
+            targetId: onlyTarget.targetId,
+          };
     }
 
     return null;
@@ -101,15 +110,20 @@ export class DefaultReviewWorkspaceService implements ReviewWorkspaceService {
   private async buildSelectedTarget(args: {
     projectId: string;
     processId: string;
-    summary: ReviewTargetSummary;
+    request: SelectedTargetRequest;
+    selection: ReviewWorkspaceSelection | null;
   }): Promise<ReviewTarget | undefined> {
-    if (args.summary.targetKind === 'package') {
+    if (args.request.targetKind === 'package') {
       const target = await this.platformStore.getProcessReviewPackage({
         processId: args.processId,
-        packageId: args.summary.targetId,
+        packageId: args.request.targetId,
       });
 
       if (target === null) {
+        if (args.request.explicit) {
+          throw this.createReviewTargetNotFoundError();
+        }
+
         return undefined;
       }
 
@@ -121,126 +135,33 @@ export class DefaultReviewWorkspaceService implements ReviewWorkspaceService {
       });
     }
 
-    const target = await this.buildArtifactTarget({
+    const target = await this.artifactReviewService.getArtifactTarget({
       projectId: args.projectId,
       processId: args.processId,
-      artifactId: args.summary.targetId,
+      artifactId: args.request.targetId,
+      versionId:
+        args.selection?.targetKind === 'artifact' &&
+        args.selection.targetId === args.request.targetId
+          ? args.selection.versionId
+          : undefined,
     });
 
     if (target === null) {
+      if (args.request.explicit) {
+        throw this.createReviewTargetNotFoundError();
+      }
+
       return undefined;
     }
 
     return target;
   }
 
-  private async buildArtifactTarget(args: {
-    projectId: string;
-    processId: string;
-    artifactId: string;
-  }): Promise<ReviewTarget | null> {
-    const [artifacts, currentMaterialRefs, latestVersion] = await Promise.all([
-      this.platformStore.listProjectArtifacts({
-        projectId: args.projectId,
-      }),
-      this.platformStore.getCurrentProcessMaterialRefs({
-        processId: args.processId,
-      }),
-      this.platformStore.getLatestArtifactVersion({
-        artifactId: args.artifactId,
-      }),
-    ]);
-    const reviewableArtifactIds = new Set(currentMaterialRefs.artifactIds);
-    const artifact = artifacts.find(
-      (candidate) =>
-        candidate.artifactId === args.artifactId &&
-        reviewableArtifactIds.has(candidate.artifactId) &&
-        candidate.currentVersionLabel !== null,
-    );
-
-    if (artifact === undefined || latestVersion === null || artifact.currentVersionLabel === null) {
-      return null;
-    }
-
-    const versionId = buildArtifactVersionId({
-      artifactId: artifact.artifactId,
-      versionLabel: artifact.currentVersionLabel,
-      updatedAt: artifact.updatedAt,
-    });
-    const artifactReview = artifactReviewTargetSchema.parse({
-      artifactId: artifact.artifactId,
-      displayName: artifact.displayName,
-      currentVersionId: versionId,
-      currentVersionLabel: artifact.currentVersionLabel,
-      selectedVersionId: versionId,
-      versions: [
-        {
-          versionId,
-          versionLabel: artifact.currentVersionLabel,
-          isCurrent: true,
-          createdAt: artifact.updatedAt,
-        },
-      ],
-      selectedVersion:
-        latestVersion.contentKind === 'unsupported'
-          ? ({
-              versionId,
-              versionLabel: artifact.currentVersionLabel,
-              contentKind: 'unsupported',
-              createdAt: artifact.updatedAt,
-            } satisfies ArtifactVersionDetail)
-          : undefined,
-    });
-
-    if (latestVersion.contentKind === 'unsupported') {
-      return reviewTargetSchema.parse({
-        targetKind: 'artifact',
-        displayName: artifact.displayName,
-        status: 'unsupported',
-        error: {
-          code: 'REVIEW_TARGET_UNSUPPORTED',
-          message: 'This artifact format is not reviewable in the current release.',
-        },
-        artifact: artifactReview,
-      });
-    }
-
-    const content = await this.platformStore.getArtifactContent({
-      artifactId: args.artifactId,
-    });
-
-    if (content === null) {
-      return null;
-    }
-
-    const rendered = this.markdownRenderer.render({
-      markdown: content,
-      themeId: 'light',
-    });
-    const selectedVersion: ArtifactVersionDetail = {
-      versionId,
-      versionLabel: artifact.currentVersionLabel,
-      contentKind: 'markdown',
-      bodyStatus: rendered.bodyStatus,
-      ...(rendered.bodyStatus === 'ready'
-        ? {
-            body: rendered.body,
-            mermaidBlocks: rendered.mermaidBlocks,
-          }
-        : {
-            bodyError: rendered.bodyError,
-          }),
-      createdAt: artifact.updatedAt,
-    };
-
-    return reviewTargetSchema.parse({
-      targetKind: 'artifact',
-      displayName: artifact.displayName,
-      status: 'ready',
-      artifact: artifactReviewTargetSchema.parse({
-        ...artifactReview,
-        selectedVersion,
-      }),
+  private createReviewTargetNotFoundError(): AppError {
+    return new AppError({
+      code: reviewTargetNotFoundErrorCode,
+      message: 'The requested review target could not be found.',
+      statusCode: 404,
     });
   }
 }

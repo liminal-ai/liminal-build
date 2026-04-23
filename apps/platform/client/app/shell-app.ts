@@ -25,6 +25,12 @@ export interface ShellAppOptions {
     processId: string,
     selection?: ReviewWorkspaceSelection | null,
   ) => void;
+  onSelectArtifactVersion: (
+    projectId: string,
+    processId: string,
+    artifactId: string,
+    versionId: string,
+  ) => void;
   onStartProcess: (projectId: string, processId: string) => Promise<void>;
   onResumeProcess: (projectId: string, processId: string) => Promise<void>;
   onRehydrateEnvironment: (projectId: string, processId: string) => Promise<void>;
@@ -59,6 +65,9 @@ export function createShellApp(options: ShellAppOptions) {
               onOpenProcess: options.onOpenProcess,
               onOpenReview: (projectId, processId, selection) => {
                 options.onOpenReview(projectId, processId, selection);
+              },
+              onSelectArtifactVersion: (projectId, processId, artifactId, versionId) => {
+                options.onSelectArtifactVersion(projectId, processId, artifactId, versionId);
               },
             })
           : isProcessWorkSurface

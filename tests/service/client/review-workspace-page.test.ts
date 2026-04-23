@@ -46,6 +46,7 @@ function renderPage(overrides: Parameters<typeof createAppStore>[0] = {}) {
   const dom = new JSDOM('<!doctype html><html><body></body></html>');
   const onOpenProcess = vi.fn();
   const onOpenReview = vi.fn();
+  const onSelectArtifactVersion = vi.fn();
   const store = buildStore(overrides);
   const page = renderReviewWorkspacePage({
     store,
@@ -53,11 +54,12 @@ function renderPage(overrides: Parameters<typeof createAppStore>[0] = {}) {
     targetWindow: dom.window as unknown as Window & typeof globalThis,
     onOpenProcess,
     onOpenReview,
+    onSelectArtifactVersion,
   });
 
   dom.window.document.body.append(page);
 
-  return { dom, onOpenProcess, onOpenReview };
+  return { dom, onOpenProcess, onOpenReview, onSelectArtifactVersion };
 }
 
 describe('review workspace page', () => {

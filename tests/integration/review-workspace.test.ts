@@ -5,13 +5,28 @@ import {
   type SessionResolution,
 } from '../../apps/platform/server/services/auth/auth-session.service.js';
 import { AuthUserSyncService } from '../../apps/platform/server/services/auth/auth-user-sync.service.js';
+import type {
+  ExecutionResult,
+  ProviderAdapter,
+  ProviderKind,
+} from '../../apps/platform/server/services/processes/environment/provider-adapter.js';
 import type { ProcessAccessService } from '../../apps/platform/server/services/processes/process-access.service.js';
-import { ConvexPlatformStore } from '../../apps/platform/server/services/projects/platform-store.js';
+import {
+  ConvexPlatformStore,
+  InMemoryPlatformStore,
+} from '../../apps/platform/server/services/projects/platform-store.js';
 import {
   processSummarySchema,
   projectSummarySchema,
 } from '../../apps/platform/shared/contracts/index.js';
-import { getArtifactVersion, getLatestArtifactVersion } from '../../convex/artifactVersions.js';
+import {
+  getArtifactVersion,
+  getArtifactVersionContentUrl,
+  getLatestArtifactVersion,
+  insertArtifactVersion,
+  listArtifactsByProducingProcess,
+} from '../../convex/artifactVersions.js';
+import { listArtifactVersions } from '../../convex/artifactVersions.js';
 import { listProjectArtifactSummaries } from '../../convex/artifacts.js';
 import { listPackageSnapshotMembers } from '../../convex/packageSnapshotMembers.js';
 import {
@@ -78,6 +93,21 @@ function createTestAuthSessionService(resolution: SessionResolution) {
   }
 
   return new TestAuthSessionService();
+}
+
+async function waitFor(
+  predicate: () => boolean | Promise<boolean>,
+  timeoutMs = 2_000,
+  message = 'Timed out while waiting for asynchronous condition.',
+): Promise<void> {
+  const startedAt = Date.now();
+
+  while (!(await predicate())) {
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error(message);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 }
 
 class PassthroughAuthUserSyncService extends AuthUserSyncService {
@@ -312,9 +342,21 @@ function registerReviewWorkspaceHandlers(fixture: ReturnType<typeof createFakeCo
     'artifactVersions:getArtifactVersion',
     getArtifactVersion,
   );
+  register<{ versionId: string }, string | null>(
+    'artifactVersions:getArtifactVersionContentUrl',
+    getArtifactVersionContentUrl,
+  );
+  register<{ artifactId: string; limit?: number }, unknown[]>(
+    'artifactVersions:listArtifactVersions',
+    listArtifactVersions,
+  );
   register<{ artifactId: string }, unknown | null>(
     'artifactVersions:getLatestArtifactVersion',
     getLatestArtifactVersion,
+  );
+  register<{ processId: string }, string[]>(
+    'artifactVersions:listArtifactsByProducingProcess',
+    listArtifactsByProducingProcess,
   );
 }
 
@@ -356,8 +398,9 @@ async function startConvexReviewWorkspaceServer(
 }
 
 async function startApp(args: {
-  store: ConvexPlatformStore;
-  processAccessService: ProcessAccessService;
+  store: ConvexPlatformStore | InMemoryPlatformStore;
+  processAccessService?: ProcessAccessService;
+  providerAdapter?: ProviderAdapter;
 }) {
   const app = await buildApp({
     authSessionService: createTestAuthSessionService({
@@ -372,6 +415,7 @@ async function startApp(args: {
     authUserSyncService: new PassthroughAuthUserSyncService(),
     platformStore: args.store,
     processAccessService: args.processAccessService,
+    providerAdapter: args.providerAdapter,
   });
   await app.listen({
     port: 0,
@@ -390,8 +434,149 @@ async function startApp(args: {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
+
+function mockArtifactVersionFetch(fixture: ReturnType<typeof createFakeConvexContext>) {
+  const nativeFetch = globalThis.fetch.bind(globalThis);
+
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = input instanceof Request ? input.url : String(input);
+
+    if (url.startsWith('fake://storage/')) {
+      const storageId = url.slice('fake://storage/'.length);
+      const blob = await fixture.storage.get(storageId);
+
+      if (blob === null) {
+        return new Response('Missing artifact content.', {
+          status: 404,
+        });
+      }
+
+      return new Response(await blob.text(), {
+        status: 200,
+        headers: {
+          'content-type': 'text/plain; charset=utf-8',
+        },
+      });
+    }
+
+    return nativeFetch(input, init);
+  });
+}
+
+async function seedArtifactVersion(args: {
+  fixture: ReturnType<typeof createFakeConvexContext>;
+  artifactId: string;
+  versionLabel: string;
+  body: string;
+  createdAt: string;
+}) {
+  const insertArtifactVersionHandler = getHandler<
+    {
+      artifactId: string;
+      versionLabel: string;
+      contentStorageId: string;
+      contentKind: 'markdown';
+      bytes: number;
+      createdByProcessId: string;
+    },
+    string
+  >(insertArtifactVersion);
+  const blob = new Blob([args.body], {
+    type: 'text/markdown',
+  });
+  const contentStorageId = await args.fixture.storage.store(blob);
+
+  vi.setSystemTime(new Date(args.createdAt));
+
+  return insertArtifactVersionHandler(args.fixture.ctx, {
+    artifactId: args.artifactId,
+    versionLabel: args.versionLabel,
+    contentStorageId,
+    contentKind: 'markdown',
+    bytes: new TextEncoder().encode(args.body).length,
+    createdByProcessId: processSummary.processId,
+  });
+}
+
+function buildSequentialArtifactCheckpointProvider(args: {
+  providerKind?: ProviderKind;
+  artifactId: string;
+  displayName: string;
+  revisions: Array<{
+    body: string;
+  }>;
+}): ProviderAdapter {
+  let executionIndex = 0;
+
+  return {
+    providerKind: args.providerKind ?? 'local',
+    async ensureEnvironment({ processId, providerKind }) {
+      return {
+        providerKind,
+        environmentId: `${providerKind}-review-env-${processId}`,
+        workspaceHandle: `${providerKind}-review-workspace-${processId}`,
+      };
+    },
+    async hydrateEnvironment({ environmentId, plan }) {
+      return {
+        environmentId,
+        hydratedAt: new Date().toISOString(),
+        fingerprint: plan.fingerprint,
+      };
+    },
+    async executeScript(): Promise<ExecutionResult> {
+      const revision =
+        args.revisions[executionIndex] ?? args.revisions[args.revisions.length - 1] ?? null;
+
+      if (revision === null) {
+        throw new Error('Expected at least one checkpoint revision in test provider.');
+      }
+
+      executionIndex += 1;
+
+      return {
+        processStatus: 'completed',
+        processHistoryItems: [],
+        outputWrites: [],
+        sideWorkWrites: [],
+        artifactCheckpointCandidates: [
+          {
+            artifactId: args.artifactId,
+            displayName: args.displayName,
+            revisionLabel: null,
+            contentsRef: revision.body,
+          },
+        ],
+        codeCheckpointCandidates: [],
+      };
+    },
+    async rehydrateEnvironment({ environmentId, plan }) {
+      return {
+        environmentId,
+        hydratedAt: new Date().toISOString(),
+        fingerprint: plan.fingerprint,
+      };
+    },
+    async rebuildEnvironment({ processId, providerKind, plan }) {
+      return {
+        providerKind,
+        environmentId: `${providerKind}-review-rebuild-${processId}`,
+        workspaceHandle: `${providerKind}-review-rebuild-workspace-${processId}`,
+        hydratedAt: new Date().toISOString(),
+        fingerprint: plan.fingerprint,
+      };
+    },
+    async teardownEnvironment() {
+      return;
+    },
+    async resolveCandidateContents({ ref }) {
+      return ref;
+    },
+  };
+}
 
 describe('review workspace integration', () => {
   it('resolves a manually-seeded package snapshot through ConvexPlatformStore reads', async () => {
@@ -447,13 +632,6 @@ describe('review workspace integration', () => {
         reviewTargetKind: 'package',
         reviewTargetId: packageId,
       },
-      availableTargets: [
-        {
-          targetKind: 'package',
-          targetId: packageId,
-          displayName: 'Feature Specification Package',
-        },
-      ],
       target: {
         targetKind: 'package',
         displayName: 'Feature Specification Package',
@@ -478,6 +656,15 @@ describe('review workspace integration', () => {
         },
       },
     });
+    expect(body.availableTargets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          targetKind: 'package',
+          targetId: packageId,
+          displayName: 'Feature Specification Package',
+        }),
+      ]),
+    );
     expect(body.target.package.members).toHaveLength(2);
     expect(body.target.package.selectedMember).toMatchObject({
       status: 'ready',
@@ -542,6 +729,171 @@ describe('review workspace integration', () => {
     expect(actionSpy).not.toHaveBeenCalled();
 
     await server.app.close();
+  });
+
+  it('keeps process-produced artifacts reviewable after current material refs drop them from the working set', async () => {
+    const scopedProjectSummary = projectSummarySchema.parse({
+      projectId: 'project-review-scoping-001',
+      name: 'Review Scoping',
+      ownerDisplayName: 'Lee Moore',
+      role: 'owner',
+      processCount: 1,
+      artifactCount: 3,
+      sourceAttachmentCount: 0,
+      lastUpdatedAt: '2026-04-23T12:10:00.000Z',
+    });
+    const scopedProcessSummary = processSummarySchema.parse({
+      processId: 'process-review-scoping-001',
+      displayLabel: 'Feature Specification #9',
+      processType: 'FeatureSpecification',
+      status: 'running',
+      phaseLabel: 'Working',
+      nextActionLabel: 'Review the latest output',
+      availableActions: ['review'],
+      hasEnvironment: false,
+      updatedAt: '2026-04-23T12:10:00.000Z',
+    });
+    const store = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [scopedProjectSummary],
+      },
+      projectAccessByProjectId: {
+        [scopedProjectSummary.projectId]: {
+          kind: 'accessible',
+          project: scopedProjectSummary,
+        },
+      },
+      processesByProjectId: {
+        [scopedProjectSummary.projectId]: [scopedProcessSummary],
+      },
+      artifactsByProjectId: {
+        [scopedProjectSummary.projectId]: [
+          {
+            artifactId: 'artifact-review-scope-001',
+            displayName: 'Specification Draft',
+            currentVersionLabel: 'spec-v1',
+            attachmentScope: 'process',
+            processId: scopedProcessSummary.processId,
+            processDisplayLabel: scopedProcessSummary.displayLabel,
+            updatedAt: '2026-04-23T12:05:00.000Z',
+          },
+          {
+            artifactId: 'artifact-review-scope-002',
+            displayName: 'Implementation Plan',
+            currentVersionLabel: 'impl-v1',
+            attachmentScope: 'process',
+            processId: scopedProcessSummary.processId,
+            processDisplayLabel: scopedProcessSummary.displayLabel,
+            updatedAt: '2026-04-23T12:06:00.000Z',
+          },
+          {
+            artifactId: 'artifact-review-scope-003',
+            displayName: 'Launch Checklist',
+            currentVersionLabel: 'launch-v1',
+            attachmentScope: 'process',
+            processId: scopedProcessSummary.processId,
+            processDisplayLabel: scopedProcessSummary.displayLabel,
+            updatedAt: '2026-04-23T12:07:00.000Z',
+          },
+        ],
+      },
+      artifactVersionsByArtifactId: {
+        'artifact-review-scope-001': [
+          {
+            versionId: 'artifact-version-review-scope-001',
+            artifactId: 'artifact-review-scope-001',
+            versionLabel: 'spec-v1',
+            contentStorageId: 'storage-review-scope-001',
+            contentKind: 'markdown',
+            bytes: 64,
+            createdAt: '2026-04-23T12:05:00.000Z',
+            createdByProcessId: scopedProcessSummary.processId,
+          },
+        ],
+        'artifact-review-scope-002': [
+          {
+            versionId: 'artifact-version-review-scope-002',
+            artifactId: 'artifact-review-scope-002',
+            versionLabel: 'impl-v1',
+            contentStorageId: 'storage-review-scope-002',
+            contentKind: 'markdown',
+            bytes: 64,
+            createdAt: '2026-04-23T12:06:00.000Z',
+            createdByProcessId: scopedProcessSummary.processId,
+          },
+        ],
+        'artifact-review-scope-003': [
+          {
+            versionId: 'artifact-version-review-scope-003',
+            artifactId: 'artifact-review-scope-003',
+            versionLabel: 'launch-v1',
+            contentStorageId: 'storage-review-scope-003',
+            contentKind: 'markdown',
+            bytes: 64,
+            createdAt: '2026-04-23T12:07:00.000Z',
+            createdByProcessId: scopedProcessSummary.processId,
+          },
+        ],
+      },
+      artifactContentsByVersionId: {
+        'artifact-version-review-scope-001': '# Specification Draft',
+        'artifact-version-review-scope-002': '# Implementation Plan',
+        'artifact-version-review-scope-003': '# Launch Checklist',
+      },
+      currentMaterialRefsByProcessId: {
+        [scopedProcessSummary.processId]: {
+          artifactIds: ['artifact-review-scope-001'],
+          sourceAttachmentIds: [],
+        },
+      },
+    });
+    const { app, baseUrl } = await startApp({
+      store,
+    });
+
+    try {
+      const workspaceResponse = await fetch(
+        `${baseUrl}/api/projects/${scopedProjectSummary.projectId}/processes/${scopedProcessSummary.processId}/review`,
+        {
+          headers: {
+            cookie: 'lb_session=review-workspace-scope-regression',
+          },
+        },
+      );
+      const workspaceBody = await workspaceResponse.json();
+
+      expect(workspaceResponse.status).toBe(200);
+      expect(
+        workspaceBody.availableTargets.map((target: { targetId: string }) => target.targetId),
+      ).toEqual([
+        'artifact-review-scope-003',
+        'artifact-review-scope-002',
+        'artifact-review-scope-001',
+      ]);
+
+      const droppedArtifactResponse = await fetch(
+        `${baseUrl}/api/projects/${scopedProjectSummary.projectId}/processes/${scopedProcessSummary.processId}/review/artifacts/artifact-review-scope-003`,
+        {
+          headers: {
+            cookie: 'lb_session=review-workspace-scope-regression',
+          },
+        },
+      );
+      const droppedArtifactBody = await droppedArtifactResponse.json();
+
+      expect(droppedArtifactResponse.status).toBe(200);
+      expect(droppedArtifactBody).toMatchObject({
+        artifactId: 'artifact-review-scope-003',
+        currentVersionId: 'artifact-version-review-scope-003',
+        selectedVersion: {
+          versionId: 'artifact-version-review-scope-003',
+          bodyStatus: 'ready',
+        },
+      });
+      expect(droppedArtifactBody.selectedVersion.body).toContain('Launch Checklist');
+    } finally {
+      await app.close();
+    }
   });
 
   it('orders artifact and package targets newest-first across kinds when no explicit target is selected', async () => {
@@ -667,5 +1019,271 @@ describe('review workspace integration', () => {
     ]);
 
     await server.app.close();
+  });
+
+  it('keeps two durable revisions of the same artifact reviewable through the Convex-backed route', async () => {
+    vi.useFakeTimers();
+
+    const fixture = createFakeConvexContext(buildReviewWorkspaceSeed());
+    registerReviewWorkspaceHandlers(fixture);
+    mockArtifactVersionFetch(fixture);
+    const artifactId = await fixture.ctx.db.insert('artifacts', {
+      projectId: projectSummary.projectId,
+      processId: processSummary.processId,
+      displayName: 'Checkpointed Spec',
+      createdAt: '2026-04-23T12:04:00.000Z',
+    });
+    await fixture.ctx.db.patch('process-state-review-convex-001', {
+      currentArtifactIds: [artifactId],
+    });
+    const firstVersionId = await seedArtifactVersion({
+      fixture,
+      artifactId,
+      versionLabel: 'spec-v1',
+      body: '# Specification v1\n\nOriginal durable body.',
+      createdAt: '2026-04-23T12:05:00.000Z',
+    });
+    const secondVersionId = await seedArtifactVersion({
+      fixture,
+      artifactId,
+      versionLabel: 'spec-v2',
+      body: '# Specification v2\n\nCurrent durable body.',
+      createdAt: '2026-04-23T12:06:00.000Z',
+    });
+
+    const { server } = await startConvexReviewWorkspaceServer(fixture);
+
+    try {
+      const workspaceResponse = await fetch(
+        `${server.baseUrl}/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/review?targetKind=artifact&targetId=${artifactId}`,
+        {
+          headers: {
+            cookie: 'lb_session=review-workspace-convex-two-revisions',
+          },
+        },
+      );
+      const workspaceBody = await workspaceResponse.json();
+
+      expect(workspaceResponse.status).toBe(200);
+      expect(workspaceBody.target).toMatchObject({
+        targetKind: 'artifact',
+        status: 'ready',
+        artifact: {
+          artifactId,
+          displayName: 'Checkpointed Spec',
+          currentVersionId: secondVersionId,
+          selectedVersionId: secondVersionId,
+          versions: [
+            {
+              versionId: secondVersionId,
+              versionLabel: 'spec-v2',
+              isCurrent: true,
+              createdAt: '2026-04-23T12:06:00.000Z',
+            },
+            {
+              versionId: firstVersionId,
+              versionLabel: 'spec-v1',
+              isCurrent: false,
+              createdAt: '2026-04-23T12:05:00.000Z',
+            },
+          ],
+          selectedVersion: {
+            versionId: secondVersionId,
+            bodyStatus: 'ready',
+            body: '# Specification v2\n\nCurrent durable body.',
+          },
+        },
+      });
+      expect(workspaceBody.target.artifact.versions).toHaveLength(2);
+      expect(
+        workspaceBody.target.artifact.versions[0].createdAt >
+          workspaceBody.target.artifact.versions[1].createdAt,
+      ).toBe(true);
+
+      const priorRevisionResponse = await fetch(
+        `${server.baseUrl}/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/review/artifacts/${artifactId}?versionId=${firstVersionId}`,
+        {
+          headers: {
+            cookie: 'lb_session=review-workspace-convex-two-revisions',
+          },
+        },
+      );
+      const priorRevisionBody = await priorRevisionResponse.json();
+
+      expect(priorRevisionResponse.status).toBe(200);
+      expect(priorRevisionBody).toMatchObject({
+        artifactId,
+        currentVersionId: secondVersionId,
+        selectedVersionId: firstVersionId,
+        selectedVersion: {
+          versionId: firstVersionId,
+          bodyStatus: 'ready',
+          body: '# Specification v1\n\nOriginal durable body.',
+        },
+      });
+      expect(priorRevisionBody.selectedVersion.body).not.toBe(
+        workspaceBody.target.artifact.selectedVersion.body,
+      );
+    } finally {
+      await server.app.close();
+    }
+  });
+
+  it('appends two checkpoint-writer revisions for the same artifact and exposes both through review APIs', async () => {
+    const reviewProjectSummary = projectSummarySchema.parse({
+      projectId: 'project-review-checkpoint-flow-001',
+      name: 'Checkpoint Review Flow',
+      ownerDisplayName: 'Lee Moore',
+      role: 'owner',
+      processCount: 1,
+      artifactCount: 0,
+      sourceAttachmentCount: 0,
+      lastUpdatedAt: '2026-04-23T12:00:00.000Z',
+    });
+    const reviewProcessSummary = processSummarySchema.parse({
+      processId: 'process-review-checkpoint-flow-001',
+      displayLabel: 'Feature Specification #7',
+      processType: 'FeatureSpecification',
+      status: 'draft',
+      phaseLabel: 'Draft',
+      nextActionLabel: 'Open the process',
+      availableActions: ['open'],
+      hasEnvironment: false,
+      updatedAt: '2026-04-23T12:00:00.000Z',
+    });
+    const checkpointArtifactId = 'artifact-review-checkpoint-flow-001';
+    const store = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [reviewProjectSummary],
+      },
+      projectAccessByProjectId: {
+        [reviewProjectSummary.projectId]: {
+          kind: 'accessible',
+          project: reviewProjectSummary,
+        },
+      },
+      processesByProjectId: {
+        [reviewProjectSummary.projectId]: [reviewProcessSummary],
+      },
+      currentMaterialRefsByProcessId: {
+        [reviewProcessSummary.processId]: {
+          artifactIds: [],
+          sourceAttachmentIds: [],
+        },
+      },
+    });
+    const providerAdapter = buildSequentialArtifactCheckpointProvider({
+      artifactId: checkpointArtifactId,
+      displayName: 'Checkpointed Spec',
+      revisions: [
+        {
+          body: '# Checkpoint v1\n\nOriginal checkpoint body.',
+        },
+        {
+          body: '# Checkpoint v2\n\nAppended checkpoint body.',
+        },
+      ],
+    });
+    const { app, baseUrl } = await startApp({
+      store,
+      providerAdapter,
+    });
+
+    try {
+      app.processEnvironmentService.runHydrationAsync({
+        projectId: reviewProjectSummary.projectId,
+        processId: reviewProcessSummary.processId,
+      });
+      await waitFor(async () => {
+        const versions = await store.listArtifactVersions({
+          artifactId: checkpointArtifactId,
+        });
+        return versions.length === 1;
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      app.processEnvironmentService.runHydrationAsync({
+        projectId: reviewProjectSummary.projectId,
+        processId: reviewProcessSummary.processId,
+      });
+      await waitFor(async () => {
+        const versions = await store.listArtifactVersions({
+          artifactId: checkpointArtifactId,
+        });
+        return versions.length === 2;
+      });
+
+      const versions = await store.listArtifactVersions({
+        artifactId: checkpointArtifactId,
+      });
+
+      expect(versions).toHaveLength(2);
+      expect(versions[0]?.createdAt.localeCompare(versions[1]?.createdAt ?? '')).toBeGreaterThan(0);
+
+      const workspaceResponse = await fetch(
+        `${baseUrl}/api/projects/${reviewProjectSummary.projectId}/processes/${reviewProcessSummary.processId}/review?targetKind=artifact&targetId=${checkpointArtifactId}`,
+        {
+          headers: {
+            cookie: 'lb_session=review-workspace-inmemory-checkpoints',
+          },
+        },
+      );
+      const workspaceBody = await workspaceResponse.json();
+
+      expect(workspaceResponse.status).toBe(200);
+      expect(workspaceBody.target).toMatchObject({
+        targetKind: 'artifact',
+        status: 'ready',
+        artifact: {
+          artifactId: checkpointArtifactId,
+          currentVersionId: versions[0]?.versionId,
+          selectedVersionId: versions[0]?.versionId,
+          versions: [
+            {
+              versionId: versions[0]?.versionId,
+              isCurrent: true,
+            },
+            {
+              versionId: versions[1]?.versionId,
+              isCurrent: false,
+            },
+          ],
+          selectedVersion: {
+            versionId: versions[0]?.versionId,
+            bodyStatus: 'ready',
+            body: '# Checkpoint v2\n\nAppended checkpoint body.',
+          },
+        },
+      });
+      expect(workspaceBody.target.artifact.versions).toHaveLength(2);
+
+      const firstRevisionResponse = await fetch(
+        `${baseUrl}/api/projects/${reviewProjectSummary.projectId}/processes/${reviewProcessSummary.processId}/review/artifacts/${checkpointArtifactId}?versionId=${versions[1]?.versionId}`,
+        {
+          headers: {
+            cookie: 'lb_session=review-workspace-inmemory-checkpoints',
+          },
+        },
+      );
+      const firstRevisionBody = await firstRevisionResponse.json();
+
+      expect(firstRevisionResponse.status).toBe(200);
+      expect(firstRevisionBody).toMatchObject({
+        artifactId: checkpointArtifactId,
+        currentVersionId: versions[0]?.versionId,
+        selectedVersionId: versions[1]?.versionId,
+        selectedVersion: {
+          versionId: versions[1]?.versionId,
+          bodyStatus: 'ready',
+          body: '# Checkpoint v1\n\nOriginal checkpoint body.',
+        },
+      });
+      expect(firstRevisionBody.selectedVersion.body).not.toBe(
+        workspaceBody.target.artifact.selectedVersion.body,
+      );
+    } finally {
+      await app.close();
+    }
   });
 });

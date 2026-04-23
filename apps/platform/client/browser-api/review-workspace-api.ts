@@ -1,9 +1,12 @@
 import type {
+  ArtifactReviewTarget,
   RequestError,
   ReviewWorkspaceResponse,
   ReviewWorkspaceSelection,
 } from '../../shared/contracts/index.js';
 import {
+  artifactReviewTargetSchema,
+  buildReviewArtifactApiPath,
   buildReviewWorkspaceApiPath,
   requestErrorSchema,
   reviewWorkspaceResponseSchema,
@@ -88,4 +91,34 @@ export async function getReviewWorkspace(args: {
   }
 
   return reviewWorkspaceResponseSchema.parse(await response.json());
+}
+
+export async function getArtifactReview(args: {
+  projectId: string;
+  processId: string;
+  artifactId: string;
+  versionId?: string;
+}): Promise<ArtifactReviewTarget> {
+  const url = new URL(
+    buildReviewArtifactApiPath({
+      projectId: args.projectId,
+      processId: args.processId,
+      artifactId: args.artifactId,
+    }),
+    'http://story0.local',
+  );
+
+  if (args.versionId !== undefined) {
+    url.searchParams.set('versionId', args.versionId);
+  }
+
+  const response = await fetch(`${url.pathname}${url.search}`, {
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    throw new ApiRequestError(await parseRequestError(response));
+  }
+
+  return artifactReviewTargetSchema.parse(await response.json());
 }

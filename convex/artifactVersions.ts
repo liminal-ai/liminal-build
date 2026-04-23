@@ -2,6 +2,9 @@ import { v } from 'convex/values';
 import type { Id } from './_generated/dataModel.js';
 import { internalMutation, internalQuery } from './_generated/server.js';
 
+// Pre-customer ceiling: raise the default list size until a downstream epic adds pagination.
+export const ARTIFACT_VERSION_LIST_DEFAULT_LIMIT = 500;
+
 export const artifactContentKindValidator = v.union(
   v.literal('markdown'),
   v.literal('unsupported'),
@@ -51,7 +54,7 @@ export const listArtifactVersions = internalQuery({
         indexQuery.eq('artifactId', args.artifactId as Id<'artifacts'>),
       )
       .order('desc')
-      .take(args.limit ?? 50);
+      .take(args.limit ?? ARTIFACT_VERSION_LIST_DEFAULT_LIMIT);
 
     return versions.map(toArtifactVersionRecord);
   },
@@ -85,6 +88,35 @@ export const getLatestArtifactVersion = internalQuery({
       .take(1);
 
     return versions[0] === undefined ? null : toArtifactVersionRecord(versions[0]);
+  },
+});
+
+export const listArtifactsByProducingProcess = internalQuery({
+  args: {
+    processId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const versions = await ctx.db
+      .query('artifactVersions')
+      .withIndex('by_createdByProcessId_createdAt', (indexQuery) =>
+        indexQuery.eq('createdByProcessId', args.processId as Id<'processes'>),
+      )
+      .order('desc')
+      .take(ARTIFACT_VERSION_LIST_DEFAULT_LIMIT);
+
+    const artifactIds: Id<'artifacts'>[] = [];
+    const seenArtifactIds = new Set<Id<'artifacts'>>();
+
+    for (const version of versions) {
+      if (seenArtifactIds.has(version.artifactId)) {
+        continue;
+      }
+
+      seenArtifactIds.add(version.artifactId);
+      artifactIds.push(version.artifactId);
+    }
+
+    return artifactIds;
   },
 });
 

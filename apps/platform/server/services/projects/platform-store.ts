@@ -96,6 +96,17 @@ export type PlatformProcessOutputWriteInput = {
   updatedAt?: string;
 };
 
+export type ArtifactVersionRecord = {
+  versionId: string;
+  artifactId: string;
+  versionLabel: string;
+  contentStorageId: string;
+  contentKind: 'markdown' | 'unsupported';
+  bytes: number;
+  createdAt: string;
+  createdByProcessId: string;
+};
+
 export type PlatformSideWorkWriteInput = {
   sideWorkId?: string;
   displayLabel: string;
@@ -201,16 +212,13 @@ export interface PlatformStore {
    * Returns `null` when the artifact row or its storage blob is missing.
    */
   getArtifactContent(args: { artifactId: string }): Promise<string | null>;
-  getLatestArtifactVersion(args: { artifactId: string }): Promise<{
-    versionId: string;
+  listArtifactVersions(args: {
     artifactId: string;
-    versionLabel: string;
-    contentStorageId: string;
-    contentKind: 'markdown' | 'unsupported';
-    bytes: number;
-    createdAt: string;
-    createdByProcessId: string;
-  } | null>;
+    limit?: number;
+  }): Promise<ArtifactVersionRecord[]>;
+  getArtifactVersion(args: { versionId: string }): Promise<ArtifactVersionRecord | null>;
+  getArtifactVersionContentUrl(args: { versionId: string }): Promise<string | null>;
+  getLatestArtifactVersion(args: { artifactId: string }): Promise<ArtifactVersionRecord | null>;
   listProcessReviewTargets(args: {
     projectId: string;
     processId: string;
@@ -320,6 +328,11 @@ function computeWorkingSetFingerprint(args: {
   });
 
   return getNodeCryptoModule().createHash('sha256').update(stableJson).digest('hex');
+}
+
+function buildCheckpointVersionLabel(producedAt: string): string {
+  const compact = producedAt.replaceAll(/[-:.TZ]/g, '').slice(0, 14);
+  return compact.length > 0 ? `checkpoint-${compact}` : 'checkpoint';
 }
 
 const upsertUserMutation = makeFunctionReference<
@@ -574,32 +587,32 @@ const fetchArtifactContentAction = makeFunctionReference<
 const getArtifactVersionQuery = makeFunctionReference<
   'query',
   { versionId: string },
-  {
-    versionId: string;
-    artifactId: string;
-    versionLabel: string;
-    contentStorageId: string;
-    contentKind: 'markdown' | 'unsupported';
-    bytes: number;
-    createdAt: string;
-    createdByProcessId: string;
-  } | null
+  ArtifactVersionRecord | null
 >('artifactVersions:getArtifactVersion');
 
 const getLatestArtifactVersionQuery = makeFunctionReference<
   'query',
   { artifactId: string },
-  {
-    versionId: string;
-    artifactId: string;
-    versionLabel: string;
-    contentStorageId: string;
-    contentKind: 'markdown' | 'unsupported';
-    bytes: number;
-    createdAt: string;
-    createdByProcessId: string;
-  } | null
+  ArtifactVersionRecord | null
 >('artifactVersions:getLatestArtifactVersion');
+
+const listArtifactsByProducingProcessQuery = makeFunctionReference<
+  'query',
+  { processId: string },
+  string[]
+>('artifactVersions:listArtifactsByProducingProcess');
+
+const listArtifactVersionsQuery = makeFunctionReference<
+  'query',
+  { artifactId: string; limit?: number },
+  ArtifactVersionRecord[]
+>('artifactVersions:listArtifactVersions');
+
+const getArtifactVersionContentUrlQuery = makeFunctionReference<
+  'query',
+  { versionId: string },
+  string | null
+>('artifactVersions:getArtifactVersionContentUrl');
 
 const listPackageSnapshotsForProcessQuery = makeFunctionReference<
   'query',
@@ -1044,16 +1057,19 @@ export class NullPlatformStore implements PlatformStore {
     return null;
   }
 
-  async getLatestArtifactVersion(): Promise<{
-    versionId: string;
-    artifactId: string;
-    versionLabel: string;
-    contentStorageId: string;
-    contentKind: 'markdown' | 'unsupported';
-    bytes: number;
-    createdAt: string;
-    createdByProcessId: string;
-  } | null> {
+  async listArtifactVersions(): Promise<ArtifactVersionRecord[]> {
+    return [];
+  }
+
+  async getArtifactVersion(): Promise<ArtifactVersionRecord | null> {
+    return null;
+  }
+
+  async getArtifactVersionContentUrl(): Promise<string | null> {
+    return null;
+  }
+
+  async getLatestArtifactVersion(): Promise<ArtifactVersionRecord | null> {
     return null;
   }
 
@@ -1364,16 +1380,24 @@ export class ConvexPlatformStore implements PlatformStore {
     });
   }
 
-  async getLatestArtifactVersion(args: { artifactId: string }): Promise<{
-    versionId: string;
+  async listArtifactVersions(args: {
     artifactId: string;
-    versionLabel: string;
-    contentStorageId: string;
-    contentKind: 'markdown' | 'unsupported';
-    bytes: number;
-    createdAt: string;
-    createdByProcessId: string;
-  } | null> {
+    limit?: number;
+  }): Promise<ArtifactVersionRecord[]> {
+    return this.client.query(listArtifactVersionsQuery, args);
+  }
+
+  async getArtifactVersion(args: { versionId: string }): Promise<ArtifactVersionRecord | null> {
+    return this.client.query(getArtifactVersionQuery, args);
+  }
+
+  async getArtifactVersionContentUrl(args: { versionId: string }): Promise<string | null> {
+    return this.client.query(getArtifactVersionContentUrlQuery, args);
+  }
+
+  async getLatestArtifactVersion(args: {
+    artifactId: string;
+  }): Promise<ArtifactVersionRecord | null> {
     return this.client.query(getLatestArtifactVersionQuery, args);
   }
 
@@ -1381,18 +1405,18 @@ export class ConvexPlatformStore implements PlatformStore {
     projectId: string;
     processId: string;
   }): Promise<ReviewTargetSummary[]> {
-    const [artifacts, currentMaterialRefs, packageSnapshots] = await Promise.all([
+    const [artifacts, producedArtifactIds, packageSnapshots] = await Promise.all([
       this.listProjectArtifacts({
         projectId: args.projectId,
       }),
-      this.getCurrentProcessMaterialRefs({
+      this.client.query(listArtifactsByProducingProcessQuery, {
         processId: args.processId,
       }),
       this.client.query(listPackageSnapshotsForProcessQuery, {
         processId: args.processId,
       }),
     ]);
-    const reviewableArtifactIds = new Set(currentMaterialRefs.artifactIds);
+    const reviewableArtifactIds = new Set(producedArtifactIds);
     const artifactCandidates = artifacts.filter((artifact) =>
       reviewableArtifactIds.has(artifact.artifactId),
     );
@@ -1630,6 +1654,8 @@ export class InMemoryPlatformStore implements PlatformStore {
   private readonly processOutputsByProcessId = new Map<string, PlatformProcessOutputSummary[]>();
   private readonly reviewPackagesByProcessId = new Map<string, PackageReviewTarget[]>();
   private readonly artifactContentsByArtifactId = new Map<string, string>();
+  private readonly artifactContentsByVersionId = new Map<string, string>();
+  private readonly artifactVersionsByArtifactId = new Map<string, ArtifactVersionRecord[]>();
   private readonly processSideWorkItemsByProcessId = new Map<string, SideWorkItem[]>();
   private readonly startProcessResultsByProcessId = new Map<string, ProcessActionStoreResult>();
   private readonly resumeProcessResultsByProcessId = new Map<string, ProcessActionStoreResult>();
@@ -1650,6 +1676,8 @@ export class InMemoryPlatformStore implements PlatformStore {
       projectAccessByProjectId?: Record<string, ProjectAccessResult>;
       processesByProjectId?: Record<string, ProcessSummary[]>;
       artifactsByProjectId?: Record<string, ArtifactSummary[]>;
+      artifactVersionsByArtifactId?: Record<string, ArtifactVersionRecord[]>;
+      artifactContentsByVersionId?: Record<string, string>;
       sourceAttachmentsByProjectId?: Record<string, SourceAttachmentSummary[]>;
       processHistoryItemsByProcessId?: Record<string, ProcessHistoryItem[]>;
       currentRequestsByProcessId?: Record<string, CurrentProcessRequest | null>;
@@ -1684,6 +1712,17 @@ export class InMemoryPlatformStore implements PlatformStore {
 
     for (const [projectId, summaries] of Object.entries(args.artifactsByProjectId ?? {})) {
       this.artifactsByProjectId.set(projectId, summaries);
+    }
+
+    for (const [artifactId, versions] of Object.entries(args.artifactVersionsByArtifactId ?? {})) {
+      const orderedVersions = [...versions].sort((left, right) =>
+        right.createdAt.localeCompare(left.createdAt),
+      );
+      this.artifactVersionsByArtifactId.set(artifactId, orderedVersions);
+    }
+
+    for (const [versionId, content] of Object.entries(args.artifactContentsByVersionId ?? {})) {
+      this.artifactContentsByVersionId.set(versionId, content);
     }
 
     for (const [projectId, summaries] of Object.entries(args.sourceAttachmentsByProjectId ?? {})) {
@@ -2264,6 +2303,9 @@ export class InMemoryPlatformStore implements PlatformStore {
       const artifactId =
         artifact.artifactId ??
         `${args.processId}:checkpoint-artifact-${existingArtifacts.length + index + 1}`;
+      const versionLabel = buildCheckpointVersionLabel(artifact.producedAt);
+      const versionId = `${artifactId}:${versionLabel}:${artifact.producedAt}`;
+      const createdAt = new Date().toISOString();
       const existingOutput = existingOutputs.find(
         (output) => output.linkedArtifactId === artifactId,
       );
@@ -2271,12 +2313,30 @@ export class InMemoryPlatformStore implements PlatformStore {
       // Retain content in-memory; in-memory has no separate File Storage layer,
       // but the durability path must not silently drop the contents either.
       this.artifactContentsByArtifactId.set(artifactId, artifact.contents);
+      this.artifactContentsByVersionId.set(versionId, artifact.contents);
+      const existingVersions = this.artifactVersionsByArtifactId.get(artifactId) ?? [];
+      this.artifactVersionsByArtifactId.set(
+        artifactId,
+        [
+          {
+            versionId,
+            artifactId,
+            versionLabel,
+            contentStorageId: `${artifactId}:content:${versionLabel}`,
+            contentKind: 'markdown' as const,
+            bytes: artifact.contents.length,
+            createdAt,
+            createdByProcessId: args.processId,
+          },
+          ...existingVersions,
+        ].sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+      );
 
       return {
         artifact: {
           artifactId,
           displayName: artifact.targetLabel,
-          currentVersionLabel: null,
+          currentVersionLabel: versionLabel,
           attachmentScope: 'process' as const,
           processId: args.processId,
           processDisplayLabel: processRecord.displayLabel,
@@ -2407,49 +2467,102 @@ export class InMemoryPlatformStore implements PlatformStore {
     return this.artifactContentsByArtifactId.get(args.artifactId) ?? null;
   }
 
-  async getLatestArtifactVersion(args: { artifactId: string }): Promise<{
-    versionId: string;
+  async listArtifactVersions(args: {
     artifactId: string;
-    versionLabel: string;
-    contentStorageId: string;
-    contentKind: 'markdown' | 'unsupported';
-    bytes: number;
-    createdAt: string;
-    createdByProcessId: string;
-  } | null> {
+    limit?: number;
+  }): Promise<ArtifactVersionRecord[]> {
+    const versions = this.readArtifactVersions(args.artifactId);
+    return versions.slice(0, args.limit ?? versions.length);
+  }
+
+  async getArtifactVersion(args: { versionId: string }): Promise<ArtifactVersionRecord | null> {
+    for (const versions of this.artifactVersionsByArtifactId.values()) {
+      const version = versions.find((candidate) => candidate.versionId === args.versionId);
+
+      if (version !== undefined) {
+        return version;
+      }
+    }
+
     for (const artifacts of this.artifactsByProjectId.values()) {
-      const artifact = artifacts.find((candidate) => candidate.artifactId === args.artifactId);
+      for (const artifact of artifacts) {
+        const versions = this.readArtifactVersions(artifact.artifactId);
+        const version = versions.find((candidate) => candidate.versionId === args.versionId);
+
+        if (version !== undefined) {
+          return version;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  async getArtifactVersionContentUrl(args: { versionId: string }): Promise<string | null> {
+    const content = this.artifactContentsByVersionId.get(args.versionId);
+
+    if (content === undefined) {
+      return null;
+    }
+
+    return `data:text/plain;charset=utf-8,${encodeURIComponent(content)}`;
+  }
+
+  async getLatestArtifactVersion(args: {
+    artifactId: string;
+  }): Promise<ArtifactVersionRecord | null> {
+    const versions = this.readArtifactVersions(args.artifactId);
+    return versions[0] ?? null;
+  }
+
+  private readArtifactVersions(artifactId: string): ArtifactVersionRecord[] {
+    const explicitVersions = this.artifactVersionsByArtifactId.get(artifactId);
+
+    if (explicitVersions !== undefined) {
+      return explicitVersions;
+    }
+
+    for (const artifacts of this.artifactsByProjectId.values()) {
+      const artifact = artifacts.find((candidate) => candidate.artifactId === artifactId);
 
       if (artifact === undefined || artifact.currentVersionLabel === null) {
         continue;
       }
 
-      return {
+      const syntheticVersion = {
         versionId: `${artifact.artifactId}:${artifact.currentVersionLabel}:${artifact.updatedAt}`,
         artifactId: artifact.artifactId,
         versionLabel: artifact.currentVersionLabel,
         contentStorageId: `${artifact.artifactId}:content`,
-        contentKind: this.artifactContentsByArtifactId.has(artifact.artifactId)
+        contentKind: (this.artifactContentsByArtifactId.has(artifact.artifactId)
           ? 'markdown'
-          : 'unsupported',
+          : 'unsupported') as 'markdown' | 'unsupported',
         bytes: 0,
         createdAt: artifact.updatedAt,
         createdByProcessId: artifact.processId ?? 'unknown-process',
       };
+
+      if (
+        this.artifactContentsByArtifactId.has(artifact.artifactId) &&
+        !this.artifactContentsByVersionId.has(syntheticVersion.versionId)
+      ) {
+        const content = this.artifactContentsByArtifactId.get(artifact.artifactId);
+        if (content !== undefined) {
+          this.artifactContentsByVersionId.set(syntheticVersion.versionId, content);
+        }
+      }
+
+      return [syntheticVersion];
     }
 
-    return null;
+    return [];
   }
 
   async listProcessReviewTargets(args: {
     projectId: string;
     processId: string;
   }): Promise<ReviewTargetSummary[]> {
-    const currentMaterialRefs = this.currentMaterialRefsByProcessId.get(args.processId) ?? {
-      artifactIds: [],
-      sourceAttachmentIds: [],
-    };
-    const reviewableArtifactIds = new Set(currentMaterialRefs.artifactIds);
+    const reviewableArtifactIds = this.listProducedArtifactIds(args.processId);
     const targets = (
       await Promise.all(
         (this.artifactsByProjectId.get(args.projectId) ?? [])
@@ -2511,6 +2624,18 @@ export class InMemoryPlatformStore implements PlatformStore {
             position: index,
           }),
     );
+  }
+
+  private listProducedArtifactIds(processId: string): Set<string> {
+    const artifactIds = new Set<string>();
+
+    for (const [artifactId, versions] of this.artifactVersionsByArtifactId.entries()) {
+      if (versions.some((version) => version.createdByProcessId === processId)) {
+        artifactIds.add(artifactId);
+      }
+    }
+
+    return artifactIds;
   }
 
   async getProcessReviewPackage(args: {
