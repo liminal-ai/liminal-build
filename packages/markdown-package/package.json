@@ -1,0 +1,23 @@
+{
+  "name": "@liminal-build/markdown-package",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "mdvpkg": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --environment node"
+  },
+  "devDependencies": {
+    "@types/node": "25.6.0",
+    "typescript": "6.0.2",
+    "vitest": "4.1.4"
+  }
+}

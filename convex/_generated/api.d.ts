@@ -8,7 +8,10 @@
  * @module
  */
 
+import type * as artifactVersions from "../artifactVersions.js";
 import type * as artifacts from "../artifacts.js";
+import type * as packageSnapshotMembers from "../packageSnapshotMembers.js";
+import type * as packageSnapshots from "../packageSnapshots.js";
 import type * as processEnvironmentStates from "../processEnvironmentStates.js";
 import type * as processFeatureImplementationStates from "../processFeatureImplementationStates.js";
 import type * as processFeatureSpecificationStates from "../processFeatureSpecificationStates.js";
@@ -31,7 +34,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  artifactVersions: typeof artifactVersions;
   artifacts: typeof artifacts;
+  packageSnapshotMembers: typeof packageSnapshotMembers;
+  packageSnapshots: typeof packageSnapshots;
   processEnvironmentStates: typeof processEnvironmentStates;
   processFeatureImplementationStates: typeof processFeatureImplementationStates;
   processFeatureSpecificationStates: typeof processFeatureSpecificationStates;

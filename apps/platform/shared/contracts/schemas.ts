@@ -49,6 +49,9 @@ export const requestErrorCodeSchema = z.enum([
   'PROJECT_FORBIDDEN',
   'PROJECT_NOT_FOUND',
   'PROCESS_NOT_FOUND',
+  'REVIEW_TARGET_NOT_FOUND',
+  'REVIEW_EXPORT_NOT_AVAILABLE',
+  'REVIEW_EXPORT_FAILED',
   'PROJECT_NAME_CONFLICT',
   'INVALID_PROJECT_NAME',
   'INVALID_PROCESS_TYPE',
@@ -263,9 +266,41 @@ export const createProcessResponseSchema = z.object({
 });
 export type CreateProcessResponse = z.infer<typeof createProcessResponseSchema>;
 
-export const requestErrorSchema = z.object({
-  code: requestErrorCodeSchema,
-  message: z.string().min(1),
-  status: z.number().int().positive(),
-});
+const requestErrorStatusByCode = {
+  NOT_IMPLEMENTED: [501],
+  UNAUTHENTICATED: [401],
+  PROJECT_FORBIDDEN: [403],
+  PROJECT_NOT_FOUND: [404],
+  PROCESS_NOT_FOUND: [404],
+  REVIEW_TARGET_NOT_FOUND: [404],
+  REVIEW_EXPORT_NOT_AVAILABLE: [409],
+  REVIEW_EXPORT_FAILED: [503],
+  PROJECT_NAME_CONFLICT: [409],
+  INVALID_PROJECT_NAME: [422],
+  INVALID_PROCESS_TYPE: [422],
+  PROCESS_ACTION_NOT_AVAILABLE: [409],
+  PROCESS_ACTION_FAILED: [500],
+  PROCESS_ENVIRONMENT_NOT_RECOVERABLE: [409],
+  PROCESS_ENVIRONMENT_PREREQUISITE_MISSING: [422],
+  PROCESS_ENVIRONMENT_UNAVAILABLE: [503],
+  INVALID_PROCESS_RESPONSE: [422],
+  PROCESS_LIVE_UPDATES_UNAVAILABLE: [503],
+} satisfies Record<RequestErrorCode, readonly number[]>;
+
+export const requestErrorSchema = z
+  .object({
+    code: requestErrorCodeSchema,
+    message: z.string().min(1),
+    status: z.number().int().positive(),
+  })
+  .superRefine((value, context) => {
+    const allowedStatuses = requestErrorStatusByCode[value.code];
+    if (!allowedStatuses.includes(value.status)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Request error code ${value.code} must use status ${allowedStatuses.join(' or ')}.`,
+        path: ['status'],
+      });
+    }
+  });
 export type RequestError = z.infer<typeof requestErrorSchema>;

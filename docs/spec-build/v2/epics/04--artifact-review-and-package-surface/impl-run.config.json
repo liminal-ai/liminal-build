@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "primary_harness": "claude-code",
+  "story_implementor": {
+    "secondary_harness": "codex",
+    "model": "gpt-5.4",
+    "reasoning_effort": "high"
+  },
+  "quick_fixer": {
+    "secondary_harness": "codex",
+    "model": "gpt-5.4",
+    "reasoning_effort": "medium"
+  },
+  "story_verifier_1": {
+    "secondary_harness": "codex",
+    "model": "gpt-5.4",
+    "reasoning_effort": "xhigh"
+  },
+  "story_verifier_2": {
+    "secondary_harness": "codex",
+    "model": "gpt-5.3-codex",
+    "reasoning_effort": "high"
+  },
+  "self_review": {
+    "passes": 3
+  },
+  "epic_verifiers": [
+    {
+      "secondary_harness": "codex",
+      "model": "gpt-5.4",
+      "reasoning_effort": "xhigh",
+      "label": "epic-verifier-1"
+    },
+    {
+      "secondary_harness": "none",
+      "model": "claude-sonnet-4.6",
+      "reasoning_effort": "high",
+      "label": "epic-verifier-2"
+    }
+  ],
+  "epic_synthesizer": {
+    "secondary_harness": "codex",
+    "model": "gpt-5.4",
+    "reasoning_effort": "xhigh"
+  },
+  "verification_gates": {
+    "story": "corepack pnpm run green-verify",
+    "epic": "corepack pnpm run verify-all"
+  }
+}

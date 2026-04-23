@@ -22,9 +22,7 @@ export const artifactsTableFields = {
   projectId: v.string(),
   processId: v.union(v.string(), v.null()),
   displayName: v.string(),
-  currentVersionLabel: v.union(v.string(), v.null()),
-  contentStorageId: v.id('_storage'),
-  updatedAt: v.string(),
+  createdAt: v.string(),
 };
 
 const checkpointArtifactInputValidator = v.object({
@@ -38,6 +36,7 @@ const checkpointArtifactWithStorageValidator = v.object({
   artifactId: v.optional(v.string()),
   producedAt: v.string(),
   contentStorageId: v.id('_storage'),
+  bytes: v.number(),
   targetLabel: v.string(),
 });
 
@@ -48,14 +47,12 @@ export const listProjectArtifactSummaries = query({
   handler: async (ctx, args): Promise<ArtifactSummary[]> => {
     const artifacts = await ctx.db
       .query('artifacts')
-      .withIndex('by_projectId_updatedAt', (indexQuery) =>
-        indexQuery.eq('projectId', args.projectId),
-      )
-      .order('desc')
+      .withIndex('by_projectId', (indexQuery) => indexQuery.eq('projectId', args.projectId))
       .take(200);
 
-    return Promise.all(
+    const summaries = await Promise.all(
       artifacts.map(async (artifact) => {
+        const latestVersion = await getLatestArtifactVersionRow(ctx, artifact._id);
         const attachedProcess =
           artifact.processId === null
             ? null
@@ -64,14 +61,17 @@ export const listProjectArtifactSummaries = query({
         return {
           artifactId: artifact._id,
           displayName: artifact.displayName,
-          currentVersionLabel: artifact.currentVersionLabel,
-          attachmentScope: artifact.processId === null ? 'project' : 'process',
+          currentVersionLabel: latestVersion?.versionLabel ?? null,
+          attachmentScope:
+            artifact.processId === null ? ('project' as const) : ('process' as const),
           processId: artifact.processId,
           processDisplayLabel: attachedProcess?.displayLabel ?? null,
-          updatedAt: artifact.updatedAt,
+          updatedAt: latestVersion?.createdAt ?? artifact.createdAt,
         };
       }),
     );
+
+    return summaries.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   },
 });
 
@@ -141,6 +141,7 @@ export const persistCheckpointArtifactsInternal = internalAction({
       artifactId?: string;
       producedAt: string;
       contentStorageId: Id<'_storage'>;
+      bytes: number;
       targetLabel: string;
     }> = [];
     // Tracked separately so we can roll back blob uploads on any failure
@@ -156,6 +157,7 @@ export const persistCheckpointArtifactsInternal = internalAction({
           artifactId: artifact.artifactId,
           producedAt: artifact.producedAt,
           contentStorageId,
+          bytes: blob.size,
           targetLabel: artifact.targetLabel,
         });
       }
@@ -197,6 +199,7 @@ const recordCheckpointArtifactsInternalRef = makeFunctionReference<
       artifactId?: string;
       producedAt: string;
       contentStorageId: Id<'_storage'>;
+      bytes: number;
       targetLabel: string;
     }>;
   },
@@ -222,6 +225,7 @@ export const recordCheckpointArtifactsInternal = internalMutation({
         targetLabel: artifact.targetLabel,
         producedAt: artifact.producedAt,
         contentStorageId: artifact.contentStorageId,
+        bytes: artifact.bytes,
       });
 
       await upsertProcessOutputCheckpoint(ctx, {
@@ -255,7 +259,7 @@ export const recordCheckpointArtifactsInternal = internalMutation({
 });
 
 /**
- * Deletes an artifact row and its associated storage blob in the same
+ * Deletes an artifact row and its associated version rows/storage blobs in the same
  * transaction. Use this from any mutation that removes artifact rows so that
  * file-storage entries do not orphan.
  */
@@ -270,7 +274,11 @@ export const deleteArtifactWithContent = mutation({
       return null;
     }
 
-    await ctx.storage.delete(artifact.contentStorageId);
+    const versions = await listArtifactVersionRows(ctx, artifact._id);
+    for (const version of versions) {
+      await ctx.storage.delete(version.contentStorageId);
+      await ctx.db.delete(version._id);
+    }
     await ctx.db.delete(args.artifactId);
     return null;
   },
@@ -350,15 +358,11 @@ export const lookupArtifactStorageIdInternal = internalQuery({
     artifactId: v.string(),
   },
   handler: async (ctx: QueryCtx, args): Promise<Id<'_storage'> | null> => {
-    let artifact: Doc<'artifacts'> | null = null;
-
-    try {
-      artifact = await ctx.db.get(args.artifactId as Id<'artifacts'>);
-    } catch {
-      return null;
-    }
-
-    return artifact?.contentStorageId ?? null;
+    const latestVersion = await getLatestArtifactVersionRow(
+      ctx,
+      args.artifactId as Id<'artifacts'>,
+    );
+    return latestVersion?.contentStorageId ?? null;
   },
 });
 
@@ -389,31 +393,74 @@ async function upsertArtifactCheckpoint(
     targetLabel: string;
     producedAt: string;
     contentStorageId: Id<'_storage'>;
+    bytes: number;
   },
 ): Promise<Id<'artifacts'>> {
   const nextFields = {
     projectId: args.processRecord.projectId,
     processId: args.processRecord._id,
     displayName: args.targetLabel,
-    currentVersionLabel: null,
-    contentStorageId: args.contentStorageId,
-    updatedAt: args.producedAt,
   };
+  const versionLabel = buildCheckpointVersionLabel(args.producedAt);
+
+  let artifactId: Id<'artifacts'>;
 
   if (args.artifactId !== undefined) {
     const existingArtifact = await ctx.db.get(args.artifactId as Id<'artifacts'>);
 
     if (existingArtifact !== null && existingArtifact.projectId === args.processRecord.projectId) {
-      // Replace prior content blob with the new revision so storage stays clean.
-      if (existingArtifact.contentStorageId !== args.contentStorageId) {
-        await ctx.storage.delete(existingArtifact.contentStorageId);
-      }
       await ctx.db.patch(existingArtifact._id, nextFields);
-      return existingArtifact._id;
+      artifactId = existingArtifact._id;
+    } else {
+      artifactId = await ctx.db.insert('artifacts', {
+        ...nextFields,
+        createdAt: args.producedAt,
+      });
     }
+  } else {
+    artifactId = await ctx.db.insert('artifacts', {
+      ...nextFields,
+      createdAt: args.producedAt,
+    });
   }
 
-  return ctx.db.insert('artifacts', nextFields);
+  await ctx.db.insert('artifactVersions', {
+    artifactId,
+    versionLabel,
+    contentStorageId: args.contentStorageId,
+    contentKind: 'markdown',
+    bytes: args.bytes,
+    createdAt: args.producedAt,
+    createdByProcessId: args.processRecord._id,
+  });
+
+  return artifactId;
+}
+
+function buildCheckpointVersionLabel(producedAt: string): string {
+  const compact = producedAt.replaceAll(/[-:.TZ]/g, '').slice(0, 14);
+  return compact.length > 0 ? `checkpoint-${compact}` : 'checkpoint';
+}
+
+async function listArtifactVersionRows(ctx: MutationCtx | QueryCtx, artifactId: Id<'artifacts'>) {
+  return ctx.db
+    .query('artifactVersions')
+    .withIndex('by_artifactId_createdAt', (indexQuery) => indexQuery.eq('artifactId', artifactId))
+    .order('desc')
+    .take(200);
+}
+
+async function getLatestArtifactVersionRow(
+  ctx: MutationCtx | QueryCtx,
+  artifactId: Id<'artifacts'>,
+) {
+  const versions = await ctx.db
+    .query('artifactVersions')
+    .withIndex('by_artifactId_createdAt', (indexQuery) => indexQuery.eq('artifactId', artifactId))
+    .order('desc')
+    .take(1);
+
+  return versions[0] ?? null;
 }
 
 async function upsertProcessOutputCheckpoint(

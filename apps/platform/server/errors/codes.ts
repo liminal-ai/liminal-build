@@ -6,3 +6,6 @@ export const processEnvironmentNotRecoverableErrorCode =
 export const processEnvironmentPrerequisiteMissingErrorCode =
   'PROCESS_ENVIRONMENT_PREREQUISITE_MISSING' as const;
 export const processEnvironmentUnavailableErrorCode = 'PROCESS_ENVIRONMENT_UNAVAILABLE' as const;
+export const reviewTargetNotFoundErrorCode = 'REVIEW_TARGET_NOT_FOUND' as const;
+export const reviewExportNotAvailableErrorCode = 'REVIEW_EXPORT_NOT_AVAILABLE' as const;
+export const reviewExportFailedErrorCode = 'REVIEW_EXPORT_FAILED' as const;

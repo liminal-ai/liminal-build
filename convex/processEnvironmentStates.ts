@@ -254,9 +254,16 @@ export async function computeWorkingSetFingerprint(
     if (artifact === null) {
       continue;
     }
+    const versions = await ctx.db
+      .query('artifactVersions')
+      .withIndex('by_artifactId_createdAt', (indexQuery) =>
+        indexQuery.eq('artifactId', artifact._id),
+      )
+      .order('desc')
+      .take(1);
     artifactInputs.push({
       artifactId: artifact._id,
-      versionLabel: artifact.currentVersionLabel,
+      versionLabel: versions[0]?.versionLabel ?? null,
     });
   }
 

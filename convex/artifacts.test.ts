@@ -92,6 +92,7 @@ const recordCheckpointArtifactsInternalHandler = getHandler<
       artifactId?: string;
       producedAt: string;
       contentStorageId: string;
+      bytes: number;
       targetLabel: string;
     }>;
   },
@@ -270,14 +271,18 @@ describe('convex/artifacts checkpoint persistence with file storage', () => {
 
     expect(outputs).toHaveLength(1);
     const artifactRows = db.list('artifacts');
+    const artifactVersionRows = db.list('artifactVersions');
     expect(artifactRows).toHaveLength(1);
+    expect(artifactVersionRows).toHaveLength(1);
     const artifactRow = artifactRows[0] as Record<string, unknown>;
+    const artifactVersionRow = artifactVersionRows[0] as Record<string, unknown>;
 
-    expect(typeof artifactRow.contentStorageId).toBe('string');
-    expect(artifactRow.contentStorageId).not.toBe('');
-    expect(storage.list()).toContain(artifactRow.contentStorageId);
+    expect(typeof artifactRow.createdAt).toBe('string');
+    expect(typeof artifactVersionRow.contentStorageId).toBe('string');
+    expect(artifactVersionRow.contentStorageId).not.toBe('');
+    expect(storage.list()).toContain(artifactVersionRow.contentStorageId);
 
-    const storedBlob = await storage.get(artifactRow.contentStorageId as string);
+    const storedBlob = await storage.get(artifactVersionRow.contentStorageId as string);
     expect(storedBlob).not.toBeNull();
     if (storedBlob !== null) {
       const storedText = await storedBlob.text();
@@ -299,8 +304,8 @@ describe('convex/artifacts checkpoint persistence with file storage', () => {
       ],
     });
 
-    const artifactRow = db.list('artifacts')[0] as Record<string, unknown>;
-    const contentStorageId = artifactRow.contentStorageId as string;
+    const artifactVersionRow = db.list('artifactVersions')[0] as Record<string, unknown>;
+    const contentStorageId = artifactVersionRow.contentStorageId as string;
     const blob = await storage.get(contentStorageId);
 
     expect(blob).not.toBeNull();
@@ -356,6 +361,7 @@ describe('convex/artifacts checkpoint persistence with file storage', () => {
         {
           producedAt: '2026-04-15T12:35:00.000Z',
           contentStorageId,
+          bytes: blob.size,
           targetLabel: 'Internal Mutation Artifact',
         },
       ],
@@ -363,8 +369,12 @@ describe('convex/artifacts checkpoint persistence with file storage', () => {
 
     expect(outputs).toHaveLength(1);
     const artifactRows = db.list('artifacts');
+    const artifactVersionRows = db.list('artifactVersions');
     expect(artifactRows).toHaveLength(1);
-    expect((artifactRows[0] as Record<string, unknown>).contentStorageId).toBe(contentStorageId);
+    expect(artifactVersionRows).toHaveLength(1);
+    expect((artifactVersionRows[0] as Record<string, unknown>).contentStorageId).toBe(
+      contentStorageId,
+    );
   });
 
   it('deletes the storage blob when the artifact row is deleted via deleteArtifactWithContent', async () => {
@@ -382,14 +392,16 @@ describe('convex/artifacts checkpoint persistence with file storage', () => {
     });
 
     const artifactRow = db.list('artifacts')[0] as Record<string, unknown>;
+    const artifactVersionRow = db.list('artifactVersions')[0] as Record<string, unknown>;
     const artifactId = artifactRow._id as string;
-    const contentStorageId = artifactRow.contentStorageId as string;
+    const contentStorageId = artifactVersionRow.contentStorageId as string;
 
     expect(storage.list()).toContain(contentStorageId);
 
     await deleteArtifactWithContentHandler(ctx, { artifactId });
 
     expect(db.list('artifacts')).toHaveLength(0);
+    expect(db.list('artifactVersions')).toHaveLength(0);
     expect(storage.list()).not.toContain(contentStorageId);
   });
 

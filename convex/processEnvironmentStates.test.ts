@@ -339,9 +339,7 @@ function buildFingerprintSeed() {
         projectId: 'project-fp-1',
         processId: 'process-fp-1',
         displayName: 'Spec Draft',
-        currentVersionLabel: 'draft-1',
-        contentStorageId: 'kg-stub-artifact-fp-1',
-        updatedAt: '2026-04-15T12:01:00.000Z',
+        createdAt: '2026-04-15T12:01:00.000Z',
       },
       {
         _id: 'artifact-fp-2',
@@ -349,9 +347,31 @@ function buildFingerprintSeed() {
         projectId: 'project-fp-1',
         processId: 'process-fp-1',
         displayName: 'Notes',
-        currentVersionLabel: 'v2',
+        createdAt: '2026-04-15T12:02:00.000Z',
+      },
+    ],
+    artifactVersions: [
+      {
+        _id: 'artifact-version-fp-1',
+        _creationTime: 51,
+        artifactId: 'artifact-fp-1',
+        versionLabel: 'draft-1',
+        contentStorageId: 'kg-stub-artifact-fp-1',
+        contentKind: 'markdown',
+        bytes: 128,
+        createdAt: '2026-04-15T12:01:00.000Z',
+        createdByProcessId: 'process-fp-1',
+      },
+      {
+        _id: 'artifact-version-fp-2',
+        _creationTime: 52,
+        artifactId: 'artifact-fp-2',
+        versionLabel: 'v2',
         contentStorageId: 'kg-stub-artifact-fp-2',
-        updatedAt: '2026-04-15T12:02:00.000Z',
+        contentKind: 'markdown',
+        bytes: 64,
+        createdAt: '2026-04-15T12:02:00.000Z',
+        createdByProcessId: 'process-fp-1',
       },
     ],
     sourceAttachments: [
@@ -434,13 +454,13 @@ describe('convex/processEnvironmentStates working-set fingerprint', () => {
       'process-fp-1' as never,
     );
 
-    // Mutate one input: change the version label of one artifact.
+    // Mutate one input: change the version label of one artifact version.
     const mutatedSeed = buildFingerprintSeed();
-    const mutatedArtifact = mutatedSeed.artifacts[0];
-    if (mutatedArtifact === undefined) {
-      throw new Error('Expected seeded artifact.');
+    const mutatedVersion = mutatedSeed.artifactVersions[0];
+    if (mutatedVersion === undefined) {
+      throw new Error('Expected seeded artifact version.');
     }
-    mutatedArtifact.currentVersionLabel = 'draft-2';
+    mutatedVersion.versionLabel = 'draft-2';
     const { ctx: ctxB } = createFakeConvexContext(mutatedSeed);
     const fingerprintB = await computeWorkingSetFingerprint(
       ctxB as unknown as Parameters<typeof computeWorkingSetFingerprint>[0],

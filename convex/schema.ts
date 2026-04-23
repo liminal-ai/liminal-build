@@ -1,5 +1,8 @@
 import { defineSchema, defineTable } from 'convex/server';
+import { artifactVersionsTableFields } from './artifactVersions.js';
 import { artifactsTableFields } from './artifacts.js';
+import { packageSnapshotMembersTableFields } from './packageSnapshotMembers.js';
+import { packageSnapshotsTableFields } from './packageSnapshots.js';
 import { processHistoryItemsTableFields } from './processHistoryItems.js';
 import { processesTableFields } from './processes.js';
 import { processFeatureImplementationStateTableFields } from './processFeatureImplementationStates.js';
@@ -56,7 +59,18 @@ export default defineSchema({
   ).index('by_processId', ['processId']),
   artifacts: defineTable(artifactsTableFields)
     .index('by_projectId', ['projectId'])
-    .index('by_projectId_updatedAt', ['projectId', 'updatedAt']),
+    .index('by_projectId_createdAt', ['projectId', 'createdAt']),
+  artifactVersions: defineTable(artifactVersionsTableFields)
+    .index('by_artifactId_createdAt', ['artifactId', 'createdAt'])
+    .index('by_createdByProcessId_createdAt', ['createdByProcessId', 'createdAt']),
+  packageSnapshots: defineTable(packageSnapshotsTableFields).index('by_processId_publishedAt', [
+    'processId',
+    'publishedAt',
+  ]),
+  packageSnapshotMembers: defineTable(packageSnapshotMembersTableFields).index(
+    'by_packageSnapshotId_position',
+    ['packageSnapshotId', 'position'],
+  ),
   sourceAttachments: defineTable(sourceAttachmentsTableFields)
     .index('by_projectId', ['projectId'])
     .index('by_projectId_updatedAt', ['projectId', 'updatedAt']),
