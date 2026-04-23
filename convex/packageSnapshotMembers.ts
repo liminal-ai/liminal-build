@@ -7,6 +7,8 @@ export const packageSnapshotMembersTableFields = {
   position: v.number(),
   artifactId: v.id('artifacts'),
   artifactVersionId: v.id('artifactVersions'),
+  displayName: v.string(),
+  versionLabel: v.string(),
 };
 
 function toPackageSnapshotMemberRecord(member: {
@@ -15,6 +17,8 @@ function toPackageSnapshotMemberRecord(member: {
   position: number;
   artifactId: Id<'artifacts'>;
   artifactVersionId: Id<'artifactVersions'>;
+  displayName: string;
+  versionLabel: string;
 }) {
   return {
     memberId: member._id,
@@ -22,6 +26,8 @@ function toPackageSnapshotMemberRecord(member: {
     position: member.position,
     artifactId: member.artifactId,
     artifactVersionId: member.artifactVersionId,
+    displayName: member.displayName,
+    versionLabel: member.versionLabel,
   };
 }
 

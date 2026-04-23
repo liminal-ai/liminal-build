@@ -330,6 +330,19 @@ function registerReviewWorkspaceHandlers(fixture: ReturnType<typeof createFakeCo
     'packageSnapshots:listPackageSnapshotsForProcess',
     listPackageSnapshotsForProcess,
   );
+  register<
+    {
+      processId: string;
+      displayName: string;
+      packageType: string;
+      members: Array<{
+        artifactId: string;
+        artifactVersionId: string;
+        position: number;
+      }>;
+    },
+    string
+  >('packageSnapshots:publishPackageSnapshot', publishPackageSnapshot);
   register<{ packageSnapshotId: string }, unknown | null>(
     'packageSnapshots:getPackageSnapshot',
     getPackageSnapshot,
@@ -360,20 +373,8 @@ function registerReviewWorkspaceHandlers(fixture: ReturnType<typeof createFakeCo
   );
 }
 
-async function startConvexReviewWorkspaceServer(
-  fixture: ReturnType<typeof createFakeConvexContext>,
-) {
-  const querySpy = vi
-    .spyOn(ConvexHttpClient.prototype, 'query')
-    .mockImplementation(async (...args) => {
-      const [ref, params] = args;
-      return fixture.ctx.runQuery(ref, params);
-    });
-  const actionSpy = vi
-    .spyOn(ConvexHttpClient.prototype, 'action')
-    .mockRejectedValue(new Error('Unexpected Convex action call in review workspace integration.'));
-  const store = new ConvexPlatformStore('https://test.example.convex.cloud', 'test-api-key');
-  const processAccessService = {
+function createReviewWorkspaceProcessAccessService() {
+  return {
     async getProcessAccess() {
       return {
         kind: 'accessible' as const,
@@ -389,9 +390,24 @@ async function startConvexReviewWorkspaceServer(
       };
     },
   } as unknown as ProcessAccessService;
+}
+
+async function startConvexReviewWorkspaceServer(
+  fixture: ReturnType<typeof createFakeConvexContext>,
+) {
+  const querySpy = vi
+    .spyOn(ConvexHttpClient.prototype, 'query')
+    .mockImplementation(async (...args) => {
+      const [ref, params] = args;
+      return fixture.ctx.runQuery(ref, params);
+    });
+  const actionSpy = vi
+    .spyOn(ConvexHttpClient.prototype, 'action')
+    .mockRejectedValue(new Error('Unexpected Convex action call in review workspace integration.'));
+  const store = new ConvexPlatformStore('https://test.example.convex.cloud', 'test-api-key');
   const server = await startApp({
     store,
-    processAccessService,
+    processAccessService: createReviewWorkspaceProcessAccessService(),
   });
 
   return { actionSpy, querySpy, server };
@@ -684,6 +700,200 @@ describe('review workspace integration', () => {
     expect(actionSpy).not.toHaveBeenCalled();
 
     await server.app.close();
+  });
+
+  it('preserves snapshot-time member display names after the artifact is renamed', async () => {
+    const fixture = createFakeConvexContext(buildReviewWorkspaceSeed());
+    registerReviewWorkspaceHandlers(fixture);
+
+    await fixture.ctx.db.patch('artifact-review-convex-001', {
+      displayName: 'A-v1',
+    });
+
+    const querySpy = vi
+      .spyOn(ConvexHttpClient.prototype, 'query')
+      .mockImplementation(async (...args) => {
+        const [ref, params] = args;
+        return fixture.ctx.runQuery(ref, params);
+      });
+    const mutationSpy = vi
+      .spyOn(ConvexHttpClient.prototype, 'mutation')
+      .mockImplementation(async (...args) => {
+        const [ref, params] = args;
+        return fixture.ctx.runMutation(ref, params);
+      });
+    const actionSpy = vi
+      .spyOn(ConvexHttpClient.prototype, 'action')
+      .mockRejectedValue(
+        new Error('Unexpected Convex action call in review workspace integration.'),
+      );
+    const store = new ConvexPlatformStore('https://test.example.convex.cloud', 'test-api-key');
+    const packageId = await store.publishPackageSnapshot({
+      processId: processSummary.processId,
+      displayName: 'Feature Specification Package',
+      packageType: 'FeatureSpecificationOutput',
+      members: [
+        {
+          artifactId: 'artifact-review-convex-001',
+          artifactVersionId: 'artifact-version-review-convex-001',
+          position: 0,
+        },
+      ],
+    });
+
+    await fixture.ctx.db.patch('artifact-review-convex-001', {
+      displayName: 'A-v2',
+    });
+
+    const { app, baseUrl } = await startApp({
+      store,
+      processAccessService: createReviewWorkspaceProcessAccessService(),
+    });
+
+    try {
+      const response = await fetch(
+        `${baseUrl}/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/review?targetKind=package&targetId=${packageId}`,
+        {
+          headers: {
+            cookie: 'lb_session=review-workspace-convex-immutability',
+          },
+        },
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.target).toMatchObject({
+        targetKind: 'package',
+        displayName: 'Feature Specification Package',
+        status: 'ready',
+        package: {
+          packageId,
+          members: [
+            {
+              artifactId: 'artifact-review-convex-001',
+              displayName: 'A-v1',
+              status: 'ready',
+            },
+          ],
+          selectedMember: {
+            status: 'ready',
+            artifact: {
+              artifactId: 'artifact-review-convex-001',
+              displayName: 'A-v1',
+            },
+          },
+        },
+      });
+      expect(mutationSpy.mock.calls.map(([ref]) => readFunctionName(ref))).toEqual(
+        expect.arrayContaining(['packageSnapshots:publishPackageSnapshot']),
+      );
+      expect(querySpy.mock.calls.map(([ref]) => readFunctionName(ref))).toEqual(
+        expect.arrayContaining([
+          'artifacts:listProjectArtifactSummaries',
+          'packageSnapshots:getPackageSnapshot',
+          'packageSnapshotMembers:listPackageSnapshotMembers',
+        ]),
+      );
+      expect(actionSpy).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('preserves snapshot-time member version labels after the pinned version becomes unavailable', async () => {
+    const fixture = createFakeConvexContext(buildReviewWorkspaceSeed());
+    registerReviewWorkspaceHandlers(fixture);
+
+    await fixture.ctx.db.patch('artifact-version-review-convex-001', {
+      versionLabel: 'v1.2',
+    });
+
+    const querySpy = vi
+      .spyOn(ConvexHttpClient.prototype, 'query')
+      .mockImplementation(async (...args) => {
+        const [ref, params] = args;
+        return fixture.ctx.runQuery(ref, params);
+      });
+    const mutationSpy = vi
+      .spyOn(ConvexHttpClient.prototype, 'mutation')
+      .mockImplementation(async (...args) => {
+        const [ref, params] = args;
+        return fixture.ctx.runMutation(ref, params);
+      });
+    const actionSpy = vi
+      .spyOn(ConvexHttpClient.prototype, 'action')
+      .mockRejectedValue(
+        new Error('Unexpected Convex action call in review workspace integration.'),
+      );
+    const store = new ConvexPlatformStore('https://test.example.convex.cloud', 'test-api-key');
+    const packageId = await store.publishPackageSnapshot({
+      processId: processSummary.processId,
+      displayName: 'Feature Specification Package',
+      packageType: 'FeatureSpecificationOutput',
+      members: [
+        {
+          artifactId: 'artifact-review-convex-001',
+          artifactVersionId: 'artifact-version-review-convex-001',
+          position: 0,
+        },
+      ],
+    });
+
+    await fixture.ctx.db.delete('artifact-version-review-convex-001');
+
+    const { app, baseUrl } = await startApp({
+      store,
+      processAccessService: createReviewWorkspaceProcessAccessService(),
+    });
+
+    try {
+      const response = await fetch(
+        `${baseUrl}/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/review?targetKind=package&targetId=${packageId}`,
+        {
+          headers: {
+            cookie: 'lb_session=review-workspace-convex-version-label-immutability',
+          },
+        },
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.target).toMatchObject({
+        targetKind: 'package',
+        displayName: 'Feature Specification Package',
+        status: 'ready',
+        package: {
+          packageId,
+          members: [
+            {
+              artifactId: 'artifact-review-convex-001',
+              versionId: 'artifact-version-review-convex-001',
+              versionLabel: 'v1.2',
+              status: 'unavailable',
+            },
+          ],
+          selectedMember: {
+            status: 'unavailable',
+            error: {
+              code: 'REVIEW_MEMBER_UNAVAILABLE',
+            },
+          },
+        },
+      });
+      expect(mutationSpy.mock.calls.map(([ref]) => readFunctionName(ref))).toEqual(
+        expect.arrayContaining(['packageSnapshots:publishPackageSnapshot']),
+      );
+      expect(querySpy.mock.calls.map(([ref]) => readFunctionName(ref))).toEqual(
+        expect.arrayContaining([
+          'packageSnapshots:getPackageSnapshot',
+          'packageSnapshotMembers:listPackageSnapshotMembers',
+          'artifactVersions:getArtifactVersion',
+        ]),
+      );
+      expect(actionSpy).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
   });
 
   it('surfaces unsupported-kind artifacts as reviewable targets and resolves the unsupported fallback through the route', async () => {

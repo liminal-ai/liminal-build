@@ -19,9 +19,11 @@ export function renderArtifactReviewPanel(args: {
   artifact: ArtifactReviewTarget;
   targetDocument: Document;
   onSelectVersion: (versionId: string) => void;
+  showVersionSwitcher?: boolean;
 }): HTMLElement {
   const container = args.targetDocument.createElement('section');
   const selectedVersion = args.artifact.selectedVersion;
+  const showVersionSwitcher = args.showVersionSwitcher ?? true;
 
   container.setAttribute('data-artifact-review-panel', 'true');
   container.append(
@@ -47,14 +49,16 @@ export function renderArtifactReviewPanel(args: {
     return container;
   }
 
-  container.append(
-    renderVersionSwitcher({
-      versions: args.artifact.versions,
-      selectedVersionId: args.artifact.selectedVersionId,
-      targetDocument: args.targetDocument,
-      onSelect: args.onSelectVersion,
-    }),
-  );
+  if (showVersionSwitcher) {
+    container.append(
+      renderVersionSwitcher({
+        versions: args.artifact.versions,
+        selectedVersionId: args.artifact.selectedVersionId,
+        targetDocument: args.targetDocument,
+        onSelect: args.onSelectVersion,
+      }),
+    );
+  }
 
   if (selectedVersion === undefined) {
     return container;

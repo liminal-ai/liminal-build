@@ -1,5 +1,6 @@
 import type {
   ArtifactReviewTarget,
+  PackageReviewTarget,
   RequestError,
   ReviewWorkspaceResponse,
   ReviewWorkspaceSelection,
@@ -7,7 +8,9 @@ import type {
 import {
   artifactReviewTargetSchema,
   buildReviewArtifactApiPath,
+  buildReviewPackageApiPath,
   buildReviewWorkspaceApiPath,
+  packageReviewTargetSchema,
   requestErrorSchema,
   reviewWorkspaceResponseSchema,
 } from '../../shared/contracts/index.js';
@@ -121,4 +124,34 @@ export async function getArtifactReview(args: {
   }
 
   return artifactReviewTargetSchema.parse(await response.json());
+}
+
+export async function getPackageReview(args: {
+  projectId: string;
+  processId: string;
+  packageId: string;
+  memberId?: string;
+}): Promise<PackageReviewTarget> {
+  const url = new URL(
+    buildReviewPackageApiPath({
+      projectId: args.projectId,
+      processId: args.processId,
+      packageId: args.packageId,
+    }),
+    'http://story0.local',
+  );
+
+  if (args.memberId !== undefined) {
+    url.searchParams.set('memberId', args.memberId);
+  }
+
+  const response = await fetch(`${url.pathname}${url.search}`, {
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    throw new ApiRequestError(await parseRequestError(response));
+  }
+
+  return packageReviewTargetSchema.parse(await response.json());
 }

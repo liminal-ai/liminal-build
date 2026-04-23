@@ -7,6 +7,7 @@ import {
   renderMissingProjectState,
 } from '../projects/unavailable-state.js';
 import { renderArtifactReviewPanel } from './artifact-review-panel.js';
+import { renderPackageReviewPanel } from './package-review-panel.js';
 
 function formatProcessTypeLabel(processType: string): string {
   return processType.replace(/([a-z])([A-Z])/g, '$1 $2');
@@ -39,6 +40,12 @@ export function renderReviewWorkspacePage(args: {
     processId: string,
     artifactId: string,
     versionId: string,
+  ) => void;
+  onSelectPackageMember: (
+    projectId: string,
+    processId: string,
+    packageId: string,
+    memberId: string,
   ) => void;
 }): HTMLElement {
   const container = args.targetDocument.createElement('section');
@@ -195,9 +202,21 @@ export function renderReviewWorkspacePage(args: {
   }
 
   if (target.targetKind === 'package' && target.package !== undefined) {
+    const packageReview = target.package;
+
     container.append(
-      createParagraph(args.targetDocument, `Package type: ${target.package.packageType}`),
-      createParagraph(args.targetDocument, `Members: ${target.package.members.length}`),
+      renderPackageReviewPanel({
+        packageReview,
+        targetDocument: args.targetDocument,
+        onSelectMember: (memberId) => {
+          args.onSelectPackageMember(
+            project.projectId,
+            process.processId,
+            packageReview.packageId,
+            memberId,
+          );
+        },
+      }),
     );
   }
 

@@ -4,16 +4,14 @@ import type {
   ReviewWorkspaceResponse,
   ReviewWorkspaceSelection,
 } from '../../../shared/contracts/index.js';
-import {
-  reviewTargetSchema,
-  reviewWorkspaceResponseSchema,
-} from '../../../shared/contracts/index.js';
+import { reviewWorkspaceResponseSchema } from '../../../shared/contracts/index.js';
 import { AppError } from '../../errors/app-error.js';
 import { reviewTargetNotFoundErrorCode } from '../../errors/codes.js';
 import type { AuthenticatedActor } from '../auth/auth-session.service.js';
 import type { ProcessAccessService } from '../processes/process-access.service.js';
 import type { PlatformStore } from '../projects/platform-store.js';
 import type { ArtifactReviewService } from './artifact-review.service.js';
+import type { PackageReviewService } from './package-review.service.js';
 
 type SelectedTargetRequest = {
   explicit: boolean;
@@ -35,6 +33,7 @@ export class DefaultReviewWorkspaceService implements ReviewWorkspaceService {
     private readonly platformStore: PlatformStore,
     private readonly processAccessService: ProcessAccessService,
     private readonly artifactReviewService: ArtifactReviewService,
+    private readonly packageReviewService: PackageReviewService,
   ) {}
 
   async getWorkspace(args: {
@@ -114,9 +113,15 @@ export class DefaultReviewWorkspaceService implements ReviewWorkspaceService {
     selection: ReviewWorkspaceSelection | null;
   }): Promise<ReviewTarget | undefined> {
     if (args.request.targetKind === 'package') {
-      const target = await this.platformStore.getProcessReviewPackage({
+      const target = await this.packageReviewService.getPackageTarget({
+        projectId: args.projectId,
         processId: args.processId,
         packageId: args.request.targetId,
+        memberId:
+          args.selection?.targetKind === 'package' &&
+          args.selection.targetId === args.request.targetId
+            ? args.selection.memberId
+            : undefined,
       });
 
       if (target === null) {
@@ -127,12 +132,7 @@ export class DefaultReviewWorkspaceService implements ReviewWorkspaceService {
         return undefined;
       }
 
-      return reviewTargetSchema.parse({
-        targetKind: 'package',
-        displayName: target.displayName,
-        status: 'ready',
-        package: target,
-      });
+      return target;
     }
 
     const target = await this.artifactReviewService.getArtifactTarget({

@@ -3,9 +3,9 @@
 ## Run Overview
 - State: BETWEEN_STORIES
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/04--artifact-review-and-package-surface
-- Current Story: 04-package-review-workspace (next)
+- Current Story: 05-package-export (next)
 - Current Phase: —
-- Last Completed Checkpoint: Story 3 accepted; commit pending
+- Last Completed Checkpoint: Story 4 accepted; commit pending
 
 ## Orchestrator failure mode — Story 2 "verify-round churn from under-configured fixer + unchecked fix spillover" (2026-04-23 ~16:50Z)
 
@@ -168,6 +168,42 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 - Story 0 implementor: codex / 019db7b8-474f-7ec2-8880-c5fa78a33561 (extracted from stdout after adapter failure; used in round-1 self-review retry post-patch)
 
 ## Story Receipts
+
+### 04-package-review-workspace (accepted 2026-04-23 ~22:40Z)
+- Story Title: Story 4: Package Review Workspace
+- Implementor Evidence:
+  - Initial: `artifacts/04-.../001-implementor.json` (codex session `019dbbc1-fd13-7922-a8d9-33768f512653`, 17 files, 5 gates pass)
+  - Follow-up 1 (snapshot immutability + invariants + tests): landed via `quick-fix` 010 (before the no-quick-fix-for-stories ruling)
+  - Follow-up 2 (process-ownership validation): `quick-fix` 013
+  - Follow-up 3 (versionLabel snapshot + 20-member smoke): `story-continue` 019 (after 12 PROVIDER_UNAVAILABLE retries — GPT-5.5 launch rate-limit)
+  - Follow-up 4 (server-side label derivation + 2s perf bound): `story-continue` 027 (after 7 more retries)
+- Self-Review Evidence: `artifacts/04-.../005-self-review-batch.json` (3/3 passes, 6 proactive fixes)
+- Verifier Evidence (5 rounds):
+  - Round 1: `artifacts/04-.../006-verify-batch.json` — revise (3 findings: displayName drift, mutation invariants, Convex test gap)
+  - Round 2: `artifacts/04-.../010-verify-batch.json` — revise (process ownership + NFR observation)
+  - Round 3: `artifacts/04-.../011-verify-batch.json` — revise (versionLabel + 20-member/2s perf)
+  - Round 4: `artifacts/04-.../020-verify-batch.json` — revise (direct-caller displayName forge + 3s→2s)
+  - Round 5: `artifacts/04-.../028-verify-batch.json` — **pass** (both verifiers, 0 findings)
+- Story Gate: `corepack pnpm run green-verify` — **pass**
+- Epic Gate: `corepack pnpm run verify-all` — **pass** (466 tests)
+- Gate Tests: convex 54 / service 201 / client 189 / packages 2 / integration 20 = **466 total**
+- Dispositions (all real per spec, all fixed):
+  - (rd 1) Snapshot immutability (displayName drift) → **fixed** (quick-fix 010: persist displayName on packageSnapshotMembers)
+  - (rd 1) publishPackageSnapshot invariants gap (empty members / non-integer position / artifactVersion ownership / unique positions) → **fixed** (quick-fix 010)
+  - (rd 1) Convex unit-test coverage → **fixed** (quick-fix 010 + 013 + continues 019 and 027)
+  - (rd 2) Process-ownership validation in publishPackageSnapshot → **fixed** (quick-fix 013)
+  - (rd 3) versionLabel not snapshotted → **fixed** (continue 019: persist versionLabel on members)
+  - (rd 3 + rd 4) 20-member/2s perf proof → **fixed** (continue 019 at 3s smoke → continue 027 tightened to 2s per DoD)
+  - (rd 4) Direct publishPackageSnapshot callers could forge displayName/versionLabel → **fixed** (continue 027: server-side derivation from row lookups)
+- Open Risks:
+  - Schema migration: `packageSnapshotMembers.displayName` and `.versionLabel` are now required fields. Any existing dev DB rows without them fail validation. Pre-customer stance: reset/backfill acceptable. Carrying to cleanup batch.
+- Baseline Before: 441
+- Baseline After: 466 (+25)
+- Rounds: 5 verify rounds + 4 follow-up dispatches (2 quick-fix from before the rule, 2 story-continue after)
+- Acceptance Rationale: 5 verify rounds (more than Story 3's 3 because round-1 self-review shipped with 2 deviations requiring correction + rate-limit chaos cost 19 wasted codex sessions on retries). Final round both verifiers `pass` with 0 findings. All gates pass. Baseline +25 with no regressions. All real findings fixed; open-risk is only dev DB migration noise (cleanup batch).
+- Routing lessons noted: quick-fix was wrong channel for integration-scope fixes in rounds 1-2 (partial context → next-round regressions). Switched to story-continue for rounds 3-4, which each landed cleanly in one pass. Rule for Stories 5-6 going forward: story-scope follow-ups route via story-continue; quick-fix reserved for epic-cleanup/cross-story concerns.
+
+---
 
 ### 03-markdown-and-mermaid-review (accepted 2026-04-23 ~19:15Z)
 - Story Title: Story 3: Markdown and Mermaid Review
@@ -334,7 +370,7 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 - Acceptance Rationale: 4 verifier rounds, 0 blocking findings remain, story gate pass, baseline up with no regressions, self-review + implementor work intact on disk, all spec-pack contract vocabulary in place as Story 0 foundation for Stories 1–6. Residual findings are disposed per rationale above.
 
 ## Cumulative Baselines
-- Baseline Before Current Story: 441 (post-Story-3 accepted; next story's "before")
+- Baseline Before Current Story: 466 (post-Story-4 accepted; next story's "before")
 - Expected After Current Story: TBD at Story 2 start
 - Latest Actual Total: 409 (post-Story-1-amended verify-all at ~14:05Z, exit 0)
 
@@ -347,6 +383,7 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 | 01-review-entry-and-workspace-bootstrap (amended) | 406 | 409 | +3 | +1 new integration test file `tests/integration/review-workspace.test.ts` seeded via `publishPackageSnapshot`; +2 subtests for unsupported-fallback + cross-kind newest-first ordering |
 | 02-artifact-versions-and-revision-review | 409 | 425 | +16 | +3 new test files (artifact-review-api, artifact-review-panel, version-switcher); +tests from 7 modified suites + regression tests added by 5 quick-fix rounds (revision append, checkpoint writer, XSS, zero-version, 300-artifact cap) |
 | 03-markdown-and-mermaid-review | 425 | 441 | +16 | +2 new test files (markdown-renderer, markdown-body, mermaid-runtime) + quick-fix regressions (XSS, directive-only, version-ID traceability, zero-byte body, 200KB smoke-proof) |
+| 04-package-review-workspace | 441 | 466 | +25 | +2 Convex test files (packageSnapshots, packageSnapshotMembers) + package-review-api + package-review-panel + snapshot-immutability integration + 20-member/2s smoke + process-ownership regressions |
 
 ## Cleanup / Epic Verification
 - Cleanup Artifact: pending

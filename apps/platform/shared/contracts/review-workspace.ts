@@ -129,7 +129,7 @@ export const artifactVersionDetailSchema = z
     versionLabel: z.string().min(1),
     contentKind: artifactContentKindSchema,
     bodyStatus: artifactBodyStatusSchema.optional(),
-    body: z.string().min(1).optional(),
+    body: z.string().optional(),
     bodyError: reviewTargetErrorSchema.optional(),
     mermaidBlocks: z.array(mermaidBlockSchema).optional(),
     createdAt: iso8601UtcString,

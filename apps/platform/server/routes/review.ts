@@ -5,6 +5,7 @@ import { AppError } from '../errors/app-error.js';
 import { sessionCookieName } from '../services/auth/auth-session.service.js';
 import {
   getReviewArtifactRouteSchema,
+  getReviewPackageRouteSchema,
   getReviewWorkspaceRouteSchema,
   reviewHtmlRouteSchema,
 } from '../schemas/review.js';
@@ -227,6 +228,81 @@ export async function registerReviewRoutes(app: FastifyInstance): Promise<void> 
         }
 
         return reply.send(artifactReview);
+      } catch (error) {
+        if (error instanceof AppError) {
+          const requestError = buildRequestError(error);
+
+          switch (error.statusCode) {
+            case 401:
+              return reply.code(401).send(requestError);
+            case 403:
+              return reply.code(403).send(requestError);
+            case 404:
+              return reply.code(404).send(requestError);
+            default:
+              throw error;
+          }
+        }
+
+        throw error;
+      }
+    },
+  );
+
+  typedApp.get(
+    '/api/projects/:projectId/processes/:processId/review/packages/:packageId',
+    {
+      schema: getReviewPackageRouteSchema,
+    },
+    async (request, reply) => {
+      if (request.actor === null) {
+        if (request.authFailureReason === 'invalid_session') {
+          reply.clearCookie(sessionCookieName, { path: '/' });
+        }
+
+        return reply.code(401).send({
+          code: 'UNAUTHENTICATED',
+          message: 'Authenticated access is required.',
+          status: 401,
+        });
+      }
+
+      try {
+        await app.processAccessService.assertProcessAccess({
+          actor: request.actor,
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+        });
+
+        const packageReview = await app.packageReviewService.getPackageReview({
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+          packageId: request.params.packageId,
+          memberId: request.query.memberId,
+        });
+
+        if (packageReview === null) {
+          return reply.code(404).send({
+            code: 'REVIEW_TARGET_NOT_FOUND',
+            message: 'The requested review target could not be found.',
+            status: 404,
+          });
+        }
+
+        app.log.info(
+          {
+            method: request.method,
+            url: request.url,
+            actorId: request.actor.userId,
+            projectId: request.params.projectId,
+            processId: request.params.processId,
+            packageId: request.params.packageId,
+            selectedMemberId: packageReview.selectedMemberId ?? null,
+          },
+          'Package review opened.',
+        );
+
+        return reply.send(packageReview);
       } catch (error) {
         if (error instanceof AppError) {
           const requestError = buildRequestError(error);

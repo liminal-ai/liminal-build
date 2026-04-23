@@ -13,10 +13,12 @@ type EqBuilder = {
 class FakeQueryBuilder {
   private readonly criteria: Array<{ field: string; value: unknown }> = [];
   private direction: 'asc' | 'desc' = 'asc';
+  private indexName: string | null = null;
 
   constructor(private readonly rows: TestDoc[]) {}
 
-  withIndex(_indexName: string, build: (query: EqBuilder) => EqBuilder): FakeQueryBuilder {
+  withIndex(indexName: string, build: (query: EqBuilder) => EqBuilder): FakeQueryBuilder {
+    this.indexName = indexName;
     const builder: EqBuilder = {
       eq: (field, value) => {
         this.criteria.push({ field, value });
@@ -69,6 +71,12 @@ class FakeQueryBuilder {
   }
 
   private resolveSortField(rows: TestDoc[]): string {
+    const indexedSortField = this.resolveIndexedSortField(rows);
+
+    if (indexedSortField !== null) {
+      return indexedSortField;
+    }
+
     if (rows.some((row) => 'updatedAt' in row)) {
       return 'updatedAt';
     }
@@ -78,6 +86,22 @@ class FakeQueryBuilder {
     }
 
     return '_creationTime';
+  }
+
+  private resolveIndexedSortField(rows: TestDoc[]): string | null {
+    if (this.indexName === null || !this.indexName.startsWith('by_')) {
+      return null;
+    }
+
+    const normalized = this.indexName.slice('by_'.length);
+    const andSegments = normalized.split('_and_');
+    const trailingSegment = andSegments[andSegments.length - 1] ?? '';
+    const sortField =
+      andSegments.length === 1 && trailingSegment.includes('_')
+        ? trailingSegment.slice(trailingSegment.lastIndexOf('_') + 1)
+        : trailingSegment;
+
+    return sortField.length > 0 && rows.some((row) => sortField in row) ? sortField : null;
   }
 }
 

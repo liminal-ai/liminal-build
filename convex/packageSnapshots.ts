@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import type { Id } from './_generated/dataModel.js';
+import type { Doc, Id } from './_generated/dataModel.js';
 import { internalMutation, internalQuery } from './_generated/server.js';
 
 export const publishPackageSnapshotMemberInputValidator = v.object({
@@ -7,6 +7,21 @@ export const publishPackageSnapshotMemberInputValidator = v.object({
   artifactVersionId: v.id('artifactVersions'),
   position: v.number(),
 });
+
+const EMPTY_PACKAGE_SNAPSHOT_MEMBERS_ERROR = 'Package snapshot must include at least one member.';
+const INVALID_PACKAGE_SNAPSHOT_POSITION_ERROR =
+  'Package snapshot member position must be a non-negative integer.';
+const DUPLICATE_PACKAGE_SNAPSHOT_POSITION_ERROR =
+  'Package snapshot member positions must be unique.';
+const PACKAGE_SNAPSHOT_ARTIFACT_VERSION_NOT_FOUND_ERROR =
+  'Package snapshot member artifact version not found.';
+const PACKAGE_SNAPSHOT_ARTIFACT_VERSION_OWNERSHIP_ERROR =
+  'Package snapshot member artifact version must belong to the specified artifact.';
+const PACKAGE_SNAPSHOT_ARTIFACT_NOT_FOUND_ERROR = 'Package snapshot member artifact not found.';
+
+function buildPackageSnapshotProcessOwnershipError(memberDisplayName: string): string {
+  return `Package snapshot member "${memberDisplayName}" must be produced by the publishing process.`;
+}
 
 export const packageSnapshotsTableFields = {
   processId: v.id('processes'),
@@ -70,6 +85,52 @@ export const publishPackageSnapshot = internalMutation({
     members: v.array(publishPackageSnapshotMemberInputValidator),
   },
   handler: async (ctx, args) => {
+    if (args.members.length === 0) {
+      throw new Error(EMPTY_PACKAGE_SNAPSHOT_MEMBERS_ERROR);
+    }
+
+    const seenPositions = new Set<number>();
+    const validatedMembers: Array<{
+      member: (typeof args.members)[number];
+      artifact: Doc<'artifacts'>;
+      artifactVersion: Doc<'artifactVersions'>;
+    }> = [];
+
+    for (const member of args.members) {
+      if (!Number.isInteger(member.position) || member.position < 0) {
+        throw new Error(INVALID_PACKAGE_SNAPSHOT_POSITION_ERROR);
+      }
+
+      if (seenPositions.has(member.position)) {
+        throw new Error(DUPLICATE_PACKAGE_SNAPSHOT_POSITION_ERROR);
+      }
+      seenPositions.add(member.position);
+
+      const artifactVersion = await ctx.db.get(member.artifactVersionId);
+      if (artifactVersion === null) {
+        throw new Error(PACKAGE_SNAPSHOT_ARTIFACT_VERSION_NOT_FOUND_ERROR);
+      }
+
+      if (artifactVersion.artifactId !== member.artifactId) {
+        throw new Error(PACKAGE_SNAPSHOT_ARTIFACT_VERSION_OWNERSHIP_ERROR);
+      }
+
+      const artifact = await ctx.db.get(member.artifactId);
+      if (artifact === null) {
+        throw new Error(PACKAGE_SNAPSHOT_ARTIFACT_NOT_FOUND_ERROR);
+      }
+
+      if (artifactVersion.createdByProcessId !== args.processId) {
+        throw new Error(buildPackageSnapshotProcessOwnershipError(artifact.displayName));
+      }
+
+      validatedMembers.push({
+        member,
+        artifact,
+        artifactVersion,
+      });
+    }
+
     const packageSnapshotId = await ctx.db.insert('packageSnapshots', {
       processId: args.processId,
       displayName: args.displayName,
@@ -77,12 +138,14 @@ export const publishPackageSnapshot = internalMutation({
       publishedAt: new Date().toISOString(),
     });
 
-    for (const member of args.members) {
+    for (const { artifact, artifactVersion, member } of validatedMembers) {
       await ctx.db.insert('packageSnapshotMembers', {
         packageSnapshotId,
         position: member.position,
         artifactId: member.artifactId,
         artifactVersionId: member.artifactVersionId,
+        displayName: artifact.displayName,
+        versionLabel: artifactVersion.versionLabel,
       });
     }
 

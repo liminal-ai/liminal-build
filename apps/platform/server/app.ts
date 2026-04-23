@@ -49,6 +49,10 @@ import {
   type ArtifactReviewService,
 } from './services/review/artifact-review.service.js';
 import {
+  DefaultPackageReviewService,
+  type PackageReviewService,
+} from './services/review/package-review.service.js';
+import {
   DefaultReviewWorkspaceService,
   type ReviewWorkspaceService,
 } from './services/review/review-workspace.service.js';
@@ -87,6 +91,7 @@ export interface CreateAppOptions {
   processRegistrationService?: ProcessRegistrationService;
   processResumeService?: ProcessResumeService;
   artifactReviewService?: ArtifactReviewService;
+  packageReviewService?: PackageReviewService;
   reviewWorkspaceService?: ReviewWorkspaceService;
   processStartService?: ProcessStartService;
   processWorkSurfaceService?: ProcessWorkSurfaceService;
@@ -105,6 +110,7 @@ declare module 'fastify' {
     processRegistrationService: ProcessRegistrationService;
     processResumeService: ProcessResumeService;
     artifactReviewService: ArtifactReviewService;
+    packageReviewService: PackageReviewService;
     reviewWorkspaceService: ReviewWorkspaceService;
     processStartService: ProcessStartService;
     processWorkSurfaceService: ProcessWorkSurfaceService;
@@ -223,9 +229,17 @@ export async function createApp(options: CreateAppOptions = {}) {
   const artifactReviewService =
     options.artifactReviewService ??
     new DefaultArtifactReviewService(platformStore, markdownRenderer);
+  const packageReviewService =
+    options.packageReviewService ??
+    new DefaultPackageReviewService(platformStore, artifactReviewService);
   const reviewWorkspaceService =
     options.reviewWorkspaceService ??
-    new DefaultReviewWorkspaceService(platformStore, processAccessService, artifactReviewService);
+    new DefaultReviewWorkspaceService(
+      platformStore,
+      processAccessService,
+      artifactReviewService,
+      packageReviewService,
+    );
   const app = Fastify({
     logger: options.logger ?? false,
   });
@@ -243,6 +257,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.decorate('processRegistrationService', processRegistrationService);
   app.decorate('processResumeService', processResumeService);
   app.decorate('artifactReviewService', artifactReviewService);
+  app.decorate('packageReviewService', packageReviewService);
   app.decorate('reviewWorkspaceService', reviewWorkspaceService);
   app.decorate('processStartService', processStartService);
   app.decorate('processWorkSurfaceService', processWorkSurfaceService);

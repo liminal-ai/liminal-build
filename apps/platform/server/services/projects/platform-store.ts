@@ -1,23 +1,23 @@
 import { ConvexHttpClient } from 'convex/browser';
 import { makeFunctionReference } from 'convex/server';
 import {
-  artifactReviewTargetSchema,
   type ArtifactSummary,
+  artifactReviewTargetSchema,
   type CurrentProcessRequest,
   defaultEnvironmentSummary,
   deriveEnvironmentStatusLabel,
   type EnvironmentSummary,
   environmentSummarySchema,
-  packageReviewTargetSchema,
   type PackageReviewTarget,
   type ProcessHistoryItem,
   type ProcessOutputReference,
   type ProcessSummary,
   type ProjectShellResponse,
   type ProjectSummary,
+  packageReviewTargetSchema,
   processSummarySchema,
-  reviewTargetErrorSchema,
   type ReviewTargetSummary,
+  reviewTargetErrorSchema,
   type SideWorkItem,
   type SourceAttachmentSummary,
 } from '../../../shared/contracts/index.js';
@@ -105,6 +105,37 @@ export type ArtifactVersionRecord = {
   bytes: number;
   createdAt: string;
   createdByProcessId: string;
+};
+
+export type PackageSnapshotMemberWriteInput = {
+  artifactId: string;
+  artifactVersionId: string;
+  position: number;
+};
+
+export type PackageSnapshotWriteInput = {
+  processId: string;
+  displayName: string;
+  packageType: string;
+  members: PackageSnapshotMemberWriteInput[];
+};
+
+type PackageSnapshotRecord = {
+  packageSnapshotId: string;
+  processId: string;
+  displayName: string;
+  packageType: string;
+  publishedAt: string;
+};
+
+type PackageSnapshotMemberRecord = {
+  memberId: string;
+  packageSnapshotId: string;
+  position: number;
+  artifactId: string;
+  artifactVersionId: string;
+  displayName: string;
+  versionLabel: string;
 };
 
 export type PlatformSideWorkWriteInput = {
@@ -200,6 +231,7 @@ export interface PlatformStore {
     processId: string;
     artifacts: ArtifactCheckpointTarget[];
   }): Promise<PlatformProcessOutputSummary[]>;
+  publishPackageSnapshot(args: PackageSnapshotWriteInput): Promise<string>;
   listProcessSideWorkItems(args: { processId: string }): Promise<SideWorkItem[]>;
   replaceCurrentProcessSideWorkItems(args: {
     processId: string;
@@ -226,6 +258,7 @@ export interface PlatformStore {
   getProcessReviewPackage(args: {
     processId: string;
     packageId: string;
+    memberId?: string;
   }): Promise<PackageReviewTarget | null>;
 }
 
@@ -262,6 +295,21 @@ function buildPackageReviewTargetSummary(args: {
     targetId: args.packageId,
     displayName: args.displayName,
   };
+}
+
+const EMPTY_PACKAGE_SNAPSHOT_MEMBERS_ERROR = 'Package snapshot must include at least one member.';
+const INVALID_PACKAGE_SNAPSHOT_POSITION_ERROR =
+  'Package snapshot member position must be a non-negative integer.';
+const DUPLICATE_PACKAGE_SNAPSHOT_POSITION_ERROR =
+  'Package snapshot member positions must be unique.';
+const PACKAGE_SNAPSHOT_ARTIFACT_VERSION_NOT_FOUND_ERROR =
+  'Package snapshot member artifact version not found.';
+const PACKAGE_SNAPSHOT_ARTIFACT_VERSION_OWNERSHIP_ERROR =
+  'Package snapshot member artifact version must belong to the specified artifact.';
+const PACKAGE_SNAPSHOT_ARTIFACT_NOT_FOUND_ERROR = 'Package snapshot member artifact not found.';
+
+function buildPackageSnapshotProcessOwnershipError(memberDisplayName: string): string {
+  return `Package snapshot member "${memberDisplayName}" must be produced by the publishing process.`;
 }
 
 type NodeCryptoModule = {
@@ -638,6 +686,17 @@ const getPackageSnapshotQuery = makeFunctionReference<
   } | null
 >('packageSnapshots:getPackageSnapshot');
 
+const publishPackageSnapshotMutation = makeFunctionReference<
+  'mutation',
+  {
+    processId: string;
+    displayName: string;
+    packageType: string;
+    members: PackageSnapshotMemberWriteInput[];
+  },
+  string
+>('packageSnapshots:publishPackageSnapshot');
+
 const listPackageSnapshotMembersQuery = makeFunctionReference<
   'query',
   { packageSnapshotId: string },
@@ -647,6 +706,8 @@ const listPackageSnapshotMembersQuery = makeFunctionReference<
     position: number;
     artifactId: string;
     artifactVersionId: string;
+    displayName: string;
+    versionLabel: string;
   }>
 >('packageSnapshotMembers:listPackageSnapshotMembers');
 
@@ -1030,6 +1091,10 @@ export class NullPlatformStore implements PlatformStore {
     }));
   }
 
+  async publishPackageSnapshot(): Promise<string> {
+    throw new Error('NullPlatformStore does not support package snapshot publishing.');
+  }
+
   async listProcessSideWorkItems(): Promise<SideWorkItem[]> {
     return [];
   }
@@ -1339,6 +1404,12 @@ export class ConvexPlatformStore implements PlatformStore {
     });
   }
 
+  async publishPackageSnapshot(args: PackageSnapshotWriteInput): Promise<string> {
+    return this.client.mutation(publishPackageSnapshotMutation, args, {
+      skipQueue: true,
+    });
+  }
+
   async listProcessSideWorkItems(args: { processId: string }): Promise<SideWorkItem[]> {
     return this.client.query(listProcessSideWorkItemsQuery, args);
   }
@@ -1489,6 +1560,7 @@ export class ConvexPlatformStore implements PlatformStore {
   async getProcessReviewPackage(args: {
     processId: string;
     packageId: string;
+    memberId?: string;
   }): Promise<PackageReviewTarget | null> {
     const snapshot = await this.client.query(getPackageSnapshotQuery, {
       packageSnapshotId: args.packageId,
@@ -1498,36 +1570,21 @@ export class ConvexPlatformStore implements PlatformStore {
       return null;
     }
 
-    const [members, processRecord] = await Promise.all([
-      this.client.query(listPackageSnapshotMembersQuery, {
-        packageSnapshotId: snapshot.packageSnapshotId,
-      }),
-      this.getProcessRecord({
-        processId: args.processId,
-      }),
-    ]);
+    const members = await this.client.query(listPackageSnapshotMembersQuery, {
+      packageSnapshotId: snapshot.packageSnapshotId,
+    });
 
-    if (members.length === 0 || processRecord === null) {
+    if (members.length === 0) {
       return null;
     }
 
-    const projectArtifacts = await this.listProjectArtifacts({
-      projectId: processRecord.projectId,
-    });
-    const artifactDisplayNames = new Map(
-      projectArtifacts.map((artifact) => [artifact.artifactId, artifact.displayName] as const),
-    );
     const memberStates = await Promise.all(
       members.map(async (member) => {
-        const [pinnedVersion, latestVersion] = await Promise.all([
-          this.client.query(getArtifactVersionQuery, {
-            versionId: member.artifactVersionId,
-          }),
-          this.client.query(getLatestArtifactVersionQuery, {
-            artifactId: member.artifactId,
-          }),
-        ]);
-        const displayName = artifactDisplayNames.get(member.artifactId) ?? member.artifactId;
+        const pinnedVersion = await this.client.query(getArtifactVersionQuery, {
+          versionId: member.artifactVersionId,
+        });
+        const displayName = member.displayName;
+        const versionLabel = member.versionLabel;
 
         if (pinnedVersion === null) {
           return {
@@ -1537,7 +1594,7 @@ export class ConvexPlatformStore implements PlatformStore {
               artifactId: member.artifactId,
               displayName,
               versionId: member.artifactVersionId,
-              versionLabel: 'Unavailable version',
+              versionLabel,
               status: 'unavailable' as const,
             },
             review: {
@@ -1551,9 +1608,7 @@ export class ConvexPlatformStore implements PlatformStore {
           };
         }
 
-        const currentVersion = latestVersion ?? pinnedVersion;
-
-        if (currentVersion.contentKind === 'unsupported') {
+        if (pinnedVersion.contentKind === 'unsupported') {
           return {
             member: {
               memberId: member.memberId,
@@ -1561,7 +1616,7 @@ export class ConvexPlatformStore implements PlatformStore {
               artifactId: member.artifactId,
               displayName,
               versionId: pinnedVersion.versionId,
-              versionLabel: pinnedVersion.versionLabel,
+              versionLabel,
               status: 'unsupported' as const,
             },
             review: {
@@ -1582,7 +1637,7 @@ export class ConvexPlatformStore implements PlatformStore {
             artifactId: member.artifactId,
             displayName,
             versionId: pinnedVersion.versionId,
-            versionLabel: pinnedVersion.versionLabel,
+            versionLabel,
             status: 'ready' as const,
           },
           review: {
@@ -1591,15 +1646,15 @@ export class ConvexPlatformStore implements PlatformStore {
             artifact: artifactReviewTargetSchema.parse({
               artifactId: member.artifactId,
               displayName,
-              currentVersionId: currentVersion.versionId,
-              currentVersionLabel: currentVersion.versionLabel,
-              selectedVersionId: currentVersion.versionId,
+              currentVersionId: pinnedVersion.versionId,
+              currentVersionLabel: versionLabel,
+              selectedVersionId: pinnedVersion.versionId,
               versions: [
                 {
-                  versionId: currentVersion.versionId,
-                  versionLabel: currentVersion.versionLabel,
+                  versionId: pinnedVersion.versionId,
+                  versionLabel,
                   isCurrent: true,
-                  createdAt: currentVersion.createdAt,
+                  createdAt: pinnedVersion.createdAt,
                 },
               ],
             }),
@@ -1607,8 +1662,15 @@ export class ConvexPlatformStore implements PlatformStore {
         };
       }),
     );
+    const requestedMember =
+      args.memberId === undefined
+        ? null
+        : (memberStates.find((entry) => entry.member.memberId === args.memberId) ?? null);
     const readyMember =
-      memberStates.find((entry) => entry.member.status === 'ready') ?? memberStates[0] ?? null;
+      requestedMember ??
+      memberStates.find((entry) => entry.member.status === 'ready') ??
+      memberStates[0] ??
+      null;
     const exportability = memberStates.every((entry) => entry.member.status === 'ready')
       ? { available: true as const }
       : {
@@ -1652,7 +1714,11 @@ export class InMemoryPlatformStore implements PlatformStore {
   private readonly currentMaterialRefsByProcessId = new Map<string, CurrentProcessMaterialRefs>();
   private readonly processHydrationPlansByProcessId = new Map<string, WorkingSetPlan>();
   private readonly processOutputsByProcessId = new Map<string, PlatformProcessOutputSummary[]>();
-  private readonly reviewPackagesByProcessId = new Map<string, PackageReviewTarget[]>();
+  private readonly packageSnapshotsByProcessId = new Map<string, PackageSnapshotRecord[]>();
+  private readonly packageSnapshotMembersBySnapshotId = new Map<
+    string,
+    PackageSnapshotMemberRecord[]
+  >();
   private readonly artifactContentsByArtifactId = new Map<string, string>();
   private readonly artifactContentsByVersionId = new Map<string, string>();
   private readonly artifactVersionsByArtifactId = new Map<string, ArtifactVersionRecord[]>();
@@ -1772,7 +1838,32 @@ export class InMemoryPlatformStore implements PlatformStore {
     }
 
     for (const [processId, packages] of Object.entries(args.reviewPackagesByProcessId ?? {})) {
-      this.reviewPackagesByProcessId.set(processId, packages);
+      const snapshots = packages.map((pkg) => ({
+        packageSnapshotId: pkg.packageId,
+        processId,
+        displayName: pkg.displayName,
+        packageType: pkg.packageType,
+        publishedAt:
+          pkg.selectedMember?.artifact?.selectedVersion?.createdAt ??
+          pkg.selectedMember?.artifact?.versions[0]?.createdAt ??
+          new Date('2026-01-01T00:00:00.000Z').toISOString(),
+      }));
+      this.packageSnapshotsByProcessId.set(processId, snapshots);
+
+      for (const pkg of packages) {
+        this.packageSnapshotMembersBySnapshotId.set(
+          pkg.packageId,
+          pkg.members.map((member) => ({
+            memberId: member.memberId,
+            packageSnapshotId: pkg.packageId,
+            position: member.position,
+            artifactId: member.artifactId,
+            artifactVersionId: member.versionId,
+            displayName: member.displayName,
+            versionLabel: member.versionLabel,
+          })),
+        );
+      }
     }
 
     for (const [processId, items] of Object.entries(args.processSideWorkItemsByProcessId ?? {})) {
@@ -2558,6 +2649,86 @@ export class InMemoryPlatformStore implements PlatformStore {
     return [];
   }
 
+  private listArtifactsForProject(projectId: string): ArtifactSummary[] {
+    return this.artifactsByProjectId.get(projectId) ?? [];
+  }
+
+  async publishPackageSnapshot(args: PackageSnapshotWriteInput): Promise<string> {
+    if (args.members.length === 0) {
+      throw new Error(EMPTY_PACKAGE_SNAPSHOT_MEMBERS_ERROR);
+    }
+
+    const processRecord = this.findProcessRecord(args.processId);
+    if (processRecord === null) {
+      throw new Error('Process not found.');
+    }
+
+    const projectArtifacts = this.listArtifactsForProject(processRecord.projectId);
+    const artifactDisplayNames = new Map(
+      projectArtifacts.map((artifact) => [artifact.artifactId, artifact.displayName] as const),
+    );
+    const seenPositions = new Set<number>();
+    const existingSnapshots = this.packageSnapshotsByProcessId.get(args.processId) ?? [];
+    const packageSnapshotId = `${args.processId}:package-${existingSnapshots.length + 1}`;
+    const publishedAt = new Date().toISOString();
+    const memberRecords: PackageSnapshotMemberRecord[] = [];
+
+    for (const [index, member] of args.members.entries()) {
+      if (!Number.isInteger(member.position) || member.position < 0) {
+        throw new Error(INVALID_PACKAGE_SNAPSHOT_POSITION_ERROR);
+      }
+
+      if (seenPositions.has(member.position)) {
+        throw new Error(DUPLICATE_PACKAGE_SNAPSHOT_POSITION_ERROR);
+      }
+      seenPositions.add(member.position);
+
+      const artifact = artifactDisplayNames.get(member.artifactId);
+      if (artifact === undefined) {
+        throw new Error(PACKAGE_SNAPSHOT_ARTIFACT_NOT_FOUND_ERROR);
+      }
+
+      const artifactVersion = await this.getArtifactVersion({
+        versionId: member.artifactVersionId,
+      });
+      if (artifactVersion === null) {
+        throw new Error(PACKAGE_SNAPSHOT_ARTIFACT_VERSION_NOT_FOUND_ERROR);
+      }
+
+      if (artifactVersion.artifactId !== member.artifactId) {
+        throw new Error(PACKAGE_SNAPSHOT_ARTIFACT_VERSION_OWNERSHIP_ERROR);
+      }
+
+      if (artifactVersion.createdByProcessId !== args.processId) {
+        throw new Error(buildPackageSnapshotProcessOwnershipError(artifact));
+      }
+
+      memberRecords.push({
+        memberId: `${packageSnapshotId}:member-${index + 1}`,
+        packageSnapshotId,
+        position: member.position,
+        artifactId: member.artifactId,
+        artifactVersionId: member.artifactVersionId,
+        displayName: artifact,
+        versionLabel: artifactVersion.versionLabel,
+      });
+    }
+
+    this.packageSnapshotsByProcessId.set(args.processId, [
+      {
+        packageSnapshotId,
+        processId: args.processId,
+        displayName: args.displayName,
+        packageType: args.packageType,
+        publishedAt,
+      },
+      ...existingSnapshots,
+    ]);
+    this.packageSnapshotMembersBySnapshotId.set(packageSnapshotId, memberRecords);
+
+    return packageSnapshotId;
+  }
+
   async listProcessReviewTargets(args: {
     projectId: string;
     processId: string;
@@ -2585,16 +2756,21 @@ export class InMemoryPlatformStore implements PlatformStore {
           }),
       )
     ).filter((target): target is NonNullable<typeof target> => target !== null);
-    const packages = this.reviewPackagesByProcessId.get(args.processId) ?? [];
+    const packages = this.packageSnapshotsByProcessId.get(args.processId) ?? [];
     const orderedTargets = [
       ...targets,
-      ...packages.map((target) => ({
-        publishedAt:
-          target.selectedMember?.artifact?.versions[0]?.createdAt ?? `package:${target.packageId}`,
-        targetKind: 'package' as const,
-        targetId: target.packageId,
-        displayName: target.displayName,
-      })),
+      ...packages
+        .filter(
+          (snapshot) =>
+            (this.packageSnapshotMembersBySnapshotId.get(snapshot.packageSnapshotId)?.length ?? 0) >
+            0,
+        )
+        .map((target) => ({
+          publishedAt: target.publishedAt,
+          targetKind: 'package' as const,
+          targetId: target.packageSnapshotId,
+          displayName: target.displayName,
+        })),
     ].sort((left, right) => {
       const publishedAtComparison = right.publishedAt.localeCompare(left.publishedAt);
 
@@ -2641,12 +2817,144 @@ export class InMemoryPlatformStore implements PlatformStore {
   async getProcessReviewPackage(args: {
     processId: string;
     packageId: string;
+    memberId?: string;
   }): Promise<PackageReviewTarget | null> {
-    return (
-      this.reviewPackagesByProcessId
-        .get(args.processId)
-        ?.find((target) => target.packageId === args.packageId) ?? null
-    );
+    const snapshot = this.packageSnapshotsByProcessId
+      .get(args.processId)
+      ?.find((candidate) => candidate.packageSnapshotId === args.packageId);
+
+    if (snapshot === undefined) {
+      return null;
+    }
+
+    const memberRecords =
+      this.packageSnapshotMembersBySnapshotId.get(snapshot.packageSnapshotId) ?? [];
+
+    return this.buildInMemoryPackageReviewTarget({
+      snapshot,
+      members: memberRecords,
+      requestedMemberId: args.memberId,
+    });
+  }
+
+  private buildInMemoryPackageReviewTarget(args: {
+    snapshot: PackageSnapshotRecord;
+    members: PackageSnapshotMemberRecord[];
+    requestedMemberId?: string;
+  }): PackageReviewTarget | null {
+    const memberStates = args.members.map((member) => {
+      const pinnedVersion =
+        this.readArtifactVersions(member.artifactId).find(
+          (candidate) => candidate.versionId === member.artifactVersionId,
+        ) ?? null;
+      const displayName = member.displayName;
+      const versionLabel = member.versionLabel;
+
+      if (pinnedVersion === null) {
+        return {
+          member: {
+            memberId: member.memberId,
+            position: member.position,
+            artifactId: member.artifactId,
+            displayName,
+            versionId: member.artifactVersionId,
+            versionLabel,
+            status: 'unavailable' as const,
+          },
+          review: {
+            memberId: member.memberId,
+            status: 'unavailable' as const,
+            error: reviewTargetErrorSchema.parse({
+              code: 'REVIEW_MEMBER_UNAVAILABLE',
+              message: 'The pinned package member is currently unavailable.',
+            }),
+          },
+        };
+      }
+
+      if (pinnedVersion.contentKind === 'unsupported') {
+        return {
+          member: {
+            memberId: member.memberId,
+            position: member.position,
+            artifactId: member.artifactId,
+            displayName,
+            versionId: pinnedVersion.versionId,
+            versionLabel,
+            status: 'unsupported' as const,
+          },
+          review: {
+            memberId: member.memberId,
+            status: 'unsupported' as const,
+            error: reviewTargetErrorSchema.parse({
+              code: 'REVIEW_TARGET_UNSUPPORTED',
+              message: 'This artifact format is not reviewable in the current release.',
+            }),
+          },
+        };
+      }
+
+      return {
+        member: {
+          memberId: member.memberId,
+          position: member.position,
+          artifactId: member.artifactId,
+          displayName,
+          versionId: pinnedVersion.versionId,
+          versionLabel,
+          status: 'ready' as const,
+        },
+        review: {
+          memberId: member.memberId,
+          status: 'ready' as const,
+          artifact: artifactReviewTargetSchema.parse({
+            artifactId: member.artifactId,
+            displayName,
+            currentVersionId: pinnedVersion.versionId,
+            currentVersionLabel: versionLabel,
+            selectedVersionId: pinnedVersion.versionId,
+            versions: [
+              {
+                versionId: pinnedVersion.versionId,
+                versionLabel,
+                isCurrent: true,
+                createdAt: pinnedVersion.createdAt,
+              },
+            ],
+          }),
+        },
+      };
+    });
+    const requestedEntry =
+      args.requestedMemberId === undefined
+        ? null
+        : (memberStates.find((entry) => entry.member.memberId === args.requestedMemberId) ?? null);
+    const selectedEntry =
+      requestedEntry ??
+      memberStates.find((entry) => entry.member.status === 'ready') ??
+      memberStates[0] ??
+      null;
+
+    if (selectedEntry === null) {
+      return null;
+    }
+
+    return packageReviewTargetSchema.parse({
+      packageId: args.snapshot.packageSnapshotId,
+      displayName: args.snapshot.displayName,
+      packageType: args.snapshot.packageType,
+      members: memberStates
+        .map((entry) => entry.member)
+        .sort((left, right) => left.position - right.position),
+      selectedMemberId: selectedEntry.review.memberId,
+      selectedMember: selectedEntry.review,
+      exportability: memberStates.every((entry) => entry.member.status === 'ready')
+        ? { available: true as const }
+        : {
+            available: false as const,
+            reason: 'One or more members are unavailable or unsupported.',
+          },
+    });
   }
 
   /**

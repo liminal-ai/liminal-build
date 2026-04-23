@@ -31,6 +31,12 @@ export interface ShellAppOptions {
     artifactId: string,
     versionId: string,
   ) => void;
+  onSelectPackageMember: (
+    projectId: string,
+    processId: string,
+    packageId: string,
+    memberId: string,
+  ) => void;
   onStartProcess: (projectId: string, processId: string) => Promise<void>;
   onResumeProcess: (projectId: string, processId: string) => Promise<void>;
   onRehydrateEnvironment: (projectId: string, processId: string) => Promise<void>;
@@ -68,6 +74,9 @@ export function createShellApp(options: ShellAppOptions) {
               },
               onSelectArtifactVersion: (projectId, processId, artifactId, versionId) => {
                 options.onSelectArtifactVersion(projectId, processId, artifactId, versionId);
+              },
+              onSelectPackageMember: (projectId, processId, packageId, memberId) => {
+                options.onSelectPackageMember(projectId, processId, packageId, memberId);
               },
             })
           : isProcessWorkSurface

@@ -1,6 +1,7 @@
 import { z } from 'zod/v4';
 import {
   artifactReviewTargetSchema,
+  packageReviewTargetSchema,
   requestErrorSchema,
   reviewWorkspaceResponseSchema,
   reviewWorkspaceRouteParamsSchema,
@@ -36,6 +37,21 @@ export const getReviewArtifactRouteSchema = {
   }),
   response: {
     200: artifactReviewTargetSchema,
+    401: requestErrorSchema,
+    403: requestErrorSchema,
+    404: requestErrorSchema,
+  },
+} as const;
+
+export const getReviewPackageRouteSchema = {
+  params: reviewWorkspaceRouteParamsSchema.extend({
+    packageId: z.string().min(1),
+  }),
+  querystring: reviewWorkspaceSelectionSchema.pick({
+    memberId: true,
+  }),
+  response: {
+    200: packageReviewTargetSchema,
     401: requestErrorSchema,
     403: requestErrorSchema,
     404: requestErrorSchema,

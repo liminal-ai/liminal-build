@@ -68,3 +68,16 @@ export const unavailablePackageFixture = packageReviewTargetSchema.parse({
     reason: 'One or more members are unavailable.',
   }),
 });
+
+export const firstReadySelectedPackageFixture = packageReviewTargetSchema.parse({
+  packageId: 'package-003',
+  displayName: 'Ordered Package',
+  packageType: 'FeatureSpecificationOutput',
+  members: [unavailablePackageMemberFixture, readyPackageMemberFixture],
+  selectedMemberId: readyPackageMemberFixture.memberId,
+  selectedMember: readyPackageMemberReviewFixture,
+  exportability: packageExportabilitySchema.parse({
+    available: false,
+    reason: 'One or more members are unavailable.',
+  }),
+});

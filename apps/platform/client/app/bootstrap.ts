@@ -37,7 +37,11 @@ import {
   getProjectShell,
   listProjects,
 } from '../browser-api/projects-api.js';
-import { getArtifactReview, getReviewWorkspace } from '../browser-api/review-workspace-api.js';
+import {
+  getArtifactReview,
+  getPackageReview,
+  getReviewWorkspace,
+} from '../browser-api/review-workspace-api.js';
 import { getRequiredRootElement, getShellBootstrapPayload } from './dom.js';
 import { applyLiveProcessMessage } from './process-live.js';
 import { navigateTo, parseRoute } from './router.js';
@@ -1092,6 +1096,81 @@ export async function bootstrapApp(
     }
   };
 
+  const selectPackageMember = async (
+    projectId: string,
+    processId: string,
+    packageId: string,
+    memberId: string,
+  ): Promise<void> => {
+    const currentReviewWorkspace = store.get().reviewWorkspace;
+
+    if (
+      currentReviewWorkspace.projectId !== projectId ||
+      currentReviewWorkspace.processId !== processId
+    ) {
+      return;
+    }
+
+    const selection: ReviewWorkspaceSelection = {
+      targetKind: 'package',
+      targetId: packageId,
+      memberId,
+    };
+
+    try {
+      const packageReview = await getPackageReview({
+        projectId,
+        processId,
+        packageId,
+        memberId,
+      });
+
+      store.patch('route', {
+        pathname: getRoutePathname({
+          kind: 'review-workspace',
+          projectId,
+          selectedProcessId: null,
+          processId,
+          reviewSelection: selection,
+        }),
+        projectId,
+        selectedProcessId: null,
+      });
+      store.patch('reviewWorkspace', {
+        ...currentReviewWorkspace,
+        selection,
+        target: {
+          targetKind: 'package',
+          displayName: packageReview.displayName,
+          status: 'ready',
+          package: packageReview,
+        },
+        error: null,
+      });
+      navigateTo(
+        {
+          kind: 'review-workspace',
+          projectId,
+          selectedProcessId: null,
+          processId,
+          reviewSelection: selection,
+        },
+        {},
+        targetWindow,
+      );
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        store.patch('reviewWorkspace', {
+          ...currentReviewWorkspace,
+          error: error.payload,
+        });
+        return;
+      }
+
+      throw error;
+    }
+  };
+
   const startCurrentProcess = async (projectId: string, processId: string): Promise<void> => {
     clearProcessActionError(projectId, processId);
 
@@ -1333,6 +1412,9 @@ export async function bootstrapApp(
     },
     onSelectArtifactVersion: (projectId, processId, artifactId, versionId) => {
       void selectArtifactVersion(projectId, processId, artifactId, versionId);
+    },
+    onSelectPackageMember: (projectId, processId, packageId, memberId) => {
+      void selectPackageMember(projectId, processId, packageId, memberId);
     },
     onStartProcess: startCurrentProcess,
     onResumeProcess: resumeCurrentProcess,
