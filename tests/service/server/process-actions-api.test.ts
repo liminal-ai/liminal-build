@@ -221,7 +221,7 @@ describe('process actions api', () => {
       process: {
         processId: draftProcessSummary.processId,
         status: 'running',
-        availableActions: ['review'],
+        availableActions: [],
       },
       currentRequest: null,
     });
@@ -262,7 +262,7 @@ describe('process actions api', () => {
       process: {
         processId: pausedProcessSummary.processId,
         status: 'running',
-        availableActions: ['review'],
+        availableActions: [],
       },
       currentRequest: null,
     });
@@ -370,7 +370,7 @@ describe('process actions api', () => {
       process: {
         processId: interruptedProcessSummary.processId,
         status: 'interrupted',
-        availableActions: ['review'],
+        availableActions: [],
       },
       currentRequest: null,
     });
@@ -388,7 +388,7 @@ describe('process actions api', () => {
       process: {
         processId: interruptedProcessSummary.processId,
         status: 'running',
-        availableActions: ['review'],
+        availableActions: [],
       },
       currentRequest: null,
     });
@@ -469,7 +469,7 @@ describe('process actions api', () => {
         processId: pausedProcessSummary.processId,
         status: 'completed',
         nextActionLabel: null,
-        availableActions: ['review'],
+        availableActions: [],
       },
       currentRequest: null,
     });
@@ -488,7 +488,7 @@ describe('process actions api', () => {
         processId: pausedProcessSummary.processId,
         status: 'completed',
         nextActionLabel: null,
-        availableActions: ['review'],
+        availableActions: [],
       },
       currentRequest: null,
     });
@@ -519,7 +519,7 @@ describe('process actions api', () => {
         processId: interruptedProcessSummary.processId,
         status: 'failed',
         nextActionLabel: 'Investigate failure',
-        availableActions: ['review', 'restart'],
+        availableActions: ['restart'],
       },
       currentRequest: null,
     });
@@ -538,7 +538,7 @@ describe('process actions api', () => {
         processId: interruptedProcessSummary.processId,
         status: 'failed',
         nextActionLabel: 'Investigate failure',
-        availableActions: ['review', 'restart'],
+        availableActions: ['restart'],
       },
       currentRequest: null,
     });
@@ -634,7 +634,7 @@ describe('process actions api', () => {
       process: {
         processId: waitingProcessSummary.processId,
         status: 'running',
-        availableActions: ['review'],
+        availableActions: [],
       },
       currentRequest: null,
     });
@@ -653,7 +653,7 @@ describe('process actions api', () => {
       process: {
         processId: waitingProcessSummary.processId,
         status: 'running',
-        availableActions: ['review'],
+        availableActions: [],
       },
       currentRequest: null,
       history: {
@@ -702,11 +702,11 @@ describe('process actions api', () => {
         processId: waitingProcessSummary.processId,
         status: 'running',
         hasEnvironment: true,
-        availableActions: expect.arrayContaining(['review', 'rehydrate', 'rebuild']),
+        availableActions: expect.arrayContaining(['rehydrate', 'rebuild']),
         controls: expect.arrayContaining([
           expect.objectContaining({
             actionId: 'review',
-            enabled: true,
+            enabled: false,
           }),
           expect.objectContaining({
             actionId: 'rehydrate',

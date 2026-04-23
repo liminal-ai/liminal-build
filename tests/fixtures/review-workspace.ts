@@ -152,3 +152,28 @@ export const exportablePackageReviewWorkspaceFixture = reviewWorkspaceResponseSc
     package: exportablePackageFixture,
   }),
 });
+
+export const multiTargetReviewWorkspaceFixture = reviewWorkspaceResponseSchema.parse({
+  project,
+  process,
+  availableTargets: [
+    {
+      position: 0,
+      targetKind: 'artifact',
+      targetId: readyArtifactReviewTargetFixture.artifactId,
+      displayName: readyArtifactReviewTargetFixture.displayName,
+    },
+    {
+      position: 1,
+      targetKind: 'package',
+      targetId: exportablePackageFixture.packageId,
+      displayName: exportablePackageFixture.displayName,
+    },
+  ],
+});
+
+export const zeroTargetReviewWorkspaceFixture = reviewWorkspaceResponseSchema.parse({
+  project,
+  process,
+  availableTargets: [],
+});

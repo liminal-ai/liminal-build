@@ -12,6 +12,7 @@ import { workosAuthPlugin } from './plugins/workos-auth.plugin.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerProcessRoutes } from './routes/processes.js';
 import { registerProjectRoutes } from './routes/projects.js';
+import { registerReviewRoutes } from './routes/review.js';
 import { AuthSessionService } from './services/auth/auth-session.service.js';
 import { AuthUserSyncService } from './services/auth/auth-user-sync.service.js';
 import {
@@ -42,6 +43,11 @@ import {
   DefaultProcessWorkSurfaceService,
   type ProcessWorkSurfaceService,
 } from './services/processes/process-work-surface.service.js';
+import { MarkdownRendererService } from './services/rendering/markdown-renderer.service.js';
+import {
+  DefaultReviewWorkspaceService,
+  type ReviewWorkspaceService,
+} from './services/review/review-workspace.service.js';
 import {
   ConvexPlatformStore,
   NullPlatformStore,
@@ -76,6 +82,7 @@ export interface CreateAppOptions {
   processResponseService?: ProcessResponseService;
   processRegistrationService?: ProcessRegistrationService;
   processResumeService?: ProcessResumeService;
+  reviewWorkspaceService?: ReviewWorkspaceService;
   processStartService?: ProcessStartService;
   processWorkSurfaceService?: ProcessWorkSurfaceService;
 }
@@ -92,6 +99,7 @@ declare module 'fastify' {
     processResponseService: ProcessResponseService;
     processRegistrationService: ProcessRegistrationService;
     processResumeService: ProcessResumeService;
+    reviewWorkspaceService: ReviewWorkspaceService;
     processStartService: ProcessStartService;
     processWorkSurfaceService: ProcessWorkSurfaceService;
   }
@@ -205,6 +213,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   const processWorkSurfaceService =
     options.processWorkSurfaceService ??
     new DefaultProcessWorkSurfaceService(platformStore, processAccessService);
+  const markdownRenderer = await MarkdownRendererService.create();
+  const reviewWorkspaceService =
+    options.reviewWorkspaceService ??
+    new DefaultReviewWorkspaceService(platformStore, processAccessService, markdownRenderer);
   const app = Fastify({
     logger: options.logger ?? false,
   });
@@ -221,6 +233,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.decorate('processResponseService', processResponseService);
   app.decorate('processRegistrationService', processRegistrationService);
   app.decorate('processResumeService', processResumeService);
+  app.decorate('reviewWorkspaceService', reviewWorkspaceService);
   app.decorate('processStartService', processStartService);
   app.decorate('processWorkSurfaceService', processWorkSurfaceService);
 
@@ -239,6 +252,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   await app.register(registerAuthRoutes);
   await app.register(registerProjectRoutes);
   await app.register(registerProcessRoutes);
+  await app.register(registerReviewRoutes);
 
   app.get('/health', async () => {
     return {

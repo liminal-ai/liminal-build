@@ -27,6 +27,7 @@ export function renderProcessWorkSurfacePage(args: {
   targetDocument: Document;
   targetWindow: Window & typeof globalThis;
   onOpenProject: (projectId: string) => void;
+  onOpenReview?: (projectId: string, processId: string) => void;
   onStartProcess?: (projectId: string, processId: string) => void;
   onResumeProcess?: (projectId: string, processId: string) => void;
   onRehydrateEnvironment?: (projectId: string, processId: string) => void;
@@ -139,6 +140,9 @@ export function renderProcessWorkSurfacePage(args: {
             return;
           case 'resume':
             args.onResumeProcess?.(activeProject.projectId, activeProcess.processId);
+            return;
+          case 'review':
+            args.onOpenReview?.(activeProject.projectId, activeProcess.processId);
             return;
           case 'rehydrate':
             args.onRehydrateEnvironment?.(activeProject.projectId, activeProcess.processId);

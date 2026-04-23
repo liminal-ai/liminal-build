@@ -7,12 +7,14 @@ import {
   deriveEnvironmentStatusLabel,
   type EnvironmentSummary,
   environmentSummarySchema,
+  type PackageReviewTarget,
   type ProcessHistoryItem,
   type ProcessOutputReference,
   type ProcessSummary,
   type ProjectShellResponse,
   type ProjectSummary,
   processSummarySchema,
+  type ReviewTargetSummary,
   type SideWorkItem,
   type SourceAttachmentSummary,
 } from '../../../shared/contracts/index.js';
@@ -196,6 +198,14 @@ export interface PlatformStore {
    * Returns `null` when the artifact row or its storage blob is missing.
    */
   getArtifactContent(args: { artifactId: string }): Promise<string | null>;
+  listProcessReviewTargets(args: {
+    projectId: string;
+    processId: string;
+  }): Promise<ReviewTargetSummary[]>;
+  getProcessReviewPackage(args: {
+    processId: string;
+    packageId: string;
+  }): Promise<PackageReviewTarget | null>;
 }
 
 function buildDefaultEnvironmentSummary(): EnvironmentSummary {
@@ -206,6 +216,18 @@ function buildDefaultEnvironmentSummary(): EnvironmentSummary {
 
 function cloneEnvironmentSummary(summary: EnvironmentSummary): EnvironmentSummary {
   return environmentSummarySchema.parse(summary);
+}
+
+function buildArtifactReviewTargetSummary(
+  artifact: Pick<ArtifactSummary, 'artifactId' | 'displayName'>,
+  position: number,
+): ReviewTargetSummary {
+  return {
+    position,
+    targetKind: 'artifact',
+    targetId: artifact.artifactId,
+    displayName: artifact.displayName,
+  };
 }
 
 type NodeCryptoModule = {
@@ -929,6 +951,14 @@ export class NullPlatformStore implements PlatformStore {
   async getArtifactContent(_args: { artifactId: string }): Promise<string | null> {
     return null;
   }
+
+  async listProcessReviewTargets(): Promise<ReviewTargetSummary[]> {
+    return [];
+  }
+
+  async getProcessReviewPackage(): Promise<PackageReviewTarget | null> {
+    return null;
+  }
 }
 
 export class ConvexPlatformStore implements PlatformStore {
@@ -1228,6 +1258,42 @@ export class ConvexPlatformStore implements PlatformStore {
       artifactId: args.artifactId,
     });
   }
+
+  async listProcessReviewTargets(args: {
+    projectId: string;
+    processId: string;
+  }): Promise<ReviewTargetSummary[]> {
+    const [artifacts, currentMaterialRefs] = await Promise.all([
+      this.listProjectArtifacts({
+        projectId: args.projectId,
+      }),
+      this.getCurrentProcessMaterialRefs({
+        processId: args.processId,
+      }),
+    ]);
+    const reviewableArtifactIds = new Set(currentMaterialRefs.artifactIds);
+    const reviewableArtifacts = artifacts
+      .filter(
+        (artifact) =>
+          reviewableArtifactIds.has(artifact.artifactId) && artifact.currentVersionLabel !== null,
+      )
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    const contents = await Promise.all(
+      reviewableArtifacts.map((artifact) =>
+        this.getArtifactContent({
+          artifactId: artifact.artifactId,
+        }),
+      ),
+    );
+
+    return reviewableArtifacts
+      .filter((_, index) => contents[index] !== null)
+      .map((artifact, index) => buildArtifactReviewTargetSummary(artifact, index));
+  }
+
+  async getProcessReviewPackage(): Promise<PackageReviewTarget | null> {
+    return null;
+  }
 }
 
 export class InMemoryPlatformStore implements PlatformStore {
@@ -1248,6 +1314,7 @@ export class InMemoryPlatformStore implements PlatformStore {
   private readonly currentMaterialRefsByProcessId = new Map<string, CurrentProcessMaterialRefs>();
   private readonly processHydrationPlansByProcessId = new Map<string, WorkingSetPlan>();
   private readonly processOutputsByProcessId = new Map<string, PlatformProcessOutputSummary[]>();
+  private readonly reviewPackagesByProcessId = new Map<string, PackageReviewTarget[]>();
   private readonly artifactContentsByArtifactId = new Map<string, string>();
   private readonly processSideWorkItemsByProcessId = new Map<string, SideWorkItem[]>();
   private readonly startProcessResultsByProcessId = new Map<string, ProcessActionStoreResult>();
@@ -1277,6 +1344,7 @@ export class InMemoryPlatformStore implements PlatformStore {
       processWorkingSetFingerprintsByProcessId?: Record<string, string | null>;
       currentMaterialRefsByProcessId?: Record<string, CurrentProcessMaterialRefs>;
       processOutputsByProcessId?: Record<string, PlatformProcessOutputSeed[]>;
+      reviewPackagesByProcessId?: Record<string, PackageReviewTarget[]>;
       processSideWorkItemsByProcessId?: Record<string, SideWorkItem[]>;
       startProcessResultsByProcessId?: Record<string, ProcessActionStoreResult>;
       resumeProcessResultsByProcessId?: Record<string, ProcessActionStoreResult>;
@@ -1348,6 +1416,10 @@ export class InMemoryPlatformStore implements PlatformStore {
           linkedArtifactId: output.linkedArtifactId ?? null,
         })),
       );
+    }
+
+    for (const [processId, packages] of Object.entries(args.reviewPackagesByProcessId ?? {})) {
+      this.reviewPackagesByProcessId.set(processId, packages);
     }
 
     for (const [processId, items] of Object.entries(args.processSideWorkItemsByProcessId ?? {})) {
@@ -2019,6 +2091,49 @@ export class InMemoryPlatformStore implements PlatformStore {
 
   async getArtifactContent(args: { artifactId: string }): Promise<string | null> {
     return this.artifactContentsByArtifactId.get(args.artifactId) ?? null;
+  }
+
+  async listProcessReviewTargets(args: {
+    projectId: string;
+    processId: string;
+  }): Promise<ReviewTargetSummary[]> {
+    const currentMaterialRefs = this.currentMaterialRefsByProcessId.get(args.processId) ?? {
+      artifactIds: [],
+      sourceAttachmentIds: [],
+    };
+    const reviewableArtifactIds = new Set(currentMaterialRefs.artifactIds);
+    const reviewableArtifacts = (this.artifactsByProjectId.get(args.projectId) ?? [])
+      .filter(
+        (artifact) =>
+          reviewableArtifactIds.has(artifact.artifactId) && artifact.currentVersionLabel !== null,
+      )
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      .filter((artifact) => this.artifactContentsByArtifactId.has(artifact.artifactId));
+    const targets = reviewableArtifacts.map((artifact, index) =>
+      buildArtifactReviewTargetSummary(artifact, index),
+    );
+    const packages = this.reviewPackagesByProcessId.get(args.processId) ?? [];
+
+    return [
+      ...targets,
+      ...packages.map((target, index) => ({
+        position: targets.length + index,
+        targetKind: 'package' as const,
+        targetId: target.packageId,
+        displayName: target.displayName,
+      })),
+    ];
+  }
+
+  async getProcessReviewPackage(args: {
+    processId: string;
+    packageId: string;
+  }): Promise<PackageReviewTarget | null> {
+    return (
+      this.reviewPackagesByProcessId
+        .get(args.processId)
+        ?.find((target) => target.packageId === args.packageId) ?? null
+    );
   }
 
   /**

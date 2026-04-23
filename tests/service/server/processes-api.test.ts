@@ -395,6 +395,14 @@ class RecordingPlatformStore implements PlatformStore {
     return null;
   }
 
+  async listProcessReviewTargets() {
+    return [];
+  }
+
+  async getProcessReviewPackage() {
+    return null;
+  }
+
   private updateProjectSummary(
     projectId: string,
     update: (project: ProjectSummary) => ProjectSummary,

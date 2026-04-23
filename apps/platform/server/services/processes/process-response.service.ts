@@ -10,7 +10,7 @@ import { AppError } from '../../errors/app-error.js';
 import type { AuthenticatedActor } from '../auth/auth-session.service.js';
 import type { ProcessLiveHub } from './live/process-live-hub.js';
 import type { PlatformStore } from '../projects/platform-store.js';
-import { buildProcessSurfaceSummary } from './process-work-surface.service.js';
+import { buildProcessSurfaceSummaryWithReviewability } from './process-work-surface.service.js';
 import type { ProcessAccessService } from './process-access.service.js';
 
 export class ProcessResponseService {
@@ -47,11 +47,17 @@ export class ProcessResponseService {
       const environment = await this.platformStore.getProcessEnvironmentSummary({
         processId: access.process.processId,
       });
+      const process = await buildProcessSurfaceSummaryWithReviewability({
+        platformStore: this.platformStore,
+        projectId: access.project.projectId,
+        process: existing.process,
+        environment,
+      });
 
       return submitProcessResponseResponseSchema.parse({
         accepted: true,
         historyItemId: existing.historyItem.historyItemId,
-        process: buildProcessSurfaceSummary(existing.process, environment),
+        process,
         currentRequest: existing.currentRequest,
       });
     }
@@ -72,7 +78,12 @@ export class ProcessResponseService {
       const environment = await this.platformStore.getProcessEnvironmentSummary({
         processId: access.process.processId,
       });
-      const process = buildProcessSurfaceSummary(result.process, environment);
+      const process = await buildProcessSurfaceSummaryWithReviewability({
+        platformStore: this.platformStore,
+        projectId: access.project.projectId,
+        process: result.process,
+        environment,
+      });
 
       this.processLiveHub.publish({
         projectId: access.project.projectId,

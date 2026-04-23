@@ -1,4 +1,5 @@
 import {
+  buildReviewWorkspacePath,
   buildProcessWorkSurfacePath,
   type ParsedRoute,
   parsedRouteSchema,
@@ -18,6 +19,26 @@ export function parseRoute(url: URL): ParsedRoute {
       projectId: null,
       selectedProcessId: null,
       processId: null,
+      reviewSelection: null,
+    });
+  }
+
+  const reviewMatch = pathname.match(/^\/projects\/([^/]+)\/processes\/([^/]+)\/review$/);
+
+  if (reviewMatch !== null) {
+    const [, projectId, processId] = reviewMatch;
+
+    return parsedRouteSchema.parse({
+      kind: 'review-workspace',
+      projectId,
+      selectedProcessId: null,
+      processId,
+      reviewSelection: {
+        targetKind: url.searchParams.get('targetKind') ?? undefined,
+        targetId: url.searchParams.get('targetId') ?? undefined,
+        versionId: url.searchParams.get('versionId') ?? undefined,
+        memberId: url.searchParams.get('memberId') ?? undefined,
+      },
     });
   }
 
@@ -31,6 +52,7 @@ export function parseRoute(url: URL): ParsedRoute {
       projectId,
       selectedProcessId: null,
       processId,
+      reviewSelection: null,
     });
   }
 
@@ -44,6 +66,7 @@ export function parseRoute(url: URL): ParsedRoute {
       projectId,
       selectedProcessId: url.searchParams.get('processId'),
       processId: null,
+      reviewSelection: null,
     });
   }
 
@@ -52,6 +75,7 @@ export function parseRoute(url: URL): ParsedRoute {
     projectId: null,
     selectedProcessId: null,
     processId: null,
+    reviewSelection: null,
   });
 }
 
@@ -65,6 +89,34 @@ export function buildRouteHref(route: ParsedRoute): string {
       projectId: route.projectId ?? '',
       processId: route.processId ?? '',
     });
+  }
+
+  if (route.kind === 'review-workspace') {
+    const url = new URL(
+      buildReviewWorkspacePath({
+        projectId: route.projectId ?? '',
+        processId: route.processId ?? '',
+      }),
+      'http://story0.local',
+    );
+
+    if (route.reviewSelection?.targetKind !== undefined) {
+      url.searchParams.set('targetKind', route.reviewSelection.targetKind);
+    }
+
+    if (route.reviewSelection?.targetId !== undefined) {
+      url.searchParams.set('targetId', route.reviewSelection.targetId);
+    }
+
+    if (route.reviewSelection?.versionId !== undefined) {
+      url.searchParams.set('versionId', route.reviewSelection.versionId);
+    }
+
+    if (route.reviewSelection?.memberId !== undefined) {
+      url.searchParams.set('memberId', route.reviewSelection.memberId);
+    }
+
+    return `${url.pathname}${url.search}`;
   }
 
   const url = new URL(`/projects/${route.projectId ?? ''}`, 'http://story0.local');

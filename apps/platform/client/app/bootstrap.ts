@@ -12,10 +12,12 @@ import type {
   ProcessSummary,
   ProjectShellResponse,
   ProjectSummary,
+  ReviewWorkspaceSelection,
   StartProcessResponse,
   SubmitProcessResponseResponse,
 } from '../../shared/contracts/index.js';
 import {
+  buildReviewWorkspacePath,
   buildProcessLiveUpdatesPath,
   deriveEnvironmentStatusLabel,
   liveProcessUpdateMessageSchema,
@@ -35,6 +37,7 @@ import {
   getProjectShell,
   listProjects,
 } from '../browser-api/projects-api.js';
+import { getReviewWorkspace } from '../browser-api/review-workspace-api.js';
 import { getRequiredRootElement, getShellBootstrapPayload } from './dom.js';
 import { applyLiveProcessMessage } from './process-live.js';
 import { navigateTo, parseRoute } from './router.js';
@@ -48,6 +51,13 @@ function getRoutePathname(parsedRoute: ParsedRoute): string {
 
   if (parsedRoute.kind === 'process-work-surface') {
     return `/projects/${parsedRoute.projectId ?? ''}/processes/${parsedRoute.processId ?? ''}`;
+  }
+
+  if (parsedRoute.kind === 'review-workspace') {
+    return buildReviewWorkspacePath({
+      projectId: parsedRoute.projectId ?? '',
+      processId: parsedRoute.processId ?? '',
+    });
   }
 
   return `/projects/${parsedRoute.projectId ?? ''}`;
@@ -70,12 +80,33 @@ function getProcessSurfaceRouteIdentity(parsedRoute: ParsedRoute): {
   };
 }
 
+function getReviewWorkspaceRouteIdentity(parsedRoute: ParsedRoute): {
+  projectId: string | null;
+  processId: string | null;
+  selection: ReviewWorkspaceSelection | null;
+} {
+  if (parsedRoute.kind !== 'review-workspace') {
+    return {
+      projectId: null,
+      processId: null,
+      selection: null,
+    };
+  }
+
+  return {
+    projectId: parsedRoute.projectId,
+    processId: parsedRoute.processId,
+    selection: parsedRoute.reviewSelection,
+  };
+}
+
 export async function bootstrapApp(
   targetWindow: Window & typeof globalThis = window,
 ): Promise<void> {
   const bootstrap = getShellBootstrapPayload(targetWindow);
   const parsedRoute = parseRoute(new URL(targetWindow.location.href));
   const processSurfaceRouteIdentity = getProcessSurfaceRouteIdentity(parsedRoute);
+  const reviewWorkspaceRouteIdentity = getReviewWorkspaceRouteIdentity(parsedRoute);
   const initialState: Partial<AppState> = {
     auth: {
       actor: bootstrap?.actor ?? null,
@@ -91,6 +122,12 @@ export async function bootstrapApp(
       ...defaultAppState.processSurface,
       projectId: processSurfaceRouteIdentity.projectId,
       processId: processSurfaceRouteIdentity.processId,
+    },
+    reviewWorkspace: {
+      ...defaultAppState.reviewWorkspace,
+      projectId: reviewWorkspaceRouteIdentity.projectId,
+      processId: reviewWorkspaceRouteIdentity.processId,
+      selection: reviewWorkspaceRouteIdentity.selection,
     },
   };
   const store = createAppStore(initialState);
@@ -298,6 +335,7 @@ export async function bootstrapApp(
   const applyRouteState = (parsedRoute: ParsedRoute): void => {
     stopLiveConnection();
     const processSurfaceIdentity = getProcessSurfaceRouteIdentity(parsedRoute);
+    const reviewWorkspaceIdentity = getReviewWorkspaceRouteIdentity(parsedRoute);
 
     store.patch('route', {
       pathname: getRoutePathname(parsedRoute),
@@ -308,6 +346,12 @@ export async function bootstrapApp(
       ...defaultAppState.processSurface,
       projectId: processSurfaceIdentity.projectId,
       processId: processSurfaceIdentity.processId,
+    });
+    store.patch('reviewWorkspace', {
+      ...defaultAppState.reviewWorkspace,
+      projectId: reviewWorkspaceIdentity.projectId,
+      processId: reviewWorkspaceIdentity.processId,
+      selection: reviewWorkspaceIdentity.selection,
     });
   };
 
@@ -756,6 +800,65 @@ export async function bootstrapApp(
       isLoading: true,
     });
 
+    if (parsedRoute.kind === 'review-workspace') {
+      store.patch('shell', {
+        ...defaultAppState.shell,
+      });
+      store.patch('reviewWorkspace', {
+        ...defaultAppState.reviewWorkspace,
+        projectId: parsedRoute.projectId,
+        processId: parsedRoute.processId,
+        selection: parsedRoute.reviewSelection,
+        isLoading: true,
+        error: null,
+      });
+
+      try {
+        const workspace = await getReviewWorkspace({
+          projectId: parsedRoute.projectId ?? '',
+          processId: parsedRoute.processId ?? '',
+          selection: parsedRoute.reviewSelection,
+        });
+
+        if (requestId !== routeLoadId) {
+          return;
+        }
+
+        store.patch('reviewWorkspace', {
+          ...defaultAppState.reviewWorkspace,
+          projectId: parsedRoute.projectId,
+          processId: parsedRoute.processId,
+          selection: parsedRoute.reviewSelection,
+          project: workspace.project,
+          process: workspace.process,
+          availableTargets: workspace.availableTargets,
+          target: workspace.target ?? null,
+          isLoading: false,
+          error: null,
+        });
+      } catch (error) {
+        if (requestId !== routeLoadId) {
+          return;
+        }
+
+        if (error instanceof ApiRequestError) {
+          store.patch('reviewWorkspace', {
+            ...defaultAppState.reviewWorkspace,
+            projectId: parsedRoute.projectId,
+            processId: parsedRoute.processId,
+            selection: parsedRoute.reviewSelection,
+            isLoading: false,
+            error: error.payload,
+          });
+          return;
+        }
+
+        throw error;
+      }
+
+      return;
+    }
+
     if (parsedRoute.kind === 'process-work-surface') {
       store.patch('shell', {
         ...defaultAppState.shell,
@@ -859,6 +962,7 @@ export async function bootstrapApp(
       projectId,
       selectedProcessId: null,
       processId: null,
+      reviewSelection: null,
     };
     navigateTo(route, {}, targetWindow);
     await loadParsedRoute(route);
@@ -870,6 +974,23 @@ export async function bootstrapApp(
       projectId,
       selectedProcessId: null,
       processId,
+      reviewSelection: null,
+    };
+    navigateTo(route, {}, targetWindow);
+    await loadParsedRoute(route);
+  };
+
+  const openReview = async (
+    projectId: string,
+    processId: string,
+    selection: ReviewWorkspaceSelection | null = null,
+  ): Promise<void> => {
+    const route: ParsedRoute = {
+      kind: 'review-workspace',
+      projectId,
+      selectedProcessId: null,
+      processId,
+      reviewSelection: selection,
     };
     navigateTo(route, {}, targetWindow);
     await loadParsedRoute(route);
@@ -1001,6 +1122,7 @@ export async function bootstrapApp(
         projectId: shell.project.projectId,
         selectedProcessId: null,
         processId: null,
+        reviewSelection: null,
       };
 
       store.patch('modals', {
@@ -1074,6 +1196,7 @@ export async function bootstrapApp(
         projectId: currentProject.projectId,
         selectedProcessId: result.process.processId,
         processId: null,
+        reviewSelection: null,
       };
 
       store.patch('modals', {
@@ -1108,6 +1231,9 @@ export async function bootstrapApp(
     },
     onOpenProcess: (projectId: string, processId: string) => {
       void openProcess(projectId, processId);
+    },
+    onOpenReview: (projectId: string, processId: string, selection) => {
+      void openReview(projectId, processId, selection ?? null);
     },
     onStartProcess: startCurrentProcess,
     onResumeProcess: resumeCurrentProcess,

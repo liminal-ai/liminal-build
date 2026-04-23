@@ -901,6 +901,7 @@ describe('process work surface api', () => {
       processId: 'process-running-surface-001',
       updatedAt: '2026-04-13T12:15:00.000Z',
     });
+    const reviewArtifactId = 'artifact-running-review-001';
     const platformStore = new InMemoryPlatformStore({
       accessibleProjectsByUserId: {
         'user:workos-user-1': [projectSummary],
@@ -914,11 +915,30 @@ describe('process work surface api', () => {
       processesByProjectId: {
         [projectSummary.projectId]: [runningProcessSummary],
       },
+      artifactsByProjectId: {
+        [projectSummary.projectId]: [
+          {
+            artifactId: reviewArtifactId,
+            displayName: 'Running review artifact',
+            currentVersionLabel: 'review-1',
+            attachmentScope: 'process',
+            processId: runningProcessSummary.processId,
+            processDisplayLabel: runningProcessSummary.displayLabel,
+            updatedAt: '2026-04-13T12:14:00.000Z',
+          },
+        ],
+      },
       processHistoryItemsByProcessId: {
         [runningProcessSummary.processId]: readyProcessHistoryFixture.items,
       },
       currentRequestsByProcessId: {
         [runningProcessSummary.processId]: null,
+      },
+      currentMaterialRefsByProcessId: {
+        [runningProcessSummary.processId]: {
+          artifactIds: [reviewArtifactId],
+          sourceAttachmentIds: [],
+        },
       },
       processOutputsByProcessId: {
         [runningProcessSummary.processId]: readyProcessMaterialsFixture.currentOutputs,
@@ -927,6 +947,7 @@ describe('process work surface api', () => {
         [runningProcessSummary.processId]: readySideWorkFixture.items,
       },
     });
+    platformStore.seedArtifactContentForTesting(reviewArtifactId, '# Running review artifact');
     const app = await buildApp({
       authSessionService: createTestAuthSessionService({
         actor: {
@@ -967,6 +988,7 @@ describe('process work surface api', () => {
       processId: 'process-completed-surface-001',
       updatedAt: '2026-04-13T12:16:00.000Z',
     });
+    const reviewArtifactId = 'artifact-completed-review-001';
     const platformStore = new InMemoryPlatformStore({
       accessibleProjectsByUserId: {
         'user:workos-user-1': [projectSummary],
@@ -980,10 +1002,30 @@ describe('process work surface api', () => {
       processesByProjectId: {
         [projectSummary.projectId]: [completedProcessSummary],
       },
+      artifactsByProjectId: {
+        [projectSummary.projectId]: [
+          {
+            artifactId: reviewArtifactId,
+            displayName: 'Completed review artifact',
+            currentVersionLabel: 'review-2',
+            attachmentScope: 'process',
+            processId: completedProcessSummary.processId,
+            processDisplayLabel: completedProcessSummary.displayLabel,
+            updatedAt: '2026-04-13T12:15:00.000Z',
+          },
+        ],
+      },
       currentRequestsByProcessId: {
         [completedProcessSummary.processId]: null,
       },
+      currentMaterialRefsByProcessId: {
+        [completedProcessSummary.processId]: {
+          artifactIds: [reviewArtifactId],
+          sourceAttachmentIds: [],
+        },
+      },
     });
+    platformStore.seedArtifactContentForTesting(reviewArtifactId, '# Completed review artifact');
     const app = await buildApp({
       authSessionService: createTestAuthSessionService({
         actor: {
@@ -1013,6 +1055,61 @@ describe('process work surface api', () => {
         availableActions: ['review'],
       },
       currentRequest: null,
+    });
+
+    await app.close();
+  });
+
+  it('TC-1.1b does not offer review when the process has no reviewable targets', async () => {
+    const runningProcessSummary = processSummarySchema.parse({
+      ...runningProcessFixture,
+      processId: 'process-running-no-review-001',
+      updatedAt: '2026-04-13T12:17:00.000Z',
+    });
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectSummary.projectId]: [runningProcessSummary],
+      },
+      currentRequestsByProcessId: {
+        [runningProcessSummary.processId]: null,
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${runningProcessSummary.processId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      process: {
+        processId: runningProcessSummary.processId,
+        availableActions: [],
+      },
     });
 
     await app.close();

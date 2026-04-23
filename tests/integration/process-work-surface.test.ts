@@ -744,7 +744,7 @@ describe('process work surface integration', () => {
     expect(bootstrap.process).toMatchObject({
       processId: waitingProcessSummary.processId,
       status: 'running',
-      availableActions: ['review'],
+      availableActions: [],
     });
     expect(bootstrap.currentRequest).toBeNull();
     expect(bootstrap.history.items).toEqual(

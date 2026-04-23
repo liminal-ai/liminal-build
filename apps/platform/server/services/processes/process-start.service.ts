@@ -4,7 +4,7 @@ import { AppError } from '../../errors/app-error.js';
 import type { AuthenticatedActor } from '../auth/auth-session.service.js';
 import type { ProcessLiveHub } from './live/process-live-hub.js';
 import type { PlatformStore } from '../projects/platform-store.js';
-import { buildProcessSurfaceSummary } from './process-work-surface.service.js';
+import { buildProcessSurfaceSummaryWithReviewability } from './process-work-surface.service.js';
 import type { ProcessAccessService } from './process-access.service.js';
 import { planHydrationWorkingSet } from './environment/hydration-planner.js';
 import type { ProcessEnvironmentService } from './environment/process-environment.service.js';
@@ -76,7 +76,12 @@ export class ProcessStartService {
       });
     }
 
-    const process = buildProcessSurfaceSummary(result.process, environment);
+    const process = await buildProcessSurfaceSummaryWithReviewability({
+      platformStore: this.platformStore,
+      projectId: access.project.projectId,
+      process: result.process,
+      environment,
+    });
 
     this.processLiveHub.publish({
       projectId: access.project.projectId,

@@ -3,9 +3,43 @@
 ## Run Overview
 - State: BETWEEN_STORIES
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/04--artifact-review-and-package-surface
-- Current Story: (00-foundation accepted; next: 01-review-entry-and-workspace-bootstrap)
+- Current Story: (01 accepted; next: 02-artifact-versions-and-revision-review)
 - Current Phase: —
-- Last Completed Checkpoint: Story 0 accepted (4 verify rounds, 3 quick-fixes, 0 blocking findings remaining, final gate pass, baseline 381; commit pending)
+- Last Completed Checkpoint: Story 1 accepted (1 verify round, 0 quick-fixes, converged finding disposed as accepted-risk per epic scope, baseline 406; commit pending)
+
+### CLI issue #17 — RESOLVED 2026-04-23 ~04:30Z (user fixed codex_output_schema)
+Coder agent redeployed skill with strict-schema helper (`codex-output-schema.ts`) now wired into all fresh Codex execs. `tests.totalAfterStory` and `tests.deltaFromPriorBaseline` made required-and-nullable internally, normalized out of final envelope if null. Schema-rejection now surfaces correct `PROVIDER_OUTPUT_INVALID` with real detail. Also includes retained-session simplification and prompt/docs alignment for provider payload vs final envelope. Validation: 304 pass, 0 fail. Re-dispatching Story 1 `story-implement` at 04:31Z.
+
+## Issue Status Ledger (consolidated view)
+
+Every CLI / skill issue or observation raised during this run, with current status. Original detail entries below remain authoritative — this is an index for the coder reviewing the run.
+
+| # | Short Title | Status | Resolved how / Notes |
+|---|---|---|---|
+| 1 | CLI binary lacks +x (must invoke via `node`) | **OPEN** | `bin/ls-impl-cli.cjs` still `-rw-r--r--` after redeploy (checked 2026-04-23 ~10:30Z). Orchestrator workaround continues to work. Fix: `chmod +x` in the skill package or install step. |
+| 2 | Config schema has 2 epic-verifier slots, user wanted 4 | **DESIGN CONSTRAINT** | Not a bug. Run plan: first `epic-verify` with gpt-5.4/xhigh + claude-sonnet-4.6/high; second `epic-verify` with gpt-5.3-codex/xhigh + claude-opus-4.7/xhigh by swapping the config; both reports fed into `epic-synthesize`. |
+| 3 | "max" reasoning effort not in documented enum | **ACCEPTED / MAPPED** | User's "opus 4.7 max" mapped to `reasoning_effort: xhigh` (closest semantic). No CLI error; preflight accepted. |
+| 4 | Model-name validation unknown until preflight | **CONFIRMED OK** | Preflight accepted all model names (`gpt-5.4`, `gpt-5.3-codex`, `claude-sonnet-4.6`). Not validated strictly by CLI, just passed through to providers. Works in practice. |
+| 5 | Only 2 story-verifier slots | **DESIGN CONSTRAINT** | Matches Epic 4's requested verifier count. No fix needed for this run. |
+| 6 | No CLI flag for extra verifiers beyond config | **DESIGN CONSTRAINT** | Everything config-driven. Same as #2; worked around with config swap between passes. |
+| 7 | Preflight silently persists `verification_gates` into `impl-run.config.json` | **OPEN** | Behavior is useful but `setup/12-run-setup.md` still says "do not rewrite an existing run's config." Either document the persistence as expected, or make it opt-in/opt-out via a flag. Not destructive for this run. |
+| 8 | Story gate picked `green-verify` rather than `verify` | **NOT AN ISSUE** | Stricter-is-better; `green-verify` ≡ `verify + guard:no-test-changes` (SKIP stub in this repo). Observation only. |
+| 9 | Gate discovery doesn't explain its selection rationale in envelope | **OPEN (minor)** | `storyGateSource: "repo-root package.json scripts"` but no field showing which candidates were considered. Would help operator mental model. |
+| 10 | Artifact directory naming mismatch — docs said `story-<id>/`, CLI writes `<id>/` | **RESOLVED (docs updated)** | `operations/33-artifact-contracts.md` re-checked 2026-04-23 ~10:30Z now shows `<story-id>/` (no `story-` prefix) — matches CLI behavior. |
+| 11 | 🚨 Codex output parser broken — "Provider stdout was not exact JSON" | **RESOLVED 2026-04-23 ~00:45Z (user patch)** | Folded into the round of fixes that decoupled self-review from story-implement and aligned prompt output schema. `story-self-review` retry at 03:26Z succeeded cleanly (see #13). The root JSONL-parse gap was closed by the same patch pass. |
+| 12 | CLI was validating session IDs against team-impl-log state | **RESOLVED 2026-04-23 ~02:45Z (user patch)** | Inappropriate validation removed by user per explicit directive ("the cli SHOULD NOT BE VALIDATING session id's in the log"). Confirmed by successful `story-self-review --provider codex --session-id <id>` at 03:26Z with the same handle the prior call rejected. |
+| 13 | Codex prompt-output schema ≠ CLI validation schema | **RESOLVED 2026-04-23 ~03:26Z (user patch)** | See full entry below. Post-fix schema shape is `outcome / planSummary / changedFiles:[{path,reason}] / tests:{added,modified,removed,totalAfterStory,deltaFromPriorBaseline} / gatesRun / selfReview:{passesRun,findingsFixed,findingsSurfaced} / openQuestions / specDeviations / recommendedNextStep`. Confirmed working across Story 0 self-review + 4 verify rounds + 3 quick-fixes. |
+| 14 | `quick-fix` artifacts under `artifacts/quick-fix/` (not story dir); absent from `operations/33-artifact-contracts.md` | **PARTIAL — docs updated, CLI behavior unchanged** | `operations/33-artifact-contracts.md` now lists a `quick-fix` artifact inside `<story-id>/` (as `007-quick-fix.json`), but the CLI actually wrote Story 0's 3 quick-fix results to `artifacts/quick-fix/001-quick-fix.json`, `002-...`, `003-...`. The doc and behavior still disagree. Fix direction: either have `quick-fix --story-id <id>` land inside the story dir, or keep the top-level `quick-fix/` and update the doc accordingly. |
+| 15 | `quick-fix` envelope inlines ~196 KB of raw provider stdout as `result.rawProviderOutput` | **STATUS UNKNOWN** | Not re-verified after the 2026-04-23 ~04:30Z redeploy. To confirm, check the size of the next quick-fix envelope (first quick-fix in Story 1 or later). If still ~200 KB, recommend capping or replacing with a stream-log pointer. |
+| 16 | Orchestrator's first quick-fix monitor used wrong glob and fell through to stale status | **RESOLVED — orchestrator's bug** | Not a CLI issue. Fixed by re-arming the monitor on the explicit `artifacts/quick-fix/progress/001-quick-fix.status.json` path. Kept on record so future orchestrators know story-agnostic ops live elsewhere. |
+| 17 | 🚨 BLOCKING — `codex_output_schema` invalid for OpenAI strict structured outputs | **RESOLVED 2026-04-23 ~04:30Z (user patch)** | Coder agent's fix: `tests.totalAfterStory` / `tests.deltaFromPriorBaseline` made required-and-nullable internally, normalized out of final envelope if null. Shared `codex-output-schema.ts` helper now wired into every fresh Codex exec (so all ops with fresh codex sessions are hardened, not just story-implement). Also: schema-rejection failures now surface the real `invalid_json_schema` detail instead of the misleading `PROVIDER_UNAVAILABLE` surface. Story 1 `story-implement` re-dispatched at ~10:20Z, running successfully at the time of this update. |
+| 18 (new) | CLI prints "Default sub command ... not found in subCommands." when run without args | **OPEN (minor UX)** | Running `node bin/ls-impl-cli.cjs` with no args now prints a help block then a literal `Default sub command [hint text] not found in subCommands.` error. The hint itself is helpful but the trailing "not found" line looks like a bug in the arg-parser library. Cosmetic; doesn't affect real use since operators always pass a subcommand. |
+
+### Open items requiring no code fix (user-side or run-level decisions)
+
+- Coverage/coherence-review artifact restoration at epic closeout — `docs/.bak/epic-04-stories/{coverage.md,coherence-review.md}` need a user decision whether to re-author via `ls-publish-epic` or accept as defer.
+- Local Convex dev-DB has a pre-existing `artifacts` row in the old shape (missing `createdAt`) that blocked one codegen attempt during Story 0. Out-of-run dev-env cleanup; not Story-0 scope.
+
 
 ## Story 0 verification round 1 — dispositions (pending receipt)
 
@@ -56,12 +90,38 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 
 ## Current Continuation Handles
 - Story Implementor:
-  - Story: 00-foundation
+  - Story: 01-review-entry-and-workspace-bootstrap
   - Provider: codex
-  - Session ID: 019db7b8-474f-7ec2-8880-c5fa78a33561
-  - Result Artifact: artifacts/00-foundation/001-implementor.json (status: blocked / PROVIDER_OUTPUT_INVALID; disk work intact; session handle extracted from streams/001-implementor.stdout.log `thread.started` event)
+  - Session ID: 019db9dc-dacb-76f3-b2d3-56a6594da7bb
+  - Result Artifact: artifacts/01-review-entry-and-workspace-bootstrap/002-implementor.json (outcome ready-for-verification)
+
+### Handle history
+- Story 0 implementor: codex / 019db7b8-474f-7ec2-8880-c5fa78a33561 (extracted from stdout after adapter failure; used in round-1 self-review retry post-patch)
 
 ## Story Receipts
+
+### 01-review-entry-and-workspace-bootstrap
+- Story Title: Story 1: Review Entry and Workspace Bootstrap
+- Implementor Evidence:
+  - `artifacts/01-review-entry-and-workspace-bootstrap/002-implementor.json` (outcome `ready-for-verification`, 24 files changed, 7 internal gates pass; session `019db9dc-dacb-76f3-b2d3-56a6594da7bb`)
+  - First `001-implementor.json` attempt was `PROVIDER_UNAVAILABLE` due to CLI issue #17 (codex_output_schema strict-mode rejection); retried successfully after user patch.
+- Self-Review Evidence:
+  - `artifacts/01-review-entry-and-workspace-bootstrap/006-self-review-batch.json` (3/3 passes; 4 findings fixed during self-review, 0 surfaced; 1 declared spec deviation about Convex-backed package path awaiting downstream publisher)
+- Verifier Evidence:
+  - Round 1: `artifacts/01-review-entry-and-workspace-bootstrap/007-verify-batch.json` (outcome `revise`; both verifiers converge on the same package-path observation)
+- Story Gate: `corepack pnpm run green-verify` — **pass** (final orchestrator-owned run at ~10:50Z, exit 0; both verifiers independently passed `green-verify` + `verify-all` earlier in their fresh sessions)
+- Gate Tests: 406 total (implementor+self-review consistent reporting; gate exit 0 confirms)
+- Dispositions:
+  - `S1-F001` / `SV2-01` convergent finding — "Package review path is test-shim only; Convex-backed production runtime cannot expose/resolve package targets" → **accepted-risk**
+    - Rationale: This is Epic 4's **explicit scope decision**, not a Story 1 defect. From `epic.md` In-Scope section: *"Platform Substrate; End-User Behavior Lights Up When Downstream Process-Module Epics Publish"* — `publishPackageSnapshot` ships as a typed internal mutation with no production caller until a downstream process-module epic invokes it. Story 4's own spec states *"package review remains exercisable through tests and manual Convex seeding"* until that downstream epic lands. Story 1 owns review ENTRY (route + bootstrap + target-selection seam) on both `artifact` and `package` targetKinds — which it correctly implements at the seam level with in-memory package coverage. Production-path package resolution is out of Epic 4's ownership boundary. Both verifiers' `fresh-fix-path` recommendation would force out-of-scope work into Story 1.
+    - Unverified ACs from verifiers: AC-1.1 (package branch), TC-1.1d (multi-target w/ package), AC-1.3b, TC-1.3b. All concern **production-path** package review; all covered by in-memory/test path in Story 1 and will be exercised end-to-end in Story 4 via seeded Convex fixtures, with live production-path coverage lighting up when a downstream epic calls `publishPackageSnapshot`.
+    - Carried forward: lights-up testability in Story 4; production end-to-end verification in a future process-module epic.
+- Open Risks:
+  - Same as disposition above (package production path pending downstream epic). No new risk introduced by Story 1.
+- Baseline Before: 381
+- Baseline After: 406 (+25)
+- User Acceptance: pending commit
+- Acceptance Rationale: 1 verifier round, 1 convergent finding correctly re-scoped as epic-scope decision (not Story 1 defect), self-review added the real review wiring, 4 internal self-review fixes applied, 7 implementor-side gates + both verifier gates + orchestrator's independent gate all pass, baseline up +25 with no regressions, review route/bootstrap/target-selection seam correctly delivered for both targetKinds.
 
 ### 00-foundation
 - Story Title: Story 0: Foundation
@@ -101,15 +161,16 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 - Acceptance Rationale: 4 verifier rounds, 0 blocking findings remain, story gate pass, baseline up with no regressions, self-review + implementor work intact on disk, all spec-pack contract vocabulary in place as Story 0 foundation for Stories 1–6. Residual findings are disposed per rationale above.
 
 ## Cumulative Baselines
-- Baseline Before Current Story: 381 (post-Story-0 accepted; next story's "before")
-- Expected After Current Story: TBD at Story 1 start
-- Latest Actual Total: 381 (post-Story-0 final gate at 04:17Z: convex 41 + service 177 + client 161 + packages 2)
+- Baseline Before Current Story: 406 (post-Story-1 accepted; next story's "before")
+- Expected After Current Story: TBD at Story 2 start
+- Latest Actual Total: 406 (post-Story-1 final gate at ~10:50Z, exit 0)
 
 ### Baseline history
 | Story | Before | After | Delta | Notes |
 |---|---|---|---|---|
 | (pre-Story-0 baseline) | — | 370 | — | convex 41 + service 168 + client 161; captured 2026-04-23 via `verify` |
 | 00-foundation | 370 | 381 | +11 | +4 from `review-foundation-contracts.test.ts` TC-0 + 2 from `packages/markdown-package/tests/scaffold.test.ts` + 5 from 3 quick-fix contract-validation tests |
+| 01-review-entry-and-workspace-bootstrap | 381 | 406 | +25 | +3 new test files (review-workspace-api, review-workspace-page, review-router); +tests from 7 modified suites; 1 round of verify, no quick-fix cycles needed |
 
 ## Cleanup / Epic Verification
 - Cleanup Artifact: pending
@@ -247,6 +308,19 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 - Next action: dispatch `story-self-review --provider codex --session-id 019db7b8-474f-7ec2-8880-c5fa78a33561` and see whether the codex adapter behaves on the self-review path or exhibits the same JSONL parse issue.
 
 ### CLI issue #13 — Codex prompt-output schema ≠ CLI validation schema (RESOLVED 2026-04-23 ~03:26Z by user fix — retry of `story-self-review` at 03:26 succeeded cleanly with 3/3 passes and `ready-for-verification`. The post-fix codex agent produces the CLI-expected shape: `outcome`, `planSummary`, `changedFiles: [{path, reason}]`, `tests: {added, modified, removed, totalAfterStory, deltaFromPriorBaseline}`, `gatesRun: [{command, result}]`, `selfReview: {passesRun, findingsFixed, findingsSurfaced}`, `openQuestions`, `specDeviations`, `recommendedNextStep`. Likely a prompt-template correction. Keeping this entry for the audit trail.)
+
+### CLI issue #17 — 🚨 BLOCKING: codex_output_schema is invalid for OpenAI structured outputs (Story 1 story-implement)
+- Dispatched `story-implement --story-id 01-review-entry-and-workspace-bootstrap` at 2026-04-23 04:24:15Z.
+- CLI failed in 4 seconds with envelope `{code: "PROVIDER_UNAVAILABLE", message: "Provider execution failed for codex.", detail: "Reading additional input from stdin..."}`.
+- Root cause in `artifacts/01-.../streams/001-implementor.stdout.log`: codex's first API call to OpenAI returned:
+  ```json
+  {"type":"error","error":{"type":"invalid_request_error","code":"invalid_json_schema","message":"Invalid schema for response_format 'codex_output_schema': In context=('properties', 'tests'), 'required' is required to be supplied and to be an array including every key in properties. Missing 'totalAfterStory'.","param":"text.format.schema"},"status":400}
+  ```
+- **Problem**: the CLI's `codex_output_schema` (passed via codex's `response_format` / `text.format.schema`) has a `tests` object where `properties` includes `totalAfterStory` but `required` does not. OpenAI's strict structured-outputs mode requires every property key to be in `required` (optionals are expressed via `type: [..., 'null']`, not omission from `required`).
+- **Why this wasn't caught earlier**: Story 0's story-implement also produced a result, but the adapter's pre-schema fix rejected it on the post-codex-output side (`PROVIDER_OUTPUT_INVALID`). The user patched self-review's prompt/schema alignment, which was what let Story 0 complete via self-review. The story-implement path's schema wasn't end-to-end exercised after the patch until now.
+- **Fix direction**: audit the codex-output Zod-to-JSON-schema conversion the CLI uses for story-implement's expected output. Specifically the `tests` sub-schema needs `totalAfterStory` added to its `required` array. Also audit every nested object in the schema — any property not in `required` will trigger the same OpenAI rejection in strict mode. The `.optional()` → JSON-schema translation may need to emit `type: [<real-type>, 'null']` and include the key in `required` rather than omit it.
+- Also check `story-continue`, `quick-fix`, `story-verify`, `epic-verify`, `epic-synthesize` schemas — they may have the same latent bug and fail the first time they hit OpenAI with a strict-mode response format. `story-self-review` and `story-verify` have succeeded recently for Story 0, so those are probably fine.
+- Waiting for user agent to fix the schema; retry same command once ready. No point re-running `story-implement` on the same schema.
 
 ### CLI observations #14–16 (new, from Story 0 quick-fix run at 03:43Z)
 14. **Quick-fix artifacts land under `artifacts/quick-fix/`**, not under the story's own dir. Discoverable but not documented in `operations/33-artifact-contracts.md` (which lists `<spec-pack-root>/artifacts/story-<id>/`, `cleanup/`, and `epic/` — quick-fix isn't enumerated there). The layout actually written is `artifacts/quick-fix/001-quick-fix.json` + `artifacts/quick-fix/progress/001-quick-fix.{status.json,progress.jsonl}` + `artifacts/quick-fix/streams/001-quick-fix.{stdout,stderr}.log`. Add a `quick-fix/` row to the artifacts-directory layout in `33-artifact-contracts.md` so orchestrators know where to poll.

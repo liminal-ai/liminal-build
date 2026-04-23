@@ -362,6 +362,43 @@ describe('process work surface page', () => {
     expect(view.textContent).toContain(earlyProcessWorkSurfaceFixture.process.displayLabel);
   });
 
+  it('TC-1.1a review control navigates to the review workspace when enabled', () => {
+    const onOpenReview = vi.fn();
+    const store = buildStore({
+      processSurface: {
+        ...buildStore().get().processSurface,
+        project: readyProcessWorkSurfaceFixture.project,
+        process: runningProcessSurfaceFixture,
+        history: readyProcessWorkSurfaceFixture.history,
+        materials: readyProcessWorkSurfaceFixture.materials,
+        currentRequest: null,
+        sideWork: readyProcessWorkSurfaceFixture.sideWork,
+        environment: readyProcessWorkSurfaceFixture.environment,
+      },
+    });
+    const view = renderProcessWorkSurfacePage({
+      store,
+      targetDocument: document,
+      targetWindow: window,
+      onOpenProject: () => {},
+      onOpenReview,
+    });
+    const reviewButton = [...view.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Review',
+    );
+
+    if (!(reviewButton instanceof HTMLButtonElement)) {
+      throw new Error('Expected the process work surface to render a review control.');
+    }
+
+    reviewButton.click();
+
+    expect(onOpenReview).toHaveBeenCalledWith(
+      readyProcessWorkSurfaceFixture.project.projectId,
+      runningProcessSurfaceFixture.processId,
+    );
+  });
+
   it('TC-1.5a process remains visible without environment', () => {
     const store = buildStore({
       processSurface: {

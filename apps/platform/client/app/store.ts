@@ -52,6 +52,17 @@ export const defaultAppState: AppState = appStateSchema.parse({
       error: null,
     },
   },
+  reviewWorkspace: {
+    projectId: null,
+    processId: null,
+    selection: null,
+    project: null,
+    process: null,
+    availableTargets: [],
+    target: null,
+    isLoading: false,
+    error: null,
+  },
   modals: {
     createProjectOpen: false,
     createProcessOpen: false,

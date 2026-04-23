@@ -257,6 +257,7 @@ function resolveControlState(args: {
   actionId: ProcessSurfaceControlActionId;
   process: ProcessSummary;
   environment: EnvironmentSummary;
+  reviewEnabled?: boolean;
 }): { enabled: boolean; disabledReason: string | null } {
   switch (args.actionId) {
     case 'start':
@@ -276,12 +277,20 @@ function resolveControlState(args: {
     case 'rebuild':
       return resolveRebuildControlState(args.environment);
     case 'review':
-      return args.process.status === 'running' ||
-        args.process.status === 'completed' ||
-        args.process.status === 'failed' ||
-        args.process.status === 'interrupted'
-        ? enabledState()
-        : disabledState('Review is only available once the process has produced work to inspect.');
+      if (
+        args.process.status !== 'running' &&
+        args.process.status !== 'completed' &&
+        args.process.status !== 'failed' &&
+        args.process.status !== 'interrupted'
+      ) {
+        return disabledState(
+          'Review is only available once the process has produced work to inspect.',
+        );
+      }
+
+      return args.reviewEnabled === false
+        ? disabledState('Review is only available once the process has produced work to inspect.')
+        : enabledState();
     case 'restart':
       return resolveRestartControlState(args);
   }
@@ -305,6 +314,9 @@ function deriveProcessSurfaceHasEnvironment(
 export function buildProcessSurfaceSummary(
   process: ProcessSummary,
   environment: EnvironmentSummary = fallbackEnvironmentSummary,
+  options: {
+    reviewEnabled?: boolean;
+  } = {},
 ): ProcessSurfaceSummary {
   const controlStates = processSurfaceControlOrder.map((actionId) => ({
     actionId,
@@ -312,6 +324,7 @@ export function buildProcessSurfaceSummary(
       actionId,
       process,
       environment,
+      reviewEnabled: options.reviewEnabled,
     }),
   }));
   const availableActions = controlStates
@@ -337,6 +350,22 @@ export function buildProcessSurfaceSummary(
     }),
     hasEnvironment: deriveProcessSurfaceHasEnvironment(process, environment),
     updatedAt: process.updatedAt,
+  });
+}
+
+export async function buildProcessSurfaceSummaryWithReviewability(args: {
+  platformStore: PlatformStore;
+  projectId: string;
+  process: ProcessSummary;
+  environment?: EnvironmentSummary;
+}): Promise<ProcessSurfaceSummary> {
+  const reviewTargets = await args.platformStore.listProcessReviewTargets({
+    projectId: args.projectId,
+    processId: args.process.processId,
+  });
+
+  return buildProcessSurfaceSummary(args.process, args.environment ?? fallbackEnvironmentSummary, {
+    reviewEnabled: reviewTargets.length > 0,
   });
 }
 
@@ -381,6 +410,12 @@ export class DefaultProcessWorkSurfaceService implements ProcessWorkSurfaceServi
       this.readSideWork(args.processId),
       this.readEnvironment(args.processId),
     ]);
+    const process = await buildProcessSurfaceSummaryWithReviewability({
+      platformStore: this.platformStore,
+      projectId: args.projectId,
+      process: access.process,
+      environment,
+    });
 
     return processWorkSurfaceResponseSchema.parse({
       project: processSurfaceProjectSchema.parse({
@@ -388,7 +423,7 @@ export class DefaultProcessWorkSurfaceService implements ProcessWorkSurfaceServi
         name: access.project.name,
         role: access.project.role,
       }),
-      process: buildProcessSurfaceSummary(access.process, environment),
+      process,
       history,
       materials,
       currentRequest,
