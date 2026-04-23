@@ -1,6 +1,8 @@
 export const structuredMarkdownFixture = [
   '# Title',
   '',
+  'Read the [project docs](https://example.com/docs) before review.',
+  '',
   '| Column | Value |',
   '| --- | --- |',
   '| Name | Liminal Build |',
@@ -29,6 +31,14 @@ export const markdownWithMermaidDirectiveFixture = [
   '%%{init: { "securityLevel": "loose" }}%%',
   'graph TD',
   '  A --> B',
+  '```',
+].join('\n');
+
+export const markdownWithDirectiveOnlyMermaidFixture = [
+  '# Directive Only Diagram',
+  '',
+  '```mermaid',
+  "%%{init: {'theme':'dark'}}%%",
   '```',
 ].join('\n');
 

@@ -890,7 +890,7 @@ describe('review workspace integration', () => {
           bodyStatus: 'ready',
         },
       });
-      expect(droppedArtifactBody.selectedVersion.body).toContain('Launch Checklist');
+      expect(droppedArtifactBody.selectedVersion.body).toContain('<h1>Launch Checklist</h1>');
     } finally {
       await app.close();
     }
@@ -1090,10 +1090,12 @@ describe('review workspace integration', () => {
           selectedVersion: {
             versionId: secondVersionId,
             bodyStatus: 'ready',
-            body: '# Specification v2\n\nCurrent durable body.',
           },
         },
       });
+      expect(workspaceBody.target.artifact.selectedVersion.body).toContain(
+        '<h1>Specification v2</h1>',
+      );
       expect(workspaceBody.target.artifact.versions).toHaveLength(2);
       expect(
         workspaceBody.target.artifact.versions[0].createdAt >
@@ -1118,9 +1120,9 @@ describe('review workspace integration', () => {
         selectedVersion: {
           versionId: firstVersionId,
           bodyStatus: 'ready',
-          body: '# Specification v1\n\nOriginal durable body.',
         },
       });
+      expect(priorRevisionBody.selectedVersion.body).toContain('<h1>Specification v1</h1>');
       expect(priorRevisionBody.selectedVersion.body).not.toBe(
         workspaceBody.target.artifact.selectedVersion.body,
       );
@@ -1252,10 +1254,12 @@ describe('review workspace integration', () => {
           selectedVersion: {
             versionId: versions[0]?.versionId,
             bodyStatus: 'ready',
-            body: '# Checkpoint v2\n\nAppended checkpoint body.',
           },
         },
       });
+      expect(workspaceBody.target.artifact.selectedVersion.body).toContain(
+        '<h1>Checkpoint v2</h1>',
+      );
       expect(workspaceBody.target.artifact.versions).toHaveLength(2);
 
       const firstRevisionResponse = await fetch(
@@ -1276,9 +1280,9 @@ describe('review workspace integration', () => {
         selectedVersion: {
           versionId: versions[1]?.versionId,
           bodyStatus: 'ready',
-          body: '# Checkpoint v1\n\nOriginal checkpoint body.',
         },
       });
+      expect(firstRevisionBody.selectedVersion.body).toContain('<h1>Checkpoint v1</h1>');
       expect(firstRevisionBody.selectedVersion.body).not.toBe(
         workspaceBody.target.artifact.selectedVersion.body,
       );

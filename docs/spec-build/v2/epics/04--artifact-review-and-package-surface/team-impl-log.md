@@ -3,9 +3,9 @@
 ## Run Overview
 - State: BETWEEN_STORIES
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/04--artifact-review-and-package-surface
-- Current Story: 03-markdown-and-mermaid-review (next)
+- Current Story: 04-package-review-workspace (next)
 - Current Phase: —
-- Last Completed Checkpoint: Story 2 accepted; commit pending
+- Last Completed Checkpoint: Story 3 accepted; commit pending
 
 ## Orchestrator failure mode — Story 2 "verify-round churn from under-configured fixer + unchecked fix spillover" (2026-04-23 ~16:50Z)
 
@@ -102,7 +102,7 @@ Every CLI / skill issue or observation raised during this run, with current stat
 | 18 | CLI prints "Default sub command ... not found in subCommands." when run without args | **OPEN (minor UX)** | Running `node bin/ls-impl-cli.cjs` with no args now prints a help block then a literal `Default sub command [hint text] not found in subCommands.` error. The hint itself is helpful but the trailing "not found" line looks like a bug in the arg-parser library. Cosmetic; doesn't affect real use since operators always pass a subcommand. |
 | 19 | `story-continue` envelope returns `continuationHandle: null` on follow-up pass | **OPEN (minor)** | At 2026-04-23 ~11:20Z, Story 1 `story-continue` finished `ready-for-verification` cleanly, but the result envelope's `continuationHandle` field is null. The codex session underneath the continue call is obviously still valid (the continue succeeded against the same `019db9dc-dacb-76f3-b2d3-56a6594da7bb` handle), the CLI just doesn't echo it back. Orchestrator workaround: continue using the last known handle from the log's `Current Continuation Handles` section — the session id from the first `story-implement` envelope is still the authoritative one. Fix direction: surface the reused handle in every follow-up envelope so recovery doesn't need to walk back to the initial implementor result. |
 | 21 (new) | Artifact-slot numbering collides when a prior op aborts without envelope | **OPEN (minor, orchestrator confusion)** | At 2026-04-23 16:29Z, the round-5 `story-verify` dispatch reused slot `011` (`011-verify-batch.status.json`) even though slot `011-continue.*` already existed from the hung continue at 15:37Z. Orchestrator monitors scoped to `012-verify-batch` returned "no status yet" events for 5+ minutes while the verify was actually running and progressing on slot `011-verify-batch`. Per `operations/33-artifact-contracts.md` the numbering is supposed to be globally monotonic per story dir, so a killed op shouldn't leave its slot re-usable by a later op. Fix direction: either bump past any existing `NNN-*` basename regardless of suffix, or surface a clearer "slot reused after abort" signal in the envelope. |
-| 20 | `story-continue` hung for 41 minutes with codex subprocess at ~1s CPU, no output progression | **OPEN (intermittent)** | At 2026-04-23 ~15:37Z, Story 2 `story-continue` against session `019dbaae-361e-78b0-a7e2-13d94df6f0ea` advanced to `phase=initial-implement`, emitted one chunk of stdout (first few seed fixtures being read) at 15:38:47Z, and then went silent. `status.json` `lastOutputAt` stayed at 15:38:47 while the codex process accumulated just ~1 second of CPU over the next 41 minutes — effectively idle, not actively reasoning. Per the 30-min "hard-stall" threshold in `operations/30-cli-operations.md` this needed intervention. Orchestrator killed the subprocess at 16:22Z. No envelope was written; the CLI reported "completed exit 0" only because my kill broke the pipe. Recovery: retry the same fix as a `quick-fix` (fresh codex, no reading-journey). Fix direction for CLI/adapter: surface a watchdog in the CLI itself that detects N-minute output silence and fails with a clear `PROVIDER_STALLED` code instead of hanging indefinitely. Alternatively, add a heartbeat line to the progress stream so orchestrators can distinguish "codex is reasoning slowly" from "codex is wedged". The continuation session handle (`019dbaae-...`) may or may not still be valid; safer to treat it as invalidated after a hard-kill and fall back to fresh implementor if retry fails. |
+| 20 | Codex subprocess hangs for 40+ min (2 instances observed) with ~1s CPU, no output progression | **OPEN (intermittent, repeat offender)** | At 2026-04-23 ~15:37Z, Story 2 `story-continue` against session `019dbaae-361e-78b0-a7e2-13d94df6f0ea` advanced to `phase=initial-implement`, emitted one chunk of stdout (first few seed fixtures being read) at 15:38:47Z, and then went silent. `status.json` `lastOutputAt` stayed at 15:38:47 while the codex process accumulated just ~1 second of CPU over the next 41 minutes — effectively idle, not actively reasoning. Per the 30-min "hard-stall" threshold in `operations/30-cli-operations.md` this needed intervention. Orchestrator killed the subprocess at 16:22Z. No envelope was written; the CLI reported "completed exit 0" only because my kill broke the pipe. Recovery: retry the same fix as a `quick-fix` (fresh codex, no reading-journey). Fix direction for CLI/adapter: surface a watchdog in the CLI itself that detects N-minute output silence and fails with a clear `PROVIDER_STALLED` code instead of hanging indefinitely. Alternatively, add a heartbeat line to the progress stream so orchestrators can distinguish "codex is reasoning slowly" from "codex is wedged". The continuation session handle (`019dbaae-...`) may or may not still be valid; safer to treat it as invalidated after a hard-kill and fall back to fresh implementor if retry fails. **Second instance:** 2026-04-23 18:07-18:51Z, Story 3 quick-fix 011 against the bundled empty-body + version-ID + perf-proof prompt. Started at 18:07:02, last output at 18:08:46 (1m44s in — codex had read files, run `git diff` inspecting the existing test shape, and was about to make edits), then silent for 43 min with ~2s codex CPU total. Same signature as first instance: started work cleanly, then wedged mid-session. Both instances were under `reasoning_effort: xhigh` (story-continue first, quick-fix second). Orchestrator killed at 18:51Z, retried as quick-fix 012. No watchdog timeout fired from the CLI side (`timeoutMs: 1800000` = 30 min configured) — the kernel didn't consider it "dead", codex wasn't crashing, it just stopped emitting stdout. Reinforces the watchdog-on-silence recommendation above. |
 
 ### Open items requiring no code fix (user-side or run-level decisions)
 
@@ -168,6 +168,37 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 - Story 0 implementor: codex / 019db7b8-474f-7ec2-8880-c5fa78a33561 (extracted from stdout after adapter failure; used in round-1 self-review retry post-patch)
 
 ## Story Receipts
+
+### 03-markdown-and-mermaid-review (accepted 2026-04-23 ~19:15Z)
+- Story Title: Story 3: Markdown and Mermaid Review
+- Implementor Evidence:
+  - Initial: `artifacts/03-.../001-implementor.json` (codex session `019dbb55-c7cb-7ee0-a4df-dae594a44927`, 14 files, 1 declared spec deviation re: client SVG sanitization)
+  - Follow-up 1 (client DOMPurify): `artifacts/03-.../002-continue.json` — replaced DOMParser/XMLSerializer with `dompurify` browser build; no spec deviations
+- Self-Review Evidence: `artifacts/03-.../006-self-review-batch.json` (3/3 passes, all clean)
+- Verifier Evidence (3 rounds):
+  - Round 1: `artifacts/03-.../007-verify-batch.json` — revise (directive-only Mermaid fence reintroducing raw + Mermaid traceability gap + perf NFR observation)
+  - Round 2: `artifacts/03-.../008-verify-batch.json` — revise (zero-byte body crash + version-ID vs version-label traceability + perf proof)
+  - Round 3: `artifacts/03-.../009-verify-batch.json` — **pass** (both verifiers, 0 findings)
+- Quick-fix Evidence (3 rounds):
+  - `artifacts/quick-fix/010-quick-fix.json` — directive-only fence drops raw source + Mermaid error affordance shows artifact identity
+  - `artifacts/quick-fix/011-quick-fix.json` (first attempt hung 43 min — CLI issue #20 second instance; retry succeeded at `011` slot reuse per issue #21) — zero-byte body renders empty, traceability threads `versionId`, 200KB smoke-proof test added
+- Story Gate: `corepack pnpm run green-verify` — **pass**
+- Epic Gate: `corepack pnpm run verify-all` — **pass** (441 tests)
+- Gate Tests: convex 43 / service 195 / client 183 / packages 2 / integration 18 = **441 total**
+- Dispositions:
+  - (rd 1) client SVG sanitization uses DOMParser/XMLSerializer instead of DOMPurify → **fixed** via follow-up 1 (`dompurify` browser build, two XSS regression tests)
+  - (rd 1) directive-only Mermaid fence reintroduces raw source → **fixed** via quick-fix 010
+  - (rd 1) Mermaid failure traceability by artifact/version → **fixed** via quick-fix 010 (initially with label) → corrected via quick-fix 011 (by ID)
+  - (rd 1-2) 200KB/2s render perf NFR no proof → **fixed** via quick-fix 011 (smoke-level render-time test added)
+  - (rd 2) zero-byte markdown body crash → **fixed** via quick-fix 011
+  - (rd 2) Mermaid version-label vs version-ID → **fixed** via quick-fix 011
+- Open Risks: none
+- Baseline Before: 425
+- Baseline After: 441 (+16; new markdown-renderer + markdown-body + mermaid-runtime + XSS regressions + version-ID traceability + empty-body + 200KB smoke)
+- User Acceptance: pending commit
+- Acceptance Rationale: 3 verify rounds (half of Story 2's 6 — new playbook working), final round `pass` with both verifiers clean. All 4 gates pass. Baseline +16 with no regressions. Real Mermaid render pipeline + server-side DOMPurify sanitization + client-side DOMPurify SVG sanitization + Mermaid directive strip + bounded per-diagram failures + unsupported-format fallback all landed per tech design.
+
+---
 
 ### 02-artifact-versions-and-revision-review (accepted 2026-04-23 ~17:15Z)
 - Story Title: Story 2: Artifact Versions and Revision Review
@@ -303,7 +334,7 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 - Acceptance Rationale: 4 verifier rounds, 0 blocking findings remain, story gate pass, baseline up with no regressions, self-review + implementor work intact on disk, all spec-pack contract vocabulary in place as Story 0 foundation for Stories 1–6. Residual findings are disposed per rationale above.
 
 ## Cumulative Baselines
-- Baseline Before Current Story: 425 (post-Story-2 accepted; next story's "before")
+- Baseline Before Current Story: 441 (post-Story-3 accepted; next story's "before")
 - Expected After Current Story: TBD at Story 2 start
 - Latest Actual Total: 409 (post-Story-1-amended verify-all at ~14:05Z, exit 0)
 
@@ -315,6 +346,7 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 | 01-review-entry-and-workspace-bootstrap (initial) | 381 | 406 | +25 | +3 new test files (review-workspace-api, review-workspace-page, review-router); +tests from 7 modified suites; 1 round of verify |
 | 01-review-entry-and-workspace-bootstrap (amended) | 406 | 409 | +3 | +1 new integration test file `tests/integration/review-workspace.test.ts` seeded via `publishPackageSnapshot`; +2 subtests for unsupported-fallback + cross-kind newest-first ordering |
 | 02-artifact-versions-and-revision-review | 409 | 425 | +16 | +3 new test files (artifact-review-api, artifact-review-panel, version-switcher); +tests from 7 modified suites + regression tests added by 5 quick-fix rounds (revision append, checkpoint writer, XSS, zero-version, 300-artifact cap) |
+| 03-markdown-and-mermaid-review | 425 | 441 | +16 | +2 new test files (markdown-renderer, markdown-body, mermaid-runtime) + quick-fix regressions (XSS, directive-only, version-ID traceability, zero-byte body, 200KB smoke-proof) |
 
 ## Cleanup / Epic Verification
 - Cleanup Artifact: pending

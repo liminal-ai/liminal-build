@@ -1,4 +1,6 @@
 import type { ArtifactReviewTarget } from '../../../shared/contracts/index.js';
+import { renderMarkdownBody } from './markdown-body.js';
+import { renderUnsupportedFallback } from './unsupported-fallback.js';
 import { renderVersionSwitcher } from './version-switcher.js';
 
 function createHeading(targetDocument: Document, text: string, level: 'h3' | 'h4' = 'h3') {
@@ -65,10 +67,11 @@ export function renderArtifactReviewPanel(args: {
 
   if (selectedVersion.contentKind === 'unsupported') {
     container.append(
-      createParagraph(
-        args.targetDocument,
-        'This artifact version is not reviewable in the current release.',
-      ),
+      renderUnsupportedFallback({
+        targetDocument: args.targetDocument,
+        versionLabel: selectedVersion.versionLabel,
+        createdAt: selectedVersion.createdAt,
+      }),
     );
     return container;
   }
@@ -84,10 +87,18 @@ export function renderArtifactReviewPanel(args: {
   }
 
   if (selectedVersion.body !== undefined) {
-    const body = args.targetDocument.createElement('article');
-    body.setAttribute('data-artifact-review-body', 'true');
-    body.textContent = selectedVersion.body;
-    container.append(body);
+    container.append(
+      renderMarkdownBody({
+        body: selectedVersion.body,
+        mermaidBlocks: selectedVersion.mermaidBlocks,
+        targetDocument: args.targetDocument,
+        renderContext: {
+          artifactDisplayName: args.artifact.displayName,
+          artifactId: args.artifact.artifactId,
+          versionId: selectedVersion.versionId,
+        },
+      }),
+    );
   }
 
   return container;

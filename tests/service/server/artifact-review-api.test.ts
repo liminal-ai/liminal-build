@@ -211,16 +211,18 @@ describe('artifact review api', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({
+    const responseBody = response.json();
+
+    expect(responseBody).toMatchObject({
       currentVersionId: currentArtifactVersionFixture.versionId,
       selectedVersionId: priorArtifactVersionFixture.versionId,
       selectedVersion: {
         versionId: priorArtifactVersionFixture.versionId,
         versionLabel: priorArtifactVersionFixture.versionLabel,
         bodyStatus: 'ready',
-        body: '# Prior version',
       },
     });
+    expect(responseBody.selectedVersion.body).toContain('<h1>Prior version</h1>');
 
     await app.close();
   });
@@ -289,6 +291,95 @@ describe('artifact review api', () => {
     expect(response.json().currentVersionLabel).toBeUndefined();
     expect(response.json().selectedVersionId).toBeUndefined();
     expect(response.json().selectedVersion).toBeUndefined();
+
+    await app.close();
+  });
+
+  it('returns a ready empty markdown review when a durable version body is zero-byte', async () => {
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectSummary.projectId]: [processSummary],
+      },
+      artifactsByProjectId: {
+        [projectSummary.projectId]: [
+          {
+            artifactId: 'artifact-zero-byte-001',
+            displayName: 'Zero Byte Spec',
+            currentVersionLabel: 'checkpoint-empty',
+            attachmentScope: 'process',
+            processId: processSummary.processId,
+            processDisplayLabel: processSummary.displayLabel,
+            updatedAt: '2026-04-23T12:10:00.000Z',
+          },
+        ],
+      },
+      artifactVersionsByArtifactId: {
+        'artifact-zero-byte-001': [
+          {
+            versionId: 'artifact-version-zero-byte-001',
+            artifactId: 'artifact-zero-byte-001',
+            versionLabel: 'checkpoint-empty',
+            contentStorageId: 'storage-zero-byte',
+            contentKind: 'markdown',
+            bytes: 0,
+            createdAt: '2026-04-23T12:10:00.000Z',
+            createdByProcessId: processSummary.processId,
+          },
+        ],
+      },
+      artifactContentsByVersionId: {
+        'artifact-version-zero-byte-001': '',
+      },
+      currentMaterialRefsByProcessId: {
+        [processSummary.processId]: {
+          artifactIds: ['artifact-zero-byte-001'],
+          sourceAttachmentIds: [],
+        },
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/review/artifacts/artifact-zero-byte-001`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      artifactId: 'artifact-zero-byte-001',
+      currentVersionId: 'artifact-version-zero-byte-001',
+      selectedVersionId: 'artifact-version-zero-byte-001',
+      selectedVersion: {
+        versionId: 'artifact-version-zero-byte-001',
+        versionLabel: 'checkpoint-empty',
+        bodyStatus: 'ready',
+        body: '',
+        mermaidBlocks: [],
+      },
+    });
 
     await app.close();
   });
