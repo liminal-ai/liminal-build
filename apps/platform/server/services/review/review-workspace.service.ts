@@ -1,5 +1,4 @@
 import type {
-  ArtifactReviewTarget,
   ArtifactVersionDetail,
   ReviewTarget,
   ReviewTargetSummary,
@@ -122,37 +121,32 @@ export class DefaultReviewWorkspaceService implements ReviewWorkspaceService {
       });
     }
 
-    const artifact = await this.buildArtifactTarget({
+    const target = await this.buildArtifactTarget({
       projectId: args.projectId,
       processId: args.processId,
       artifactId: args.summary.targetId,
     });
 
-    if (artifact === null) {
+    if (target === null) {
       return undefined;
     }
 
-    return reviewTargetSchema.parse({
-      targetKind: 'artifact',
-      displayName: artifact.displayName,
-      status: 'ready',
-      artifact,
-    });
+    return target;
   }
 
   private async buildArtifactTarget(args: {
     projectId: string;
     processId: string;
     artifactId: string;
-  }): Promise<ArtifactReviewTarget | null> {
-    const [artifacts, currentMaterialRefs, content] = await Promise.all([
+  }): Promise<ReviewTarget | null> {
+    const [artifacts, currentMaterialRefs, latestVersion] = await Promise.all([
       this.platformStore.listProjectArtifacts({
         projectId: args.projectId,
       }),
       this.platformStore.getCurrentProcessMaterialRefs({
         processId: args.processId,
       }),
-      this.platformStore.getArtifactContent({
+      this.platformStore.getLatestArtifactVersion({
         artifactId: args.artifactId,
       }),
     ]);
@@ -164,7 +158,7 @@ export class DefaultReviewWorkspaceService implements ReviewWorkspaceService {
         candidate.currentVersionLabel !== null,
     );
 
-    if (artifact === undefined || content === null || artifact.currentVersionLabel === null) {
+    if (artifact === undefined || latestVersion === null || artifact.currentVersionLabel === null) {
       return null;
     }
 
@@ -173,6 +167,52 @@ export class DefaultReviewWorkspaceService implements ReviewWorkspaceService {
       versionLabel: artifact.currentVersionLabel,
       updatedAt: artifact.updatedAt,
     });
+    const artifactReview = artifactReviewTargetSchema.parse({
+      artifactId: artifact.artifactId,
+      displayName: artifact.displayName,
+      currentVersionId: versionId,
+      currentVersionLabel: artifact.currentVersionLabel,
+      selectedVersionId: versionId,
+      versions: [
+        {
+          versionId,
+          versionLabel: artifact.currentVersionLabel,
+          isCurrent: true,
+          createdAt: artifact.updatedAt,
+        },
+      ],
+      selectedVersion:
+        latestVersion.contentKind === 'unsupported'
+          ? ({
+              versionId,
+              versionLabel: artifact.currentVersionLabel,
+              contentKind: 'unsupported',
+              createdAt: artifact.updatedAt,
+            } satisfies ArtifactVersionDetail)
+          : undefined,
+    });
+
+    if (latestVersion.contentKind === 'unsupported') {
+      return reviewTargetSchema.parse({
+        targetKind: 'artifact',
+        displayName: artifact.displayName,
+        status: 'unsupported',
+        error: {
+          code: 'REVIEW_TARGET_UNSUPPORTED',
+          message: 'This artifact format is not reviewable in the current release.',
+        },
+        artifact: artifactReview,
+      });
+    }
+
+    const content = await this.platformStore.getArtifactContent({
+      artifactId: args.artifactId,
+    });
+
+    if (content === null) {
+      return null;
+    }
+
     const rendered = this.markdownRenderer.render({
       markdown: content,
       themeId: 'light',
@@ -193,21 +233,14 @@ export class DefaultReviewWorkspaceService implements ReviewWorkspaceService {
       createdAt: artifact.updatedAt,
     };
 
-    return artifactReviewTargetSchema.parse({
-      artifactId: artifact.artifactId,
+    return reviewTargetSchema.parse({
+      targetKind: 'artifact',
       displayName: artifact.displayName,
-      currentVersionId: versionId,
-      currentVersionLabel: artifact.currentVersionLabel,
-      selectedVersionId: versionId,
-      versions: [
-        {
-          versionId,
-          versionLabel: artifact.currentVersionLabel,
-          isCurrent: true,
-          createdAt: artifact.updatedAt,
-        },
-      ],
-      selectedVersion,
+      status: 'ready',
+      artifact: artifactReviewTargetSchema.parse({
+        ...artifactReview,
+        selectedVersion,
+      }),
     });
   }
 }

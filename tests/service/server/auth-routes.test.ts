@@ -617,6 +617,9 @@ describe('auth routes', () => {
       async getArtifactContent() {
         return null;
       },
+      async getLatestArtifactVersion() {
+        return null;
+      },
       async listProcessReviewTargets() {
         return [];
       },

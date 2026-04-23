@@ -3,9 +3,39 @@
 ## Run Overview
 - State: BETWEEN_STORIES
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/04--artifact-review-and-package-surface
-- Current Story: (01 accepted; next: 02-artifact-versions-and-revision-review)
+- Current Story: 02-artifact-versions-and-revision-review (next)
 - Current Phase: —
-- Last Completed Checkpoint: Story 1 accepted (1 verify round, 0 quick-fixes, converged finding disposed as accepted-risk per epic scope, baseline 406; commit pending)
+- Last Completed Checkpoint: Story 1 re-accepted; follow-up commit pending (round 1 integrated real Convex package read path; round 2 added unsupported-fallback + cross-kind ordering)
+
+## Orchestrator failure mode — Story 1 "test-shim-as-scope-decision" (2026-04-23 ~11:00Z)
+
+**Pattern to avoid in future runs.** During Story 1 acceptance, a `ConvexPlatformStore` method that returned `null` and a list method that only enumerated artifacts were accepted as an epic-scope decision. Both verifiers flagged it `blocking`; self-review declared it as a spec deviation. The orchestrator overrode both signals on the wrong rationale.
+
+**What went wrong in the orchestrator's reasoning:**
+
+1. **Conflated write-path deferral with read-path integration.** Epic 4 legitimately defers the production *caller* of `publishPackageSnapshot` (publication is a downstream process-module epic's responsibility). The orchestrator extended that deferral to the *read path for already-persisted snapshots*, which is squarely in Epic 4's scope. Tech design requires it; Story 4's "manual Convex seeding" contract depends on it.
+2. **Treated self-review's `specDeviations` as disclosure rather than a routing signal.** When a self-review pass declares a spec deviation, that is the implementor admitting it did not finish the integration. The correct response is `story-continue` with a bounded follow-up, not "noted." The skill's fix-routing doc is explicit: declared deviations and blocking verifier findings route to same-session follow-up.
+3. **Treated convergent verifier findings as debatable opinions.** Two fresh verifiers independently flagging the same integration gap with `blocking: true` is the strongest signal the CLI produces. Overriding it requires tech-design evidence against the verifiers' interpretation, not scope-argument rationalization.
+4. **Forgot the epic's own framing.** Epic 4 is a platform-integration standup. "Tests pass against the in-memory shim" is not equivalent to "the platform integrates." Shape tests + shim tests without real substrate wiring produce a green gate that does not evidence the point of the epic.
+
+**The rule going forward (this epic and future ones):**
+
+> A shim is only acceptable when there is a legit blocker — a design gap, a missing substrate, or a cross-story/cross-epic dependency that genuinely prevents integration. "The production caller isn't wired yet" is not a legit blocker when the read path can be seeded via a test. When the Convex substrate, contract, and tech-design guidance all exist, the integration must be wired — not shimmed — before acceptance.
+
+**Concrete orchestrator checks before disposing any "test-shim-only" finding as `accepted-risk`:**
+
+- Does the tech design require this integration in the current epic? (If yes → not accepted-risk.)
+- Do the substrate primitives already exist in the codebase? (If yes → not accepted-risk.)
+- Is there a real external blocker (auth, infra, undeclared design, product ruling)? (If no → not accepted-risk.)
+- Does downstream-epic scope actually exclude this surface, or am I generalizing from a write-path deferral to cover a read path? (If generalizing → stop and re-read the epic.)
+
+If all four checks favor integration, the correct routing is `story-continue` (with a bounded follow-up that quotes the user-visible rationale), not acceptance.
+
+## Story 1 reopen note (2026-04-23 ~11:05Z)
+- Story 2 was dispatched at ~10:55Z and stopped at ~11:05Z before self-review. Story 2 partial edits rolled back (git checkout HEAD + rm of untracked + rm of `artifacts/02-.../`). Working tree back to Story 1 commit state.
+- Reason for reopen: on user review of Story 1's accepted-risk disposition, my rationale was wrong. The accepted "test-shim only" package path is a platform-integration gap, not an epic-scope decision. Specifically `ConvexPlatformStore.getProcessReviewPackage` is `return null` and `ConvexPlatformStore.listProcessReviewTargets` only enumerates artifacts, while `InMemoryPlatformStore` has the full package impl and tests pass against it. Tech design (tech-design-server.md §Module Responsibility Matrix) requires real Convex reads; the Convex substrate (`listPackageSnapshotsForProcess`, `getPackageSnapshot`, `listPackageSnapshotMembers`) already exists from Story 0. Self-review's "spec deviation" declaration and both verifiers' `blocking: true` finding were correct signals that the orchestrator should not have overridden on epic-scope grounds.
+- Correct epic-scope application: production *publication* (a caller of `publishPackageSnapshot`) is deferred to a downstream process-module epic. The *read path for already-persisted snapshots* is in Epic 4's scope and Story 4 explicitly relies on it ("exercisable through tests and manual Convex seeding").
+- Next action: `story-continue --provider codex --session-id 019db9dc-dacb-76f3-b2d3-56a6594da7bb` with a bounded follow-up prompt: wire `ConvexPlatformStore.listProcessReviewTargets` package branch + `getProcessReviewPackage` against the existing internalQueries; add one integration test seeded via `publishPackageSnapshot` that resolves through the real route; return `needs-human-ruling` only if genuinely blocked. Then re-run self-review → verify → gate; amend the Story 1 receipt disposition from `accepted-risk` → `fixed`; commit the follow-up as a separate commit or `git commit --amend` depending on user preference.
 
 ### CLI issue #17 — RESOLVED 2026-04-23 ~04:30Z (user fixed codex_output_schema)
 Coder agent redeployed skill with strict-schema helper (`codex-output-schema.ts`) now wired into all fresh Codex execs. `tests.totalAfterStory` and `tests.deltaFromPriorBaseline` made required-and-nullable internally, normalized out of final envelope if null. Schema-rejection now surfaces correct `PROVIDER_OUTPUT_INVALID` with real detail. Also includes retained-session simplification and prompt/docs alignment for provider payload vs final envelope. Validation: 304 pass, 0 fail. Re-dispatching Story 1 `story-implement` at 04:31Z.
@@ -33,7 +63,8 @@ Every CLI / skill issue or observation raised during this run, with current stat
 | 15 | `quick-fix` envelope inlines ~196 KB of raw provider stdout as `result.rawProviderOutput` | **STATUS UNKNOWN** | Not re-verified after the 2026-04-23 ~04:30Z redeploy. To confirm, check the size of the next quick-fix envelope (first quick-fix in Story 1 or later). If still ~200 KB, recommend capping or replacing with a stream-log pointer. |
 | 16 | Orchestrator's first quick-fix monitor used wrong glob and fell through to stale status | **RESOLVED — orchestrator's bug** | Not a CLI issue. Fixed by re-arming the monitor on the explicit `artifacts/quick-fix/progress/001-quick-fix.status.json` path. Kept on record so future orchestrators know story-agnostic ops live elsewhere. |
 | 17 | 🚨 BLOCKING — `codex_output_schema` invalid for OpenAI strict structured outputs | **RESOLVED 2026-04-23 ~04:30Z (user patch)** | Coder agent's fix: `tests.totalAfterStory` / `tests.deltaFromPriorBaseline` made required-and-nullable internally, normalized out of final envelope if null. Shared `codex-output-schema.ts` helper now wired into every fresh Codex exec (so all ops with fresh codex sessions are hardened, not just story-implement). Also: schema-rejection failures now surface the real `invalid_json_schema` detail instead of the misleading `PROVIDER_UNAVAILABLE` surface. Story 1 `story-implement` re-dispatched at ~10:20Z, running successfully at the time of this update. |
-| 18 (new) | CLI prints "Default sub command ... not found in subCommands." when run without args | **OPEN (minor UX)** | Running `node bin/ls-impl-cli.cjs` with no args now prints a help block then a literal `Default sub command [hint text] not found in subCommands.` error. The hint itself is helpful but the trailing "not found" line looks like a bug in the arg-parser library. Cosmetic; doesn't affect real use since operators always pass a subcommand. |
+| 18 | CLI prints "Default sub command ... not found in subCommands." when run without args | **OPEN (minor UX)** | Running `node bin/ls-impl-cli.cjs` with no args now prints a help block then a literal `Default sub command [hint text] not found in subCommands.` error. The hint itself is helpful but the trailing "not found" line looks like a bug in the arg-parser library. Cosmetic; doesn't affect real use since operators always pass a subcommand. |
+| 19 (new) | `story-continue` envelope returns `continuationHandle: null` on follow-up pass | **OPEN (minor)** | At 2026-04-23 ~11:20Z, Story 1 `story-continue` finished `ready-for-verification` cleanly, but the result envelope's `continuationHandle` field is null. The codex session underneath the continue call is obviously still valid (the continue succeeded against the same `019db9dc-dacb-76f3-b2d3-56a6594da7bb` handle), the CLI just doesn't echo it back. Orchestrator workaround: continue using the last known handle from the log's `Current Continuation Handles` section — the session id from the first `story-implement` envelope is still the authoritative one. Fix direction: surface the reused handle in every follow-up envelope so recovery doesn't need to walk back to the initial implementor result. |
 
 ### Open items requiring no code fix (user-side or run-level decisions)
 
@@ -100,7 +131,37 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 
 ## Story Receipts
 
-### 01-review-entry-and-workspace-bootstrap
+### 01-review-entry-and-workspace-bootstrap (updated 2026-04-23 ~14:05Z — receipt amended after reopen + two follow-up rounds)
+- Story Title: Story 1: Review Entry and Workspace Bootstrap
+- Reopen note: original acceptance (receipt below) accepted "test-shim only" package path as epic-scope decision; see **Orchestrator failure mode** section at top of log. Reopened on user review at 11:00Z; two bounded `story-continue` follow-ups wired the real Convex read path, then added unsupported-fallback reviewability and cross-kind newest-first target ordering.
+- Implementor Evidence (amended):
+  - Initial: `artifacts/01-.../002-implementor.json` (codex session `019db9dc-dacb-76f3-b2d3-56a6594da7bb`, outcome `ready-for-verification`)
+  - Self-review: `artifacts/01-.../006-self-review-batch.json` (3/3 passes)
+  - Follow-up 1 (Convex package read path integrated): `artifacts/01-.../008-continue.json` — real `ConvexPlatformStore.listProcessReviewTargets` package branch + `getProcessReviewPackage` against existing internalQueries, new integration test `tests/integration/review-workspace.test.ts` seeded via `publishPackageSnapshot`
+  - Follow-up 2 (unsupported fallback + cross-kind ordering): `artifacts/01-.../010-continue.json` — durable-latest-version-driven reviewability, `contentKind`-branched `buildArtifactTarget`, unified newest-first cross-kind `position` ordering
+- Verifier Evidence (amended):
+  - Round 1: `artifacts/01-.../007-verify-batch.json` (against initial impl; revise — shim finding that drove reopen)
+  - Round 2: `artifacts/01-.../009-verify-batch.json` (after follow-up 1; revise — V1 flagged unsupported-fallback + cross-kind ordering, V2 clean, both gates pass in both sessions)
+  - Round 3: `artifacts/01-.../011-verify-batch.json` (after follow-up 2; revise — V1 clean, V2 raised epic-gate flake `human-ruling` finding; both sessions' `green-verify` pass)
+- Story Gate: `corepack pnpm run green-verify` — **pass** (final orchestrator-owned run, exit 0)
+- Epic Gate (checked early because V2 raised it): `corepack pnpm run verify-all` — **pass** on second run (first run had a known test-order flake in `tests/integration/platform-shell.test.ts` on the `production-mode` subtest; passed in isolation and passed on full re-run with no code change)
+- Gate Tests: convex 41 / service 182 / client 169 / packages 2 / integration 15 = **409 total**
+- Dispositions:
+  - (round 1) **convergent shim finding** (V1+V2, major, blocking) — "Package review path is test-shim only" → **fixed** via follow-up 1 (Convex package read path wired against existing `listPackageSnapshotsForProcess` / `getPackageSnapshot` / member reads; new integration test seeded via `publishPackageSnapshot` and resolved through the real route).
+    - Original disposition (`accepted-risk` on epic-scope rationale) was **wrong**. The four-check rule at the top of this log now documents the pattern to avoid.
+  - (round 2) `story1-reviewability-unsupported-gap` (V1, major, blocking, quick-fix) → **fixed** via follow-up 2 (durable-latest-version reads; `contentKind: 'markdown' | 'unsupported'` branch in `buildArtifactTarget`; unsupported artifacts now appear in `availableTargets` and resolve to `status: 'unsupported'`; new integration coverage).
+  - (round 2) `story1-target-order-fallback` (V1, minor, non-blocking, quick-fix) → **fixed** via follow-up 2 (unified newest-first cross-kind `position` ordering).
+  - (round 3) `F-001` (V2, major, blocking, human-ruling) — "Epic gate `verify-all` failed in V2 session" → **defer** (flaky/environmental, not a Story 1 regression). V1 got `verify-all` pass on identical tree. My own `verify-all` failed once on a shared-state flake in `platform-shell.test.ts` production-mode subtest, passed on re-run with no code change. The failure V2 hit is `tests/integration/octokit-code-checkpoint-writer-integration.test.ts` — pre-existing Epic 3 test that hits the real GitHub API (401 without creds). V2's sandbox lacks GITHUB_TOKEN. Not a Story 1 scope item. Carrying to cleanup: "flaky integration tests under credential-less / shared-state conditions: octokit-code-checkpoint-writer, platform-shell production-mode".
+- Open Risks:
+  - Pre-existing flaky integration tests (see disposition above). Carry to cleanup batch.
+- Baseline Before: 381
+- Baseline After: 409 (+28 total for Story 1 including two follow-up rounds: +25 from initial commit + ~+3 from follow-up integration tests)
+- User Acceptance: pending commit (follow-up)
+- Acceptance Rationale: 3 verifier rounds, real Convex package read path now integrated end-to-end with seeded-snapshot integration test, unsupported-kind fallback integrated, cross-kind target ordering integrated, 0 real Story 1 blocking findings remain. The only remaining `blocking` verifier finding is a flaky pre-existing integration test that passes on re-run and that V1 saw as pass. Baseline up +28 with no regressions. Original "shim" acceptance corrected.
+
+---
+
+### 01-review-entry-and-workspace-bootstrap (original receipt, superseded — kept for audit trail)
 - Story Title: Story 1: Review Entry and Workspace Bootstrap
 - Implementor Evidence:
   - `artifacts/01-review-entry-and-workspace-bootstrap/002-implementor.json` (outcome `ready-for-verification`, 24 files changed, 7 internal gates pass; session `019db9dc-dacb-76f3-b2d3-56a6594da7bb`)
@@ -161,16 +222,17 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 - Acceptance Rationale: 4 verifier rounds, 0 blocking findings remain, story gate pass, baseline up with no regressions, self-review + implementor work intact on disk, all spec-pack contract vocabulary in place as Story 0 foundation for Stories 1–6. Residual findings are disposed per rationale above.
 
 ## Cumulative Baselines
-- Baseline Before Current Story: 406 (post-Story-1 accepted; next story's "before")
+- Baseline Before Current Story: 409 (post-Story-1-amended accepted; next story's "before")
 - Expected After Current Story: TBD at Story 2 start
-- Latest Actual Total: 406 (post-Story-1 final gate at ~10:50Z, exit 0)
+- Latest Actual Total: 409 (post-Story-1-amended verify-all at ~14:05Z, exit 0)
 
 ### Baseline history
 | Story | Before | After | Delta | Notes |
 |---|---|---|---|---|
 | (pre-Story-0 baseline) | — | 370 | — | convex 41 + service 168 + client 161; captured 2026-04-23 via `verify` |
 | 00-foundation | 370 | 381 | +11 | +4 from `review-foundation-contracts.test.ts` TC-0 + 2 from `packages/markdown-package/tests/scaffold.test.ts` + 5 from 3 quick-fix contract-validation tests |
-| 01-review-entry-and-workspace-bootstrap | 381 | 406 | +25 | +3 new test files (review-workspace-api, review-workspace-page, review-router); +tests from 7 modified suites; 1 round of verify, no quick-fix cycles needed |
+| 01-review-entry-and-workspace-bootstrap (initial) | 381 | 406 | +25 | +3 new test files (review-workspace-api, review-workspace-page, review-router); +tests from 7 modified suites; 1 round of verify |
+| 01-review-entry-and-workspace-bootstrap (amended) | 406 | 409 | +3 | +1 new integration test file `tests/integration/review-workspace.test.ts` seeded via `publishPackageSnapshot`; +2 subtests for unsupported-fallback + cross-kind newest-first ordering |
 
 ## Cleanup / Epic Verification
 - Cleanup Artifact: pending
