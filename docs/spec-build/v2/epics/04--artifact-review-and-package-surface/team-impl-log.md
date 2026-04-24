@@ -1,11 +1,11 @@
 # Team Implementation Log
 
 ## Run Overview
-- State: PRE_EPIC_VERIFY
+- State: EPIC_VERIFY_ACTIVE
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/04--artifact-review-and-package-surface
 - Current Story: (all stories accepted)
-- Current Phase: —
-- Last Completed Checkpoint: Story 6 accepted (pending commit)
+- Current Phase: cleanup-compile
+- Last Completed Checkpoint: Story 6 accepted + committed as `dba05bb`
 
 ## Orchestrator failure mode — Story 2 "verify-round churn from under-configured fixer + unchecked fix spillover" (2026-04-23 ~16:50Z)
 
@@ -196,6 +196,37 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 - Baseline After: 540 (+52)
 - Rounds: 3 verify rounds + 3 follow-up continues
 - Acceptance Rationale: All real findings from rounds 1-2 fixed. Round 3 findings are environment false positives — convergent format-drift from verifier codex sessions (not present in actual working tree), V1-only client test failures not reproduced by V2 or orchestrator. Orchestrator independent gate runs pass clean on all lanes. Baseline +52 with no regressions. Durable reopen, unavailable states, bounded degraded rendering, stale-selection guards, and explicit-member unavailability all integrated per tech design.
+
+---
+
+### 06-reopen-unavailable-and-degraded-review-states (accepted 2026-04-24 ~09:00Z)
+- Story Title: Story 6: Reopen, Unavailable, and Degraded Review States + NFR + a11y + observability
+- Implementor Evidence:
+  - Initial: `artifacts/06-.../001-implementor.json` (codex session `019dbd27-fe09-7ab0-9437-9fd0f63f0450`, 8 files — only covered AC-6.1..6.3 AC-level work, missed Chunk 6 test files)
+  - Follow-up 1 (4 missing Chunk 6 test files): `story-continue 002` — added nfr.test.ts, observability.test.ts, a11y.test.ts, bundle-budget.test.ts (+36 tests)
+  - Follow-up 2 (stale selection race): `story-continue 006` — requestId guards on selectArtifactVersion + selectPackageMember
+  - Follow-up 3 (production a11y + observability): `story-continue 013` — real listbox/option ARIA semantics, Fastify pino logger + redaction, structured log events across services, rewrote a11y/observability tests to assert against production
+  - Follow-up 4 (disabled-member keyboard traversal): `story-continue 016` — separated roving-focus from activation; ArrowUp/Down/Home/End work on all members regardless of status
+- Verifier Evidence (4 rounds):
+  - Round 1: `003-verify-batch.json` — revise (stale selection race)
+  - Round 2: `009-verify-batch.json` — revise (a11y + observability not implemented in production code)
+  - Round 3: `014-verify-batch.json` — revise (disabled-member keyboard trap)
+  - Round 4: `022-verify-batch.json` — **pass** (after 2 CLI-block cycles from PROVIDER_OUTPUT_INVALID truncation, both verifiers clean)
+- Story Gate: `corepack pnpm run green-verify` — **pass**
+- Epic Gate: `corepack pnpm run verify-all` — **pass** (541 tests)
+- Gate Tests: convex 54 / service 234 / client 226 / packages 5 / integration 22 = **541 total**
+- Dispositions:
+  - (rd 0 gap) Chunk 6 missing test files → **fixed** (c1: 4 new test files, +36 tests)
+  - (rd 1) selection race → **fixed** (c2: requestId guards)
+  - (rd 2) a11y semantics not implemented in production → **fixed** (c3: real listbox/option with ARIA, semantic anchor for back control, focus management)
+  - (rd 2) observability events not emitted from production → **fixed** (c3: pino logger, redaction rule, 12 structured events across services, no raw tokenPrefix)
+  - (rd 3) disabled member keyboard trap → **fixed** (c4: roving-focus separated from activation)
+  - (rd 4 cycles) CLI-side `PROVIDER_OUTPUT_INVALID` — rate-limit-induced truncation → transient; cleared on retry
+- Open Risks: none
+- Baseline Before: 488
+- Baseline After: 541 (+53)
+- Rounds: 4 verify rounds + 4 follow-ups
+- Acceptance Rationale: final round `pass` with both verifiers clean and 0 findings. All Chunk 6 infrastructure (NFR, observability, a11y, bundle-budget) now exercised against real production code instead of literal-scaffold tests. Real ARIA listbox semantics + Fastify pino with redaction + 12 structured log events + bundle-budget check + 2-second NFR smokes all landed per tech-design. Story 6's initial implementation narrowed to story-file DoD only and missed the test-plan Chunk 6 scope — corrected via follow-ups. **Pattern to carry forward**: self-review should detect test-plan-vs-story-DoD mismatches when scope is enumerated elsewhere.
 
 ---
 
@@ -462,6 +493,7 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 | 03-markdown-and-mermaid-review | 425 | 441 | +16 | +2 new test files (markdown-renderer, markdown-body, mermaid-runtime) + quick-fix regressions (XSS, directive-only, version-ID traceability, zero-byte body, 200KB smoke-proof) |
 | 04-package-review-workspace | 441 | 466 | +25 | +2 Convex test files (packageSnapshots, packageSnapshotMembers) + package-review-api + package-review-panel + snapshot-immutability integration + 20-member/2s smoke + process-ownership regressions |
 | 05-package-export | 466 | 488 | +22 | +4 new test files (review-export-api, export-url-signing, export-trigger, create-from-entries) + regressions for token 404, cache headers, archive collision, package-scoped state, streaming, aria-live |
+| 06-reopen-unavailable-and-degraded-review-states | 488 | 541 | +53 | +4 new test files (nfr, observability, a11y, bundle-budget), +production a11y/observability wiring, +selection race guards, +disabled-member keyboard traversal |
 | 06-reopen-unavailable-and-degraded-review-states | 488 | 540 | +52 | +review-workspace-api TC-6 tests + unavailable/degraded client tests + version-switcher stale-guard regressions + package-member-nav stale-guard + explicit-member-unavailable + NFR tests |
 
 ## Cleanup / Epic Verification

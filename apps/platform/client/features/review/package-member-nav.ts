@@ -52,41 +52,43 @@ export function renderPackageMemberNav(args: {
     item.setAttribute('aria-selected', isSelected ? 'true' : 'false');
     item.setAttribute('aria-disabled', isDisabled ? 'true' : 'false');
 
-    if (!isDisabled) {
-      item.addEventListener('click', () => {
+    item.addEventListener('click', () => {
+      if (!isDisabled) {
         args.onSelect(member.memberId);
-      });
-      item.addEventListener('keydown', (event) => {
-        const options = [
-          ...(item.parentElement?.querySelectorAll<HTMLElement>('[role="option"]') ?? []),
-        ];
-        const currentIndex = options.indexOf(item);
+      }
+    });
+    item.addEventListener('keydown', (event) => {
+      const options = [
+        ...(item.parentElement?.querySelectorAll<HTMLElement>('[role="option"]') ?? []),
+      ];
+      const currentIndex = options.indexOf(item);
 
-        switch (event.key) {
-          case 'ArrowDown':
-            event.preventDefault();
-            moveListboxSelection({ options, nextIndex: currentIndex + 1 });
-            return;
-          case 'ArrowUp':
-            event.preventDefault();
-            moveListboxSelection({ options, nextIndex: currentIndex - 1 });
-            return;
-          case 'Home':
-            event.preventDefault();
-            moveListboxSelection({ options, nextIndex: 0 });
-            return;
-          case 'End':
-            event.preventDefault();
-            moveListboxSelection({ options, nextIndex: options.length - 1 });
-            return;
-          case 'Enter':
-          case ' ':
-            event.preventDefault();
+      switch (event.key) {
+        case 'ArrowDown':
+          event.preventDefault();
+          moveListboxSelection({ options, nextIndex: currentIndex + 1 });
+          return;
+        case 'ArrowUp':
+          event.preventDefault();
+          moveListboxSelection({ options, nextIndex: currentIndex - 1 });
+          return;
+        case 'Home':
+          event.preventDefault();
+          moveListboxSelection({ options, nextIndex: 0 });
+          return;
+        case 'End':
+          event.preventDefault();
+          moveListboxSelection({ options, nextIndex: options.length - 1 });
+          return;
+        case 'Enter':
+        case ' ':
+          event.preventDefault();
+          if (!isDisabled) {
             args.onSelect(member.memberId);
-            return;
-        }
-      });
-    }
+          }
+          return;
+      }
+    });
 
     meta.textContent = `${member.versionLabel} • ${createStatusLabel(member)}`;
     item.append(meta);
