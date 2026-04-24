@@ -546,7 +546,7 @@ export async function registerReviewRoutes(app: FastifyInstance): Promise<void> 
           app.log.warn(
             {
               event: 'review.export.download-failed',
-              packageId: null,
+              packageId: 'unrecoverable',
               exportId: request.params.exportId,
               result: 'failure',
               reason: 'missing_token',
@@ -558,6 +558,21 @@ export async function registerReviewRoutes(app: FastifyInstance): Promise<void> 
         }
 
         recoverablePackageId = inspectExportTokenPayload(request.query.token)?.packageSnapshotId;
+        if (recoverablePackageId === undefined) {
+          applyExportDownloadNoStoreHeaders(reply);
+          app.log.warn(
+            {
+              event: 'review.export.download-failed',
+              packageId: 'unrecoverable',
+              exportId: request.params.exportId,
+              result: 'failure',
+              reason: 'malformed_token',
+            },
+            'Review package export download failed.',
+          );
+
+          return reply.code(404).send(buildReviewTargetNotFoundResponse());
+        }
 
         const download = await app.exportService.downloadExport({
           projectId: request.params.projectId,
@@ -611,10 +626,10 @@ export async function registerReviewRoutes(app: FastifyInstance): Promise<void> 
           app.log.warn(
             {
               event: 'review.export.download-failed',
-              packageId: recoverablePackageId ?? null,
+              packageId: recoverablePackageId ?? 'unrecoverable',
               exportId: request.params.exportId,
               result: 'failure',
-              reason: error.code,
+              reason: recoverablePackageId === undefined ? 'malformed_token' : error.code,
             },
             'Review package export download failed.',
           );

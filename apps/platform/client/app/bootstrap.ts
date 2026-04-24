@@ -105,6 +105,21 @@ function getReviewWorkspaceRouteIdentity(parsedRoute: ParsedRoute): {
   };
 }
 
+function normalizeReviewWorkspaceBootstrapError(error: ApiRequestError): RequestError {
+  if (
+    error.payload.code === 'REVIEW_EXPORT_FAILED' ||
+    error.payload.code === 'REVIEW_EXPORT_NOT_AVAILABLE'
+  ) {
+    return {
+      code: 'PROCESS_ACTION_FAILED',
+      message: 'The review workspace is unavailable right now. Try again or reload the page.',
+      status: 500,
+    };
+  }
+
+  return error.payload;
+}
+
 export async function bootstrapApp(
   targetWindow: Window & typeof globalThis = window,
 ): Promise<void> {
@@ -853,7 +868,7 @@ export async function bootstrapApp(
             processId: parsedRoute.processId,
             selection: parsedRoute.reviewSelection,
             isLoading: false,
-            error: error.payload,
+            error: normalizeReviewWorkspaceBootstrapError(error),
           });
           return;
         }

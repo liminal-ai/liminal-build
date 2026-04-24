@@ -78,7 +78,22 @@ export type PackageMemberStatus = z.infer<typeof packageMemberStatusSchema>;
 export const exportPackageFormatSchema = z.literal('mpkz');
 export type ExportPackageFormat = z.infer<typeof exportPackageFormatSchema>;
 
-const iso8601UtcString = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/);
+const iso8601UtcString = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/)
+  .refine(
+    (value) => {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return false;
+      }
+
+      return date.toISOString().startsWith(value.slice(0, -1));
+    },
+    {
+      message: 'Timestamp must be a semantically valid ISO 8601 UTC date.',
+    },
+  );
 
 export const reviewWorkspaceSelectionSchema = z.object({
   targetKind: reviewTargetKindSchema.optional(),

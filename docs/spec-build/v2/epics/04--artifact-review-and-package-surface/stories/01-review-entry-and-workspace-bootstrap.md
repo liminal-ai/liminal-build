@@ -120,7 +120,7 @@ Return from the review workspace uses the same process route context that opened
 
 - An artifact is reviewable when it has at least one durable version, including artifacts that may open through the unsupported-format fallback.
 - A package is reviewable when the process has published a durable package snapshot with at least one durable member.
-- An artifact with no durable version and a package that does not exist durably are not reviewable targets.
+- An artifact with no durable version and a package that does not exist durably are not reviewable targets. Direct-URL access to a zero-version artifact identity is handled by Story 2 AC-2.4 as a no-version target state, not as target-list discovery.
 
 #### Review Route Query Parameters
 
@@ -132,6 +132,8 @@ Return from the review workspace uses the same process route context that opened
 | `memberId` | string | no | Explicit package member identifier when the browser opens one member inside a package |
 
 #### Process Review Workspace Response
+
+Note: The canonical shared contract definitions are established in Story 0 (Foundation). This story references the same shapes for self-contained readability; Story 0's `review-workspace.ts` is authoritative at runtime.
 
 | Field | Type | Required | Validation | Description |
 |---|---|---|---|---|

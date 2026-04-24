@@ -6,6 +6,24 @@ function createParagraph(targetDocument: Document, text: string) {
   return paragraph;
 }
 
+async function triggerDownload(args: {
+  response: Response;
+  downloadName: string;
+  targetDocument: Document;
+}): Promise<void> {
+  const blob = await args.response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const downloadLink = args.targetDocument.createElement('a');
+
+  downloadLink.href = objectUrl;
+  downloadLink.download = args.downloadName;
+  downloadLink.style.display = 'none';
+  args.targetDocument.body.append(downloadLink);
+  downloadLink.click();
+  downloadLink.remove();
+  queueMicrotask(() => URL.revokeObjectURL(objectUrl));
+}
+
 export function renderExportTrigger(args: {
   packageId: string;
   isExporting: boolean;
@@ -38,18 +56,40 @@ export function renderExportTrigger(args: {
   }
 
   if (args.lastExport !== null) {
+    const exportResponse = args.lastExport;
     const downloadLink = args.targetDocument.createElement('a');
-    downloadLink.href = args.lastExport.downloadUrl;
-    downloadLink.download = args.lastExport.downloadName;
-    downloadLink.textContent = `Download ${args.lastExport.downloadName}`;
+    downloadLink.href = exportResponse.downloadUrl;
+    downloadLink.download = exportResponse.downloadName;
+    downloadLink.textContent = `Download ${exportResponse.downloadName}`;
     downloadLink.setAttribute('data-export-download-link', args.packageId);
     downloadLink.addEventListener('click', (event) => {
-      const expiresAt = Date.parse(args.lastExport?.expiresAt ?? '');
+      const expiresAt = Date.parse(exportResponse.expiresAt);
       const clockSkewBufferMs = 5_000;
       if (Number.isFinite(expiresAt) && expiresAt <= Date.now() + clockSkewBufferMs) {
         event.preventDefault();
         args.onExportExpired();
+        return;
       }
+
+      event.preventDefault();
+      void fetch(exportResponse.downloadUrl, {
+        credentials: 'include',
+      })
+        .then(async (response) => {
+          if (!response.ok) {
+            if (response.status === 404) {
+              args.onExportExpired();
+            }
+            return;
+          }
+
+          await triggerDownload({
+            response,
+            downloadName: exportResponse.downloadName,
+            targetDocument: args.targetDocument,
+          });
+        })
+        .catch(() => {});
     });
     statusRegion.append(
       createParagraph(args.targetDocument, `Download expires at ${args.lastExport.expiresAt}`),

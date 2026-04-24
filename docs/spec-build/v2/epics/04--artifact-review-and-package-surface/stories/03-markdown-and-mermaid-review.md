@@ -82,6 +82,8 @@ This story consumes the selected artifact version from Story 2 and turns it into
 
 #### Artifact Version Detail
 
+Note: The canonical shared contract definitions are established in Story 0 (Foundation). This story references the same shapes for self-contained readability; Story 0's `review-workspace.ts` is authoritative at runtime.
+
 | Field | Type | Required | Validation | Description |
 |---|---|---|---|---|
 | `versionId` | string | yes | non-empty | Stable version identifier |

@@ -115,6 +115,8 @@ This story adds package-snapshot review on top of the process-aware review works
 
 #### Package Review Target
 
+Note: The canonical shared contract definitions are established in Story 0 (Foundation). This story references the same shapes for self-contained readability; Story 0's `review-workspace.ts` is authoritative at runtime.
+
 | Field | Type | Required | Validation | Description |
 |---|---|---|---|---|
 | `packageId` | string | yes | non-empty | Stable package identifier |
@@ -168,6 +170,7 @@ This story adds package-snapshot review on top of the process-aware review works
 
 | Code | Description |
 |---|---|
+| `REVIEW_TARGET_NOT_FOUND` | The requested review target (artifact, artifact version, or package) is no longer available in the review context |
 | `REVIEW_TARGET_UNSUPPORTED` | The selected member cannot be rendered in the first-cut review workspace, but its identity remains visible |
 | `REVIEW_MEMBER_UNAVAILABLE` | One package member is unavailable in the current package review context |
 

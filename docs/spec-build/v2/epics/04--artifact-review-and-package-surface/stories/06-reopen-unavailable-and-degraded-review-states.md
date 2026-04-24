@@ -93,6 +93,8 @@ The first-cut review workspace restores from durable review state. It does not d
 
 #### Review Target
 
+Note: The canonical shared contract definitions are established in Story 0 (Foundation). This story references the same shapes for self-contained readability; Story 0's `review-workspace.ts` is authoritative at runtime.
+
 | Field | Type | Required | Validation | Description |
 |---|---|---|---|---|
 | `targetKind` | enum | yes | `artifact` or `package` | What the current review target is |
@@ -113,6 +115,7 @@ The first-cut review workspace restores from durable review state. It does not d
 
 | Code | Description |
 |---|---|
+| `REVIEW_TARGET_NOT_FOUND` | The requested review target (artifact, artifact version, or package) is no longer available in the review context |
 | `REVIEW_TARGET_UNSUPPORTED` | The current target or selected member cannot be rendered in the first-cut review workspace, but its identity remains visible |
 | `REVIEW_RENDER_FAILED` | The current target identity loaded, but bounded body or diagram rendering failed |
 | `REVIEW_MEMBER_UNAVAILABLE` | One package member is unavailable in the current package review context |

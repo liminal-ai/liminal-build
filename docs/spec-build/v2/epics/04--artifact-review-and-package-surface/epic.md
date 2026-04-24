@@ -278,9 +278,14 @@ updates to that version without confusing it with the current one.
 the workspace shows a clear no-version state instead of implying a reviewable
 draft exists.
 
+This case covers direct artifact-review access, such as a bookmarked or
+manually entered URL that names an artifact identity with zero durable versions.
+It does not make zero-version artifacts discoverable review targets; the target
+list continues to exclude them under the Flow 1 reviewability rules.
+
 - **TC-2.4a: No durable version state shown**
   - Given: Artifact record exists but no reviewable version has been published
-  - When: User opens artifact review
+  - When: User opens artifact review by direct URL
   - Then: The workspace shows that no reviewable version is currently available
 
 ### 3. Reading Markdown and Mermaid Artifacts in Place
@@ -772,6 +777,7 @@ in the underlying format but is not emitted by first-cut web export. After
 
 | Code | Description |
 |------|-------------|
+| `REVIEW_TARGET_NOT_FOUND` | The requested review target (artifact, artifact version, or package) is no longer available in the review context |
 | `REVIEW_TARGET_UNSUPPORTED` | The current target or selected member cannot be rendered in the first-cut review workspace, but its identity remains visible |
 | `REVIEW_RENDER_FAILED` | The current target identity loaded, but bounded body or diagram rendering failed |
 | `REVIEW_MEMBER_UNAVAILABLE` | One package member is unavailable in the current package review context |

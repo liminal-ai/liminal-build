@@ -78,9 +78,11 @@ Out:
 
 **AC-2.4:** If an artifact exists but has no reviewable durable version yet, the workspace shows a clear no-version state instead of implying a reviewable draft exists.
 
+Note: TC-2.4a covers direct artifact-review access, such as a bookmarked or manually entered URL that names a zero-version artifact. The target list correctly excludes zero-version artifacts under Story 1's reviewability rules.
+
 - **TC-2.4a: No durable version state shown**
   - Given: Artifact record exists but no reviewable version has been published
-  - When: User opens artifact review
+  - When: User opens artifact review by direct URL
   - Then: The workspace shows that no reviewable version is currently available
 
 ### Technical Design
@@ -100,6 +102,8 @@ This story adds durable artifact-version truth to the review workspace and keeps
 | `versionId` | string | no | Explicit artifact version to review when calling an artifact review endpoint |
 
 #### Artifact Review Target
+
+Note: The canonical shared contract definitions are established in Story 0 (Foundation). This story references the same shapes for self-contained readability; Story 0's `review-workspace.ts` is authoritative at runtime.
 
 | Field | Type | Required | Validation | Description |
 |---|---|---|---|---|

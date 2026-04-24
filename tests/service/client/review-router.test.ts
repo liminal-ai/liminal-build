@@ -63,6 +63,20 @@ function installFetchMock() {
       return buildJsonResponse(zeroTargetRouteFixture);
     }
 
+    if (
+      url.pathname ===
+      '/api/projects/project-review-bootstrap-error/processes/process-review-bootstrap-error/review'
+    ) {
+      return buildJsonResponse(
+        {
+          code: 'REVIEW_EXPORT_FAILED',
+          message: 'Package export failed during preparation.',
+          status: 503,
+        },
+        503,
+      );
+    }
+
     throw new Error(`Unexpected fetch request in review-router test: ${url.pathname}${url.search}`);
   });
 
@@ -128,6 +142,21 @@ describe('review router', () => {
 
     expect(dom.window.document.body.textContent).toContain(
       'No review targets are available for this process yet.',
+    );
+  });
+
+  it('keeps review bootstrap failures out of the export error taxonomy', async () => {
+    installFetchMock();
+    const dom = await renderApp(
+      'http://localhost:5001/projects/project-review-bootstrap-error/processes/process-review-bootstrap-error/review',
+    );
+
+    expect(dom.window.document.body.textContent).toContain('Review workspace failed to load');
+    expect(dom.window.document.body.textContent).toContain(
+      'The review workspace is unavailable right now. Try again or reload the page.',
+    );
+    expect(dom.window.document.body.textContent).not.toContain(
+      'Package export failed during preparation.',
     );
   });
 });

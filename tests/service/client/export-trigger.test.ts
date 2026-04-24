@@ -11,6 +11,7 @@ import { exportPackageResponseFixture } from '../../fixtures/export-responses.js
 describe('export trigger', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it('TC-5.1a renders a download link after a successful export request', () => {
@@ -178,11 +179,28 @@ describe('export trigger', () => {
     expect(root.textContent).toContain('Download link expired. Request a new export.');
   });
 
-  it('allows normal anchor navigation for unexpired links without a HEAD preflight', () => {
+  it('downloads the export with fetch when the stored link is still valid', async () => {
     const onExport = vi.fn();
     const onExportExpired = vi.fn();
-    const fetchMock = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('package-bytes', {
+        status: 200,
+        headers: { 'content-type': 'application/gzip' },
+      }),
+    );
+    const createObjectURL = vi.fn().mockReturnValue('blob:review-export');
+    const revokeObjectURL = vi.fn();
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function click(this: HTMLAnchorElement) {
+        this.setAttribute('data-clicked', 'true');
+      });
     vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL,
+      revokeObjectURL,
+    });
     const trigger = renderExportTrigger({
       packageId: 'package-001',
       isExporting: false,
@@ -201,19 +219,116 @@ describe('export trigger', () => {
       throw new Error('Expected the export trigger to render a download link.');
     }
 
-    let componentAllowedDefaultNavigation = false;
-    link.addEventListener('click', (event) => {
-      componentAllowedDefaultNavigation = !event.defaultPrevented;
-      event.preventDefault();
+    const wasNotCanceled = link.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true }),
+    );
+    await vi.waitFor(() => {
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
     });
+
+    expect(wasNotCanceled).toBe(false);
+    expect(fetchMock).toHaveBeenCalledWith(exportPackageResponseFixture.downloadUrl, {
+      credentials: 'include',
+    });
+    expect(clickSpy).toHaveBeenCalled();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:review-export');
+    expect(onExportExpired).not.toHaveBeenCalled();
+  });
+
+  it('calls onExportExpired and skips file download when the server rejects the download URL', async () => {
+    const onExportExpired = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('missing', {
+        status: 404,
+        headers: { 'content-type': 'text/plain' },
+      }),
+    );
+    const createObjectURL = vi.fn();
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL,
+      revokeObjectURL: vi.fn(),
+    });
+    const trigger = renderExportTrigger({
+      packageId: 'package-001',
+      isExporting: false,
+      lastExport: {
+        ...exportPackageResponseFixture,
+        expiresAt: '2999-01-01T00:00:00.000Z',
+      },
+      error: null,
+      targetDocument: document,
+      onExport: vi.fn(),
+      onExportExpired,
+    });
+
+    const link = trigger.querySelector('[data-export-download-link="package-001"]');
+    if (!(link instanceof HTMLAnchorElement)) {
+      throw new Error('Expected the export trigger to render a download link.');
+    }
 
     const wasNotCanceled = link.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }),
     );
+    await vi.waitFor(() => {
+      expect(onExportExpired).toHaveBeenCalledTimes(1);
+    });
 
     expect(wasNotCanceled).toBe(false);
-    expect(componentAllowedDefaultNavigation).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(createObjectURL).not.toHaveBeenCalled();
+    expect(clickSpy).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    403, 503,
+  ])('keeps the download link when the export download fetch returns %s', async (status) => {
+    const onExportExpired = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('transient failure', {
+        status,
+        headers: { 'content-type': 'text/plain' },
+      }),
+    );
+    const createObjectURL = vi.fn();
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL,
+      revokeObjectURL: vi.fn(),
+    });
+    const trigger = renderExportTrigger({
+      packageId: 'package-001',
+      isExporting: false,
+      lastExport: {
+        ...exportPackageResponseFixture,
+        expiresAt: '2999-01-01T00:00:00.000Z',
+      },
+      error: null,
+      targetDocument: document,
+      onExport: vi.fn(),
+      onExportExpired,
+    });
+
+    const link = trigger.querySelector('[data-export-download-link="package-001"]');
+    if (!(link instanceof HTMLAnchorElement)) {
+      throw new Error('Expected the export trigger to render a download link.');
+    }
+
+    const wasNotCanceled = link.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true }),
+    );
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(wasNotCanceled).toBe(false);
     expect(onExportExpired).not.toHaveBeenCalled();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(trigger.querySelector('[data-export-download-link="package-001"]')).toBe(link);
+    expect(createObjectURL).not.toHaveBeenCalled();
+    expect(clickSpy).not.toHaveBeenCalled();
   });
 });

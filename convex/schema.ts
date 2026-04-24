@@ -57,6 +57,8 @@ export default defineSchema({
   processFeatureImplementationStates: defineTable(
     processFeatureImplementationStateTableFields,
   ).index('by_processId', ['processId']),
+  // Epic 4 made `createdAt` required on artifact identities. Pre-existing dev
+  // rows created before that schema change need backfill or a dev DB reset.
   artifacts: defineTable(artifactsTableFields)
     .index('by_projectId', ['projectId'])
     .index('by_projectId_createdAt', ['projectId', 'createdAt']),
@@ -67,6 +69,8 @@ export default defineSchema({
     'processId',
     'publishedAt',
   ]),
+  // Epic 4 Story 4 made `displayName` and `versionLabel` required snapshot
+  // member fields. Pre-existing dev rows need backfill or a dev DB reset.
   packageSnapshotMembers: defineTable(packageSnapshotMembersTableFields).index(
     'by_packageSnapshotId_position',
     ['packageSnapshotId', 'position'],

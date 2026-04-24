@@ -528,7 +528,7 @@ The failure taxonomy:
 | Failure Point | Where | Component |
 |---------------|-------|-----------|
 | Request-level (401/403/404) | Route-level unavailable page | Route handler in `bootstrap.ts` |
-| Whole target unavailable (`target.status: unavailable`) | Page body | `degraded-state.ts` |
+| Whole target unavailable (`target.status: unavailable`, commonly `REVIEW_TARGET_NOT_FOUND`) | Page body | `degraded-state.ts` |
 | Whole target unsupported (`target.status: unsupported`) | Page body | `unsupported-fallback.ts` |
 | Artifact version body render failed (`bodyStatus: 'error'`) | Inside artifact panel | `degraded-state.ts` |
 | Artifact version format unsupported (`contentKind: unsupported`) | Inside artifact panel | `unsupported-fallback.ts` |

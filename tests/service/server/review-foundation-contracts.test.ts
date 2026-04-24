@@ -122,6 +122,20 @@ describe('Epic 04 Story 0 review foundation contracts', () => {
         createdAt: 'not-a-date',
       }),
     ).toThrow();
+    expect(() =>
+      artifactVersionSummarySchema.parse({
+        versionId: 'artifact-version-123',
+        versionLabel: 'checkpoint-20260230000000',
+        isCurrent: true,
+        createdAt: '2026-02-30T00:00:00.000Z',
+      }),
+    ).toThrow();
+    expect(() =>
+      exportPackageResponseSchema.parse({
+        ...exportPackageResponseFixture,
+        expiresAt: '2026-02-30T00:00:00.000Z',
+      }),
+    ).toThrow();
   });
 
   it('requires review target and package member error/detail fields to match status', () => {

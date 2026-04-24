@@ -146,6 +146,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   const app = Fastify({
     logger: options.logger ?? defaultLogger,
   });
+  const isProductionRuntime =
+    process.env.NODE_ENV === 'production' || process.env.LIMINAL_VITE_RUNTIME_MODE === 'production';
   // ConvexPlatformStore uses the shared Convex API key when calling the
   // service-only artifact wrappers. This keeps runtime auth scoped to the
   // specific server-to-Convex seams Fastify needs.
@@ -174,6 +176,16 @@ export async function createApp(options: CreateAppOptions = {}) {
   const projectIndexService = options.projectIndexService ?? new ProjectIndexService(platformStore);
   const projectShellService = options.projectShellService ?? new ProjectShellService(platformStore);
   const processLiveHub = options.processLiveHub ?? new InMemoryProcessLiveHub();
+  if (isProductionRuntime && platformStore instanceof NullPlatformStore) {
+    app.log.warn(
+      'Platform store is NullPlatformStore -- review features will return empty results. Set CONVEX_URL to enable live data.',
+    );
+  }
+  if (isProductionRuntime && processLiveHub instanceof InMemoryProcessLiveHub) {
+    app.log.warn(
+      'Process live hub is InMemoryProcessLiveHub -- live updates stay in-process only. Configure a shared live hub before running in production.',
+    );
+  }
   const processAccessService =
     options.processAccessService ?? new ProcessAccessService(platformStore, projectAccessService);
   const processModuleRegistry = options.processModuleRegistry ?? new ProcessModuleRegistry();

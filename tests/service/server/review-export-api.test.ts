@@ -459,13 +459,15 @@ describe('review export api', () => {
       label: 'missing',
       exportId: 'export-missing-token',
       token: null,
-      expectedFailurePackageId: null,
+      expectedFailurePackageId: 'unrecoverable',
+      expectedReason: 'missing_token',
     },
     {
       label: 'malformed',
       exportId: 'export-malformed-token',
       token: 'not-a-signed-token',
-      expectedFailurePackageId: null,
+      expectedFailurePackageId: 'unrecoverable',
+      expectedReason: 'malformed_token',
     },
     {
       label: 'tampered',
@@ -477,6 +479,7 @@ describe('review export api', () => {
         expiresAt: '2026-04-24T00:00:00.000Z',
       })}tampered`,
       expectedFailurePackageId: 'package-001',
+      expectedReason: 'REVIEW_TARGET_NOT_FOUND',
     },
     {
       label: 'expired',
@@ -488,11 +491,13 @@ describe('review export api', () => {
         expiresAt: '2026-04-01T00:00:00.000Z',
       }),
       expectedFailurePackageId: 'package-001',
+      expectedReason: 'REVIEW_TARGET_NOT_FOUND',
     },
   ])('TC-5.3b returns REVIEW_TARGET_NOT_FOUND when the signed export URL token is $label', async ({
     exportId,
     token,
     expectedFailurePackageId,
+    expectedReason,
   }) => {
     const platformStore = buildStore();
     const warnLogs: Array<Record<string, unknown>> = [];
@@ -546,6 +551,7 @@ describe('review export api', () => {
           packageId: expectedFailurePackageId,
           exportId,
           result: 'failure',
+          reason: expectedReason,
         }),
       ]),
     );

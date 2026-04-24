@@ -92,6 +92,8 @@ This story adds export preflight, signed download metadata, and archive streamin
 
 #### Package Exportability
 
+Note: The canonical shared contract definitions are established in Story 0 (Foundation). This story references the same shapes for self-contained readability; Story 0's `review-workspace.ts` is authoritative at runtime.
+
 | `available` | Other fields | Semantics |
 |---|---|---|
 | `true` | *(no other fields)* | Every package member is `status: ready`; the export action is offered |

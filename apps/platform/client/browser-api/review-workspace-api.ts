@@ -19,36 +19,88 @@ import {
 } from '../../shared/contracts/index.js';
 import { ApiRequestError } from './auth-api.js';
 
-function buildFallbackRequestError(response: Response): RequestError {
-  switch (response.status) {
-    case 401:
-      return {
-        code: 'UNAUTHENTICATED',
-        message: 'Authenticated access is required.',
-        status: 401,
-      };
-    case 403:
-      return {
-        code: 'PROJECT_FORBIDDEN',
-        message: 'You do not have access to this process review workspace.',
-        status: 403,
-      };
-    case 404:
-      return {
-        code: 'PROCESS_NOT_FOUND',
-        message: 'The requested process could not be found.',
-        status: 404,
-      };
-    default:
+type ReviewRequestErrorKind =
+  | 'review-workspace'
+  | 'artifact-review'
+  | 'package-review'
+  | 'package-export';
+
+function buildFallbackRequestError(
+  response: Response,
+  requestKind: ReviewRequestErrorKind,
+): RequestError {
+  if (response.status === 401) {
+    return {
+      code: 'UNAUTHENTICATED',
+      message: 'Authenticated access is required.',
+      status: 401,
+    };
+  }
+
+  if (response.status === 403) {
+    return {
+      code: 'PROJECT_FORBIDDEN',
+      message: 'You do not have access to this process review workspace.',
+      status: 403,
+    };
+  }
+
+  switch (requestKind) {
+    case 'review-workspace':
+      if (response.status === 404) {
+        return {
+          code: 'PROCESS_NOT_FOUND',
+          message: 'The requested process could not be found.',
+          status: 404,
+        };
+      }
+
       return {
         code: 'PROCESS_ACTION_FAILED',
         message: 'The review workspace is unavailable right now. Try again or reload the page.',
         status: response.status >= 400 ? response.status : 500,
       };
+    case 'artifact-review':
+    case 'package-review':
+      if (response.status === 404) {
+        return {
+          code: 'REVIEW_TARGET_NOT_FOUND',
+          message: 'The requested review target could not be found.',
+          status: 404,
+        };
+      }
+
+      return {
+        code: 'PROCESS_ACTION_FAILED',
+        message: 'The review target is unavailable right now. Try again or reload the page.',
+        status: response.status >= 400 ? response.status : 500,
+      };
+    case 'package-export':
+      if (response.status === 404) {
+        return {
+          code: 'REVIEW_TARGET_NOT_FOUND',
+          message: 'The requested review target could not be found.',
+          status: 404,
+        };
+      }
+
+      if (response.status === 409) {
+        return {
+          code: 'REVIEW_EXPORT_NOT_AVAILABLE',
+          message: 'The requested package cannot be exported right now.',
+          status: 409,
+        };
+      }
+
+      return {
+        code: 'REVIEW_EXPORT_FAILED',
+        message: 'Package export failed during preparation.',
+        status: response.status >= 400 ? response.status : 500,
+      };
   }
 }
 
-async function parseRequestError(response: Response) {
+async function parseRequestError(response: Response, requestKind: ReviewRequestErrorKind) {
   const body = await response.json().catch(() => null);
   const parsed = requestErrorSchema.safeParse(body);
 
@@ -56,7 +108,7 @@ async function parseRequestError(response: Response) {
     return parsed.data;
   }
 
-  return buildFallbackRequestError(response);
+  return buildFallbackRequestError(response, requestKind);
 }
 
 export async function getReviewWorkspace(args: {
@@ -93,7 +145,7 @@ export async function getReviewWorkspace(args: {
   });
 
   if (!response.ok) {
-    throw new ApiRequestError(await parseRequestError(response));
+    throw new ApiRequestError(await parseRequestError(response, 'review-workspace'));
   }
 
   return reviewWorkspaceResponseSchema.parse(await response.json());
@@ -123,7 +175,7 @@ export async function getArtifactReview(args: {
   });
 
   if (!response.ok) {
-    throw new ApiRequestError(await parseRequestError(response));
+    throw new ApiRequestError(await parseRequestError(response, 'artifact-review'));
   }
 
   return artifactReviewTargetSchema.parse(await response.json());
@@ -153,7 +205,7 @@ export async function getPackageReview(args: {
   });
 
   if (!response.ok) {
-    throw new ApiRequestError(await parseRequestError(response));
+    throw new ApiRequestError(await parseRequestError(response, 'package-review'));
   }
 
   return packageReviewTargetSchema.parse(await response.json());
@@ -177,7 +229,7 @@ export async function exportPackage(args: {
   );
 
   if (!response.ok) {
-    throw new ApiRequestError(await parseRequestError(response));
+    throw new ApiRequestError(await parseRequestError(response, 'package-export'));
   }
 
   return exportPackageResponseSchema.parse(await response.json());
