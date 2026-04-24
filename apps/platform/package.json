@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.client.json"
   },
   "dependencies": {
+    "@liminal-build/markdown-package": "workspace:*",
     "@daytonaio/sdk": "0.167.0",
     "@fastify/cookie": "11.0.2",
     "@fastify/csrf-protection": "7.1.0",

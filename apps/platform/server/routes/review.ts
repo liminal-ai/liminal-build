@@ -1,12 +1,16 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { buildShellBootstrapPayload } from '../config.js';
 import { AppError } from '../errors/app-error.js';
+import { reviewExportFailedErrorCode } from '../errors/codes.js';
 import { sessionCookieName } from '../services/auth/auth-session.service.js';
+import { inspectExportTokenPayload } from '../services/review/export-url-signing.js';
 import {
   getReviewArtifactRouteSchema,
+  getReviewExportDownloadRouteSchema,
   getReviewPackageRouteSchema,
   getReviewWorkspaceRouteSchema,
+  postReviewPackageExportRouteSchema,
   reviewHtmlRouteSchema,
 } from '../schemas/review.js';
 import {
@@ -25,6 +29,20 @@ function buildRequestError(error: AppError): RequestError {
 
 function buildLoginRedirectPath(returnTo: string): string {
   return `/auth/login?returnTo=${encodeURIComponent(returnTo)}`;
+}
+
+function buildReviewTargetNotFoundResponse(): RequestError {
+  return {
+    code: 'REVIEW_TARGET_NOT_FOUND',
+    message: 'The requested review target could not be found.',
+    status: 404,
+  };
+}
+
+function applyExportDownloadNoStoreHeaders(reply: FastifyReply): void {
+  reply.header('Cache-Control', 'private, no-store, max-age=0');
+  reply.header('Pragma', 'no-cache');
+  reply.header('Expires', '0');
 }
 
 function renderUnavailableShell(title: string, message: string): string {
@@ -319,6 +337,229 @@ export async function registerReviewRoutes(app: FastifyInstance): Promise<void> 
           }
         }
 
+        throw error;
+      }
+    },
+  );
+
+  typedApp.post(
+    '/api/projects/:projectId/processes/:processId/review/packages/:packageId/export',
+    {
+      schema: postReviewPackageExportRouteSchema,
+    },
+    async (request, reply) => {
+      if (request.actor === null) {
+        if (request.authFailureReason === 'invalid_session') {
+          reply.clearCookie(sessionCookieName, { path: '/' });
+        }
+
+        return reply.code(401).send({
+          code: 'UNAUTHENTICATED',
+          message: 'Authenticated access is required.',
+          status: 401,
+        });
+      }
+
+      try {
+        await app.processAccessService.assertProcessAccess({
+          actor: request.actor,
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+        });
+
+        const exportResponse = await app.exportService.requestExport({
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+          packageId: request.params.packageId,
+          actorId: request.actor.userId,
+        });
+
+        app.log.info(
+          {
+            event: 'review.export.requested',
+            packageId: request.params.packageId,
+            processId: request.params.processId,
+            actorId: request.actor.userId,
+            exportId: exportResponse.exportId,
+            result: 'success',
+          },
+          'Review package export requested.',
+        );
+
+        return reply.send(exportResponse);
+      } catch (error) {
+        if (error instanceof AppError) {
+          app.log.warn(
+            {
+              event: 'review.export.requested',
+              packageId: request.params.packageId,
+              processId: request.params.processId,
+              actorId: request.actor.userId,
+              exportId: null,
+              result: 'failure',
+              reason: error.code,
+            },
+            'Review package export request failed.',
+          );
+
+          const requestError = buildRequestError(error);
+
+          switch (error.statusCode) {
+            case 401:
+              return reply.code(401).send(requestError);
+            case 403:
+              return reply.code(403).send(requestError);
+            case 404:
+              return reply.code(404).send(requestError);
+            case 409:
+              return reply.code(409).send(requestError);
+            case 503:
+              return reply.code(503).send(requestError);
+            default:
+              throw error;
+          }
+        }
+
+        app.log.error(
+          {
+            err: error,
+            event: 'review.export.requested',
+            packageId: request.params.packageId,
+            processId: request.params.processId,
+            actorId: request.actor.userId,
+            exportId: null,
+            result: 'failure',
+            reason: 'unexpected_exception',
+          },
+          'Review package export request failed unexpectedly.',
+        );
+
+        return reply.code(503).send({
+          code: reviewExportFailedErrorCode,
+          message: 'Package export failed during preparation.',
+          status: 503,
+        });
+      }
+    },
+  );
+
+  typedApp.get(
+    '/api/projects/:projectId/processes/:processId/review/exports/:exportId',
+    {
+      schema: getReviewExportDownloadRouteSchema,
+    },
+    async (request, reply) => {
+      if (request.actor === null) {
+        applyExportDownloadNoStoreHeaders(reply);
+        if (request.authFailureReason === 'invalid_session') {
+          reply.clearCookie(sessionCookieName, { path: '/' });
+        }
+
+        return reply.code(401).send({
+          code: 'UNAUTHENTICATED',
+          message: 'Authenticated access is required.',
+          status: 401,
+        });
+      }
+
+      let recoverablePackageId: string | undefined;
+
+      try {
+        await app.processAccessService.assertProcessAccess({
+          actor: request.actor,
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+        });
+
+        if (typeof request.query.token !== 'string' || request.query.token.length === 0) {
+          applyExportDownloadNoStoreHeaders(reply);
+          app.log.warn(
+            {
+              event: 'review.export.download-failed',
+              packageId: null,
+              exportId: request.params.exportId,
+              result: 'failure',
+              reason: 'missing_token',
+            },
+            'Review package export download failed.',
+          );
+
+          return reply.code(404).send(buildReviewTargetNotFoundResponse());
+        }
+
+        recoverablePackageId = inspectExportTokenPayload(request.query.token)?.packageSnapshotId;
+
+        const download = await app.exportService.downloadExport({
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+          exportId: request.params.exportId,
+          token: request.query.token,
+          actorId: request.actor.userId,
+        });
+
+        recoverablePackageId = download.packageId;
+
+        app.log.info(
+          {
+            event: 'review.export.downloaded',
+            packageId: download.packageId,
+            exportId: request.params.exportId,
+            result: 'success',
+          },
+          'Review package export downloaded.',
+        );
+
+        reply.header('Content-Type', 'application/gzip');
+        reply.header('Content-Disposition', `attachment; filename="${download.downloadName}"`);
+        applyExportDownloadNoStoreHeaders(reply);
+
+        download.stream.once('error', (streamError: unknown) => {
+          app.log.warn(
+            {
+              event: 'review.export.download-failed',
+              packageId: download.packageId,
+              exportId: request.params.exportId,
+              result: 'failure',
+              reason: streamError instanceof Error ? streamError.message : 'stream_error',
+            },
+            'Review package export download failed.',
+          );
+        });
+
+        return reply.send(download.stream as never);
+      } catch (error) {
+        if (error instanceof AppError) {
+          applyExportDownloadNoStoreHeaders(reply);
+          app.log.warn(
+            {
+              event: 'review.export.download-failed',
+              packageId: recoverablePackageId ?? null,
+              exportId: request.params.exportId,
+              tokenPrefix:
+                typeof request.query.token === 'string' ? request.query.token.slice(0, 12) : null,
+              result: 'failure',
+              reason: error.code,
+            },
+            'Review package export download failed.',
+          );
+
+          const requestError = buildRequestError(error);
+
+          switch (error.statusCode) {
+            case 401:
+              return reply.code(401).send(requestError);
+            case 403:
+              return reply.code(403).send(requestError);
+            case 404:
+              return reply.code(404).send(requestError);
+            case 503:
+              return reply.code(503).send(requestError);
+            default:
+              throw error;
+          }
+        }
+
+        applyExportDownloadNoStoreHeaders(reply);
         throw error;
       }
     },

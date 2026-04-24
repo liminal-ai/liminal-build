@@ -40,6 +40,7 @@ const runtimeEnvSchema = z.object({
   // silently falling back to the stub. See the Epic 3 implementation
   // addendum (item 3) and tech-design-server.md:939-959.
   GITHUB_TOKEN: z.string().min(1),
+  REVIEW_EXPORT_HMAC_SECRET: z.string().min(32),
 });
 
 export type ServerEnv = z.infer<typeof runtimeEnvSchema>;
@@ -64,6 +65,7 @@ export const story0PlaceholderEnv: ServerEnv = runtimeEnvSchema.parse({
   // the real Octokit writer. This placeholder satisfies the schema's
   // `min(1)` so test wiring still parses cleanly.
   GITHUB_TOKEN: 'github_pat_story0_placeholder',
+  REVIEW_EXPORT_HMAC_SECRET: 'story0-review-export-hmac-secret-placeholder',
 });
 
 export function hasLiveConvexConfig(env: ServerEnv): boolean {

@@ -62,6 +62,11 @@ export const defaultAppState: AppState = appStateSchema.parse({
     target: null,
     isLoading: false,
     error: null,
+    exportState: {
+      isExporting: false,
+      lastExportByPackageId: {},
+      error: null,
+    },
   },
   modals: {
     createProjectOpen: false,

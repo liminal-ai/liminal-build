@@ -1,5 +1,10 @@
-import type { PackageReviewTarget } from '../../../shared/contracts/index.js';
+import type {
+  ExportPackageResponse,
+  PackageReviewTarget,
+  RequestError,
+} from '../../../shared/contracts/index.js';
 import { renderArtifactReviewPanel } from './artifact-review-panel.js';
+import { renderExportTrigger } from './export-trigger.js';
 import { renderPackageMemberNav } from './package-member-nav.js';
 
 function createHeading(targetDocument: Document, text: string, level: 'h3' | 'h4' = 'h3') {
@@ -18,6 +23,13 @@ export function renderPackageReviewPanel(args: {
   packageReview: PackageReviewTarget;
   targetDocument: Document;
   onSelectMember: (memberId: string) => void;
+  onExport: () => void;
+  onExportExpired: () => void;
+  exportState: {
+    isExporting: boolean;
+    lastExportByPackageId: Record<string, ExportPackageResponse>;
+    error: RequestError | null;
+  };
 }): HTMLElement {
   const container = args.targetDocument.createElement('section');
   const selectedMember = args.packageReview.selectedMember;
@@ -35,6 +47,20 @@ export function renderPackageReviewPanel(args: {
       onSelect: args.onSelectMember,
     }),
   );
+
+  if (args.packageReview.exportability.available) {
+    container.append(
+      renderExportTrigger({
+        packageId: args.packageReview.packageId,
+        isExporting: args.exportState.isExporting,
+        lastExport: args.exportState.lastExportByPackageId[args.packageReview.packageId] ?? null,
+        error: args.exportState.error,
+        targetDocument: args.targetDocument,
+        onExport: args.onExport,
+        onExportExpired: args.onExportExpired,
+      }),
+    );
+  }
 
   if (selectedMember === undefined) {
     return container;

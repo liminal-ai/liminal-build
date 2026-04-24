@@ -47,6 +47,8 @@ export function renderReviewWorkspacePage(args: {
     packageId: string,
     memberId: string,
   ) => void;
+  onExportPackage: (projectId: string, processId: string, packageId: string) => void;
+  onExportExpired: (projectId: string, processId: string, packageId: string) => void;
 }): HTMLElement {
   const container = args.targetDocument.createElement('section');
   const reviewWorkspace = args.store.get().reviewWorkspace;
@@ -216,6 +218,13 @@ export function renderReviewWorkspacePage(args: {
             memberId,
           );
         },
+        onExport: () => {
+          args.onExportPackage(project.projectId, process.processId, packageReview.packageId);
+        },
+        onExportExpired: () => {
+          args.onExportExpired(project.projectId, process.processId, packageReview.packageId);
+        },
+        exportState: reviewWorkspace.exportState,
       }),
     );
   }

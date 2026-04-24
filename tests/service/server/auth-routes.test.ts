@@ -598,6 +598,9 @@ describe('auth routes', () => {
       async persistCheckpointArtifacts() {
         throw new Error('NOT_IMPLEMENTED: auth-routes.test persistCheckpointArtifacts');
       },
+      async publishPackageSnapshot() {
+        throw new Error('NOT_IMPLEMENTED: auth-routes.test publishPackageSnapshot');
+      },
       async listProcessSideWorkItems() {
         return [];
       },
@@ -628,6 +631,15 @@ describe('auth routes', () => {
       },
       async getLatestArtifactVersion() {
         return null;
+      },
+      async listPackageSnapshotsForProcess() {
+        return [];
+      },
+      async getPackageSnapshot() {
+        return null;
+      },
+      async listPackageSnapshotMembers() {
+        return [];
       },
       async listProcessReviewTargets() {
         return [];

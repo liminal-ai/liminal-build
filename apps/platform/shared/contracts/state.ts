@@ -17,6 +17,7 @@ import {
   sideWorkSectionEnvelopeSchema,
 } from './process-work-surface.js';
 import {
+  exportPackageResponseSchema,
   reviewWorkspaceResponseSchema,
   reviewWorkspaceSelectionSchema,
 } from './review-workspace.js';
@@ -173,6 +174,17 @@ export const reviewWorkspaceStateSchema = z.object({
   target: reviewWorkspaceResponseSchema.shape.target.nullable(),
   isLoading: z.boolean(),
   error: requestErrorSchema.nullable(),
+  exportState: z
+    .object({
+      isExporting: z.boolean(),
+      lastExportByPackageId: z.record(z.string().min(1), exportPackageResponseSchema),
+      error: requestErrorSchema.nullable(),
+    })
+    .default({
+      isExporting: false,
+      lastExportByPackageId: {},
+      error: null,
+    }),
 });
 export type ReviewWorkspaceState = z.infer<typeof reviewWorkspaceStateSchema>;
 

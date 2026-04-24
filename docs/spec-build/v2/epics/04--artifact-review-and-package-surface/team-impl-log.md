@@ -3,9 +3,9 @@
 ## Run Overview
 - State: BETWEEN_STORIES
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/04--artifact-review-and-package-surface
-- Current Story: 05-package-export (next)
+- Current Story: 06-reopen-unavailable-and-degraded-review-states (next)
 - Current Phase: —
-- Last Completed Checkpoint: Story 4 accepted; commit pending
+- Last Completed Checkpoint: Story 5 accepted; commit pending
 
 ## Orchestrator failure mode — Story 2 "verify-round churn from under-configured fixer + unchecked fix spillover" (2026-04-23 ~16:50Z)
 
@@ -168,6 +168,53 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 - Story 0 implementor: codex / 019db7b8-474f-7ec2-8880-c5fa78a33561 (extracted from stdout after adapter failure; used in round-1 self-review retry post-patch)
 
 ## Story Receipts
+
+### 05-package-export (accepted 2026-04-24 ~01:45Z)
+- Story Title: Story 5: Package Export (two-phase)
+- Implementor Evidence:
+  - Initial: `artifacts/05-.../001-implementor.json` (codex session `019dbc7f-d6fa-79f0-a760-06f64718992d`, 35 files, 5 gates pass, zero deviations)
+  - Follow-up 1 (missing-token 404 + traceability + env template): `story-continue 007`
+  - Follow-up 2 (archive collision + cache headers + token-failure packageId + URL validation): `story-continue 010`
+  - Follow-up 3 (client-side expired URL handling): `story-continue 015`
+  - Follow-up 4 (package-scoped state + no HEAD preflight): `story-continue 022`
+  - Follow-up 5 (end-to-end streaming + aria-live): `story-continue 025`
+- Self-Review Evidence: `artifacts/05-.../005-self-review-batch.json` (3/3 passes, clean)
+- Verifier Evidence (6 rounds):
+  - Round 1: `006-verify-batch.json` — revise (token 404 + traceability + env)
+  - Round 2: `008-verify-batch.json` — revise (collision, cache headers, packageId trace, URL validation)
+  - Round 3: `013-verify-batch.json` — revise (client expired URL UX; NFR/observability deferred)
+  - Round 4: `021-verify-batch.json` — revise (race condition + HEAD preflight side-effect)
+  - Round 5: `024-verify-batch.json` — revise (streaming + aria-live)
+  - Round 6: `028-verify-batch.json` — **revise with zero blocking findings** (NFR proof observation + minor bootstrap error taxonomy)
+- Story Gate: `corepack pnpm run green-verify` — **pass**
+- Epic Gate: `corepack pnpm run verify-all` — **pass** (488 tests)
+- Gate Tests: convex 54 / service 212 / client 197 / packages 5 / integration 20 = **488 total**
+- Dispositions:
+  - (rd 1) missing-token 404 shape → **fixed** (c1: explicit 404 REVIEW_TARGET_NOT_FOUND for missing/malformed/expired/tampered)
+  - (rd 1) export traceability by packageId → **fixed** (c1: structured log events with packageId + exportId)
+  - (rd 1) env template missing EXPORT_SIGNING_SECRET → **fixed** (c1: .env.example updated)
+  - (rd 2) archive path collision → **fixed** (c2: position-prefixed paths; duplicate rejection on extract)
+  - (rd 2) cache headers missing → **fixed** (c2: Cache-Control: no-store on success + failure)
+  - (rd 2) token-failure packageId trace → **fixed** (c2: payload extraction pre-verification for logging)
+  - (rd 2) downloadUrl URL validation → **fixed** (c2: z.string().url())
+  - (rd 3) client expired URL UX → **fixed** (c3: timestamp-only expiry check + re-export affordance; no HEAD preflight)
+  - (rd 3) V1-SV2 token-less packageId → **defer to Story 6** (observability scope; missing-token case has no recoverable packageId anyway)
+  - (rd 3) V2 perf NFR proof → **defer to Story 6** (NFR scope per test-plan Chunk 6)
+  - (rd 4) package-scoped export state race → **fixed** (c4: lastExportByPackageId map; per-package isolation)
+  - (rd 4) HEAD preflight side-effect → **fixed** (c4: timestamp-only, no HEAD)
+  - (rd 5) end-to-end streaming → **fixed** (c5: fetch response stream → tar entry stream; bounded per-entry memory)
+  - (rd 5) aria-live region on export-trigger → **fixed** (c5: aria-live="polite" announcements)
+  - (rd 6) V1 NFR export-preparation proof observation → **defer to Story 6** (NFR scope)
+  - (rd 6) V2 minor bootstrap error taxonomy (review-workspace GET fallback misclassifies as export failure) → **defer to cleanup batch** (Epic 4 cleanup — trivial one-liner; not Story 5 scope despite being in touched files)
+- Open Risks:
+  - Bootstrap error taxonomy mis-classification (carried to cleanup).
+  - NFR perf + observability + a11y convergence expected in Story 6.
+- Baseline Before: 466
+- Baseline After: 488 (+22)
+- Rounds: 6 verify rounds (wide surface: two-phase HTTP + archive streaming + signed URLs + client state machine + observability + security + a11y)
+- Acceptance Rationale: Story 5 has the widest surface in Epic 4 — every round surfaced adjacent concerns that narrow prompts didn't preempt (documented self-critique above). After 5 follow-ups all dispatched via `story-continue` (no wrong-channel quick-fix routing this time), round 6 produced zero blocking findings and V2 clean. Real `.mpkz` streaming + signed URL + client UX + aria-live + per-package state isolation all integrated per tech design. Deferred items are Story 6 / cleanup scope.
+
+---
 
 ### 04-package-review-workspace (accepted 2026-04-23 ~22:40Z)
 - Story Title: Story 4: Package Review Workspace
@@ -370,7 +417,7 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 - Acceptance Rationale: 4 verifier rounds, 0 blocking findings remain, story gate pass, baseline up with no regressions, self-review + implementor work intact on disk, all spec-pack contract vocabulary in place as Story 0 foundation for Stories 1–6. Residual findings are disposed per rationale above.
 
 ## Cumulative Baselines
-- Baseline Before Current Story: 466 (post-Story-4 accepted; next story's "before")
+- Baseline Before Current Story: 488 (post-Story-5 accepted; next story's "before")
 - Expected After Current Story: TBD at Story 2 start
 - Latest Actual Total: 409 (post-Story-1-amended verify-all at ~14:05Z, exit 0)
 
@@ -384,6 +431,7 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 | 02-artifact-versions-and-revision-review | 409 | 425 | +16 | +3 new test files (artifact-review-api, artifact-review-panel, version-switcher); +tests from 7 modified suites + regression tests added by 5 quick-fix rounds (revision append, checkpoint writer, XSS, zero-version, 300-artifact cap) |
 | 03-markdown-and-mermaid-review | 425 | 441 | +16 | +2 new test files (markdown-renderer, markdown-body, mermaid-runtime) + quick-fix regressions (XSS, directive-only, version-ID traceability, zero-byte body, 200KB smoke-proof) |
 | 04-package-review-workspace | 441 | 466 | +25 | +2 Convex test files (packageSnapshots, packageSnapshotMembers) + package-review-api + package-review-panel + snapshot-immutability integration + 20-member/2s smoke + process-ownership regressions |
+| 05-package-export | 466 | 488 | +22 | +4 new test files (review-export-api, export-url-signing, export-trigger, create-from-entries) + regressions for token 404, cache headers, archive collision, package-scoped state, streaming, aria-live |
 
 ## Cleanup / Epic Verification
 - Cleanup Artifact: pending

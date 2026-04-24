@@ -38,6 +38,7 @@ import {
   listProjects,
 } from '../browser-api/projects-api.js';
 import {
+  exportPackage,
   getArtifactReview,
   getPackageReview,
   getReviewWorkspace,
@@ -1171,6 +1172,115 @@ export async function bootstrapApp(
     }
   };
 
+  const exportCurrentPackage = async (
+    projectId: string,
+    processId: string,
+    packageId: string,
+  ): Promise<void> => {
+    const currentReviewWorkspace = store.get().reviewWorkspace;
+
+    if (
+      currentReviewWorkspace.projectId !== projectId ||
+      currentReviewWorkspace.processId !== processId
+    ) {
+      return;
+    }
+
+    store.patch('reviewWorkspace', {
+      ...currentReviewWorkspace,
+      exportState: {
+        isExporting: true,
+        lastExportByPackageId: currentReviewWorkspace.exportState.lastExportByPackageId,
+        error: null,
+      },
+    });
+
+    try {
+      const response = await exportPackage({
+        projectId,
+        processId,
+        packageId,
+      });
+      const latestReviewWorkspace = store.get().reviewWorkspace;
+
+      if (
+        latestReviewWorkspace.projectId !== projectId ||
+        latestReviewWorkspace.processId !== processId
+      ) {
+        return;
+      }
+
+      store.patch('reviewWorkspace', {
+        ...latestReviewWorkspace,
+        exportState: {
+          isExporting: false,
+          lastExportByPackageId: {
+            ...latestReviewWorkspace.exportState.lastExportByPackageId,
+            [packageId]: response,
+          },
+          error: null,
+        },
+      });
+    } catch (error) {
+      const latestReviewWorkspace = store.get().reviewWorkspace;
+
+      if (
+        latestReviewWorkspace.projectId !== projectId ||
+        latestReviewWorkspace.processId !== processId
+      ) {
+        return;
+      }
+
+      if (error instanceof ApiRequestError) {
+        store.patch('reviewWorkspace', {
+          ...latestReviewWorkspace,
+          exportState: {
+            isExporting: false,
+            lastExportByPackageId: latestReviewWorkspace.exportState.lastExportByPackageId,
+            error: error.payload,
+          },
+        });
+        return;
+      }
+
+      throw error;
+    }
+  };
+
+  const clearExpiredPackageExport = (
+    projectId: string,
+    processId: string,
+    packageId: string,
+  ): void => {
+    const currentReviewWorkspace = store.get().reviewWorkspace;
+
+    if (
+      currentReviewWorkspace.projectId !== projectId ||
+      currentReviewWorkspace.processId !== processId ||
+      currentReviewWorkspace.target?.targetKind !== 'package' ||
+      currentReviewWorkspace.target.package?.packageId !== packageId
+    ) {
+      return;
+    }
+
+    store.patch('reviewWorkspace', {
+      ...currentReviewWorkspace,
+      exportState: {
+        isExporting: false,
+        lastExportByPackageId: Object.fromEntries(
+          Object.entries(currentReviewWorkspace.exportState.lastExportByPackageId).filter(
+            ([candidatePackageId]) => candidatePackageId !== packageId,
+          ),
+        ),
+        error: {
+          code: 'REVIEW_TARGET_NOT_FOUND',
+          message: 'Download link expired. Request a new export.',
+          status: 404,
+        },
+      },
+    });
+  };
+
   const startCurrentProcess = async (projectId: string, processId: string): Promise<void> => {
     clearProcessActionError(projectId, processId);
 
@@ -1415,6 +1525,12 @@ export async function bootstrapApp(
     },
     onSelectPackageMember: (projectId, processId, packageId, memberId) => {
       void selectPackageMember(projectId, processId, packageId, memberId);
+    },
+    onExportPackage: (projectId, processId, packageId) => {
+      void exportCurrentPackage(projectId, processId, packageId);
+    },
+    onExportExpired: (projectId, processId, packageId) => {
+      clearExpiredPackageExport(projectId, processId, packageId);
     },
     onStartProcess: startCurrentProcess,
     onResumeProcess: resumeCurrentProcess,

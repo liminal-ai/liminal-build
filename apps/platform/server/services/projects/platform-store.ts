@@ -120,7 +120,7 @@ export type PackageSnapshotWriteInput = {
   members: PackageSnapshotMemberWriteInput[];
 };
 
-type PackageSnapshotRecord = {
+export type PackageSnapshotRecord = {
   packageSnapshotId: string;
   processId: string;
   displayName: string;
@@ -128,7 +128,7 @@ type PackageSnapshotRecord = {
   publishedAt: string;
 };
 
-type PackageSnapshotMemberRecord = {
+export type PackageSnapshotMemberRecord = {
   memberId: string;
   packageSnapshotId: string;
   position: number;
@@ -251,6 +251,11 @@ export interface PlatformStore {
   getArtifactVersion(args: { versionId: string }): Promise<ArtifactVersionRecord | null>;
   getArtifactVersionContentUrl(args: { versionId: string }): Promise<string | null>;
   getLatestArtifactVersion(args: { artifactId: string }): Promise<ArtifactVersionRecord | null>;
+  listPackageSnapshotsForProcess(args: { processId: string }): Promise<PackageSnapshotRecord[]>;
+  getPackageSnapshot(args: { packageSnapshotId: string }): Promise<PackageSnapshotRecord | null>;
+  listPackageSnapshotMembers(args: {
+    packageSnapshotId: string;
+  }): Promise<PackageSnapshotMemberRecord[]>;
   listProcessReviewTargets(args: {
     projectId: string;
     processId: string;
@@ -1138,6 +1143,18 @@ export class NullPlatformStore implements PlatformStore {
     return null;
   }
 
+  async listPackageSnapshotsForProcess(): Promise<PackageSnapshotRecord[]> {
+    return [];
+  }
+
+  async getPackageSnapshot(): Promise<PackageSnapshotRecord | null> {
+    return null;
+  }
+
+  async listPackageSnapshotMembers(): Promise<PackageSnapshotMemberRecord[]> {
+    return [];
+  }
+
   async listProcessReviewTargets(): Promise<ReviewTargetSummary[]> {
     return [];
   }
@@ -1470,6 +1487,24 @@ export class ConvexPlatformStore implements PlatformStore {
     artifactId: string;
   }): Promise<ArtifactVersionRecord | null> {
     return this.client.query(getLatestArtifactVersionQuery, args);
+  }
+
+  async listPackageSnapshotsForProcess(args: {
+    processId: string;
+  }): Promise<PackageSnapshotRecord[]> {
+    return this.client.query(listPackageSnapshotsForProcessQuery, args);
+  }
+
+  async getPackageSnapshot(args: {
+    packageSnapshotId: string;
+  }): Promise<PackageSnapshotRecord | null> {
+    return this.client.query(getPackageSnapshotQuery, args);
+  }
+
+  async listPackageSnapshotMembers(args: {
+    packageSnapshotId: string;
+  }): Promise<PackageSnapshotMemberRecord[]> {
+    return this.client.query(listPackageSnapshotMembersQuery, args);
   }
 
   async listProcessReviewTargets(args: {
@@ -2604,6 +2639,33 @@ export class InMemoryPlatformStore implements PlatformStore {
   }): Promise<ArtifactVersionRecord | null> {
     const versions = this.readArtifactVersions(args.artifactId);
     return versions[0] ?? null;
+  }
+
+  async listPackageSnapshotsForProcess(args: {
+    processId: string;
+  }): Promise<PackageSnapshotRecord[]> {
+    return [...(this.packageSnapshotsByProcessId.get(args.processId) ?? [])];
+  }
+
+  async getPackageSnapshot(args: {
+    packageSnapshotId: string;
+  }): Promise<PackageSnapshotRecord | null> {
+    for (const snapshots of this.packageSnapshotsByProcessId.values()) {
+      const snapshot = snapshots.find(
+        (candidate) => candidate.packageSnapshotId === args.packageSnapshotId,
+      );
+      if (snapshot !== undefined) {
+        return snapshot;
+      }
+    }
+
+    return null;
+  }
+
+  async listPackageSnapshotMembers(args: {
+    packageSnapshotId: string;
+  }): Promise<PackageSnapshotMemberRecord[]> {
+    return [...(this.packageSnapshotMembersBySnapshotId.get(args.packageSnapshotId) ?? [])];
   }
 
   private readArtifactVersions(artifactId: string): ArtifactVersionRecord[] {

@@ -210,6 +210,21 @@ describe('Epic 04 Story 0 review foundation contracts', () => {
       contentKind: 'markdown',
       bodyStatus: 'ready',
     });
+
+    expect(
+      artifactVersionDetailSchema.parse({
+        versionId: currentArtifactVersionFixture.versionId,
+        versionLabel: currentArtifactVersionFixture.versionLabel,
+        contentKind: 'markdown',
+        bodyStatus: 'ready',
+        body: '',
+        mermaidBlocks: [],
+        createdAt: currentArtifactVersionFixture.createdAt,
+      }),
+    ).toMatchObject({
+      bodyStatus: 'ready',
+      body: '',
+    });
   });
 
   it('rejects mixed artifact and package review targets', () => {
@@ -319,5 +334,14 @@ describe('Epic 04 Story 0 review foundation contracts', () => {
       available: false,
       reason: 'One or more members are unavailable.',
     });
+  });
+
+  it('requires export download URLs to be valid absolute URLs', () => {
+    expect(() =>
+      exportPackageResponseSchema.parse({
+        ...exportPackageResponseFixture,
+        downloadUrl: '/api/projects/project-001/processes/process-001/review/exports/export-001',
+      }),
+    ).toThrow();
   });
 });

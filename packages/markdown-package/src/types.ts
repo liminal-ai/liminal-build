@@ -22,6 +22,7 @@ export interface ManifestScaffold {
 export interface PackageEntry {
   path: string;
   content: Readable | Buffer | string;
+  size?: number;
 }
 
 export interface CreateFromEntriesOptions {

@@ -363,6 +363,10 @@ class RecordingPlatformStore implements PlatformStore {
     throw new Error('NOT_IMPLEMENTED: RecordingPlatformStore.persistCheckpointArtifacts');
   }
 
+  async publishPackageSnapshot(): Promise<string> {
+    throw new Error('NOT_IMPLEMENTED: RecordingPlatformStore.publishPackageSnapshot');
+  }
+
   async listProcessSideWorkItems(): Promise<SideWorkItem[]> {
     return [];
   }
@@ -409,6 +413,18 @@ class RecordingPlatformStore implements PlatformStore {
 
   async getLatestArtifactVersion() {
     return null;
+  }
+
+  async listPackageSnapshotsForProcess() {
+    return [];
+  }
+
+  async getPackageSnapshot() {
+    return null;
+  }
+
+  async listPackageSnapshotMembers() {
+    return [];
   }
 
   async listProcessReviewTargets() {

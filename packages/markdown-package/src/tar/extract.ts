@@ -1,5 +1,5 @@
-import { notImplemented } from './shared.js';
+import { extractPackageFile } from './package-io.js';
 
-export function extractPackage(): never {
-  return notImplemented('extractPackage');
+export async function extractPackage(args: { packagePath: string; outputDir: string }) {
+  return extractPackageFile(args);
 }

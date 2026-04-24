@@ -407,7 +407,7 @@ export type ReviewWorkspaceResponse = z.infer<typeof reviewWorkspaceResponseSche
 export const exportPackageResponseSchema = z.object({
   exportId: z.string().min(1),
   downloadName: z.string().min(1),
-  downloadUrl: z.string().min(1),
+  downloadUrl: z.string().url(),
   contentType: z.literal('application/gzip'),
   packageFormat: exportPackageFormatSchema,
   expiresAt: iso8601UtcString,

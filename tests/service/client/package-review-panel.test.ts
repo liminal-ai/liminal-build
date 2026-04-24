@@ -12,6 +12,7 @@ import {
   readyPackageMemberFixture,
   unavailablePackageFixture,
 } from '../../fixtures/package-snapshots.js';
+import { exportPackageResponseFixture } from '../../fixtures/export-responses.js';
 import { renderPackageReviewPanel } from '../../../apps/platform/client/features/review/package-review-panel.js';
 
 const secondReadyMemberFixture = packageMemberSchema.parse({
@@ -46,6 +47,13 @@ describe('package review panel', () => {
       packageReview: twoReadyMembersFixture,
       targetDocument: document,
       onSelectMember: vi.fn(),
+      onExport: vi.fn(),
+      onExportExpired: vi.fn(),
+      exportState: {
+        isExporting: false,
+        lastExportByPackageId: {},
+        error: null,
+      },
     });
 
     expect(panel.getAttribute('data-package-review-panel')).toBe('true');
@@ -60,6 +68,13 @@ describe('package review panel', () => {
       packageReview: twoReadyMembersFixture,
       targetDocument: document,
       onSelectMember: vi.fn(),
+      onExport: vi.fn(),
+      onExportExpired: vi.fn(),
+      exportState: {
+        isExporting: false,
+        lastExportByPackageId: {},
+        error: null,
+      },
     });
 
     expect(
@@ -74,6 +89,13 @@ describe('package review panel', () => {
       packageReview: twoReadyMembersFixture,
       targetDocument: document,
       onSelectMember: vi.fn(),
+      onExport: vi.fn(),
+      onExportExpired: vi.fn(),
+      exportState: {
+        isExporting: false,
+        lastExportByPackageId: {},
+        error: null,
+      },
     });
 
     expect(panel.textContent).toContain(`Package ID: ${twoReadyMembersFixture.packageId}`);
@@ -88,6 +110,13 @@ describe('package review panel', () => {
       packageReview: twoReadyMembersFixture,
       targetDocument: document,
       onSelectMember,
+      onExport: vi.fn(),
+      onExportExpired: vi.fn(),
+      exportState: {
+        isExporting: false,
+        lastExportByPackageId: {},
+        error: null,
+      },
     });
     const targetButton = panel.querySelector(
       `[data-package-member-id="${secondReadyMemberFixture.memberId}"]`,
@@ -107,6 +136,13 @@ describe('package review panel', () => {
       packageReview: firstReadySelectedPackageFixture,
       targetDocument: document,
       onSelectMember: vi.fn(),
+      onExport: vi.fn(),
+      onExportExpired: vi.fn(),
+      exportState: {
+        isExporting: false,
+        lastExportByPackageId: {},
+        error: null,
+      },
     });
 
     expect(panel.textContent).toContain(readyPackageMemberFixture.displayName);
@@ -122,6 +158,13 @@ describe('package review panel', () => {
       packageReview: unavailablePackageFixture,
       targetDocument: document,
       onSelectMember: vi.fn(),
+      onExport: vi.fn(),
+      onExportExpired: vi.fn(),
+      exportState: {
+        isExporting: false,
+        lastExportByPackageId: {},
+        error: null,
+      },
     });
     const unavailableButton = panel.querySelector(
       `[data-package-member-id="${unavailablePackageFixture.members[1]?.memberId ?? ''}"]`,
@@ -131,5 +174,69 @@ describe('package review panel', () => {
     expect(panel.textContent).toContain('The pinned package member is currently unavailable.');
     expect(panel.textContent).toContain(readyPackageMemberFixture.displayName);
     expect(unavailableButton).toHaveProperty('disabled', true);
+  });
+
+  it('TC-5.1b hides the export trigger when the package is not exportable', () => {
+    const panel = renderPackageReviewPanel({
+      packageReview: unavailablePackageFixture,
+      targetDocument: document,
+      onSelectMember: vi.fn(),
+      onExport: vi.fn(),
+      onExportExpired: vi.fn(),
+      exportState: {
+        isExporting: false,
+        lastExportByPackageId: {
+          [unavailablePackageFixture.packageId]: exportPackageResponseFixture,
+        },
+        error: null,
+      },
+    });
+
+    expect(panel.querySelector('[data-export-trigger="true"]')).toBeNull();
+  });
+
+  it('scopes completed export links to the package that started the request', () => {
+    const packageA = twoReadyMembersFixture;
+    const packageB = packageReviewTargetSchema.parse({
+      ...twoReadyMembersFixture,
+      packageId: 'package-b',
+      displayName: 'Package B',
+    });
+
+    const packageBPanel = renderPackageReviewPanel({
+      packageReview: packageB,
+      targetDocument: document,
+      onSelectMember: vi.fn(),
+      onExport: vi.fn(),
+      onExportExpired: vi.fn(),
+      exportState: {
+        isExporting: false,
+        lastExportByPackageId: {
+          [packageA.packageId]: exportPackageResponseFixture,
+        },
+        error: null,
+      },
+    });
+
+    expect(packageBPanel.querySelector('[data-export-download-link="package-b"]')).toBeNull();
+
+    const packageAPanel = renderPackageReviewPanel({
+      packageReview: packageA,
+      targetDocument: document,
+      onSelectMember: vi.fn(),
+      onExport: vi.fn(),
+      onExportExpired: vi.fn(),
+      exportState: {
+        isExporting: false,
+        lastExportByPackageId: {
+          [packageA.packageId]: exportPackageResponseFixture,
+        },
+        error: null,
+      },
+    });
+
+    expect(
+      packageAPanel.querySelector(`[data-export-download-link="${packageA.packageId}"]`),
+    ).not.toBeNull();
   });
 });

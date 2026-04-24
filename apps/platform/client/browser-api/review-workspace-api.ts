@@ -1,5 +1,6 @@
 import type {
   ArtifactReviewTarget,
+  ExportPackageResponse,
   PackageReviewTarget,
   RequestError,
   ReviewWorkspaceResponse,
@@ -7,9 +8,11 @@ import type {
 } from '../../shared/contracts/index.js';
 import {
   artifactReviewTargetSchema,
+  buildReviewPackageExportApiPath,
   buildReviewArtifactApiPath,
   buildReviewPackageApiPath,
   buildReviewWorkspaceApiPath,
+  exportPackageResponseSchema,
   packageReviewTargetSchema,
   requestErrorSchema,
   reviewWorkspaceResponseSchema,
@@ -154,4 +157,28 @@ export async function getPackageReview(args: {
   }
 
   return packageReviewTargetSchema.parse(await response.json());
+}
+
+export async function exportPackage(args: {
+  projectId: string;
+  processId: string;
+  packageId: string;
+}): Promise<ExportPackageResponse> {
+  const response = await fetch(
+    buildReviewPackageExportApiPath({
+      projectId: args.projectId,
+      processId: args.processId,
+      packageId: args.packageId,
+    }),
+    {
+      method: 'POST',
+      credentials: 'include',
+    },
+  );
+
+  if (!response.ok) {
+    throw new ApiRequestError(await parseRequestError(response));
+  }
+
+  return exportPackageResponseSchema.parse(await response.json());
 }

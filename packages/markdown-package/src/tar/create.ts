@@ -1,5 +1,10 @@
-import { notImplemented } from './shared.js';
+import { createPackageFile } from './package-io.js';
 
-export function createPackage(): never {
-  return notImplemented('createPackage');
+export async function createPackage(args: {
+  sourceDir: string;
+  outputPath: string;
+  compress?: boolean;
+  manifestPath?: string;
+}): Promise<void> {
+  await createPackageFile(args);
 }

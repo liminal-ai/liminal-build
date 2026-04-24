@@ -37,6 +37,11 @@ function buildStore(overrides: Parameters<typeof createAppStore>[0] = {}) {
       target: readyArtifactReviewWorkspaceFixture.target ?? null,
       isLoading: false,
       error: null,
+      exportState: {
+        isExporting: false,
+        lastExportByPackageId: {},
+        error: null,
+      },
     },
     ...overrides,
   });
@@ -48,6 +53,8 @@ function renderPage(overrides: Parameters<typeof createAppStore>[0] = {}) {
   const onOpenReview = vi.fn();
   const onSelectArtifactVersion = vi.fn();
   const onSelectPackageMember = vi.fn();
+  const onExportPackage = vi.fn();
+  const onExportExpired = vi.fn();
   const store = buildStore(overrides);
   const page = renderReviewWorkspacePage({
     store,
@@ -57,11 +64,21 @@ function renderPage(overrides: Parameters<typeof createAppStore>[0] = {}) {
     onOpenReview,
     onSelectArtifactVersion,
     onSelectPackageMember,
+    onExportPackage,
+    onExportExpired,
   });
 
   dom.window.document.body.append(page);
 
-  return { dom, onOpenProcess, onOpenReview, onSelectArtifactVersion, onSelectPackageMember };
+  return {
+    dom,
+    onOpenProcess,
+    onOpenReview,
+    onSelectArtifactVersion,
+    onSelectPackageMember,
+    onExportPackage,
+    onExportExpired,
+  };
 }
 
 describe('review workspace page', () => {
@@ -93,6 +110,11 @@ describe('review workspace page', () => {
         target: null,
         isLoading: false,
         error: null,
+        exportState: {
+          isExporting: false,
+          lastExportByPackageId: {},
+          error: null,
+        },
       },
     });
     const firstTargetButton = [...dom.window.document.querySelectorAll('button')].find(
@@ -136,6 +158,11 @@ describe('review workspace page', () => {
         target: exportablePackageReviewWorkspaceFixture.target ?? null,
         isLoading: false,
         error: null,
+        exportState: {
+          isExporting: false,
+          lastExportByPackageId: {},
+          error: null,
+        },
       },
     });
 
@@ -176,6 +203,11 @@ describe('review workspace page', () => {
         target: null,
         isLoading: false,
         error: null,
+        exportState: {
+          isExporting: false,
+          lastExportByPackageId: {},
+          error: null,
+        },
       },
     });
 

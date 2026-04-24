@@ -1,5 +1,9 @@
-import { notImplemented } from './shared.js';
+import { parsePackageFile } from './package-io.js';
 
-export function listPackage(): never {
-  return notImplemented('listPackage');
+export async function listPackage(args: { packagePath: string }) {
+  const parsed = await parsePackageFile(args.packagePath);
+  return parsed.entries.map((entry) => ({
+    path: entry.path,
+    size: entry.size,
+  }));
 }

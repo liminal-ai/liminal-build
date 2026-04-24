@@ -1,5 +1,6 @@
 import { WorkOS } from '@workos-inc/node';
 import Fastify from 'fastify';
+import type { FastifyServerOptions } from 'fastify';
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
 import { hasLiveConvexConfig, type ServerEnv, story0PlaceholderEnv } from './config.js';
 import { AppError } from './errors/app-error.js';
@@ -44,6 +45,8 @@ import {
   type ProcessWorkSurfaceService,
 } from './services/processes/process-work-surface.service.js';
 import { MarkdownRendererService } from './services/rendering/markdown-renderer.service.js';
+import { DefaultExportService, type ExportService } from './services/review/export.service.js';
+import { HmacExportUrlSigner } from './services/review/export-url-signing.js';
 import {
   DefaultArtifactReviewService,
   type ArtifactReviewService,
@@ -70,7 +73,7 @@ import { ProjectShellService } from './services/projects/project-shell.service.j
 
 export interface CreateAppOptions {
   env?: ServerEnv;
-  logger?: boolean;
+  logger?: FastifyServerOptions['logger'];
   authSessionService?: AuthSessionService;
   authUserSyncService?: AuthUserSyncService;
   platformStore?: PlatformStore;
@@ -90,6 +93,7 @@ export interface CreateAppOptions {
   processResponseService?: ProcessResponseService;
   processRegistrationService?: ProcessRegistrationService;
   processResumeService?: ProcessResumeService;
+  exportService?: ExportService;
   artifactReviewService?: ArtifactReviewService;
   packageReviewService?: PackageReviewService;
   reviewWorkspaceService?: ReviewWorkspaceService;
@@ -109,6 +113,7 @@ declare module 'fastify' {
     processResponseService: ProcessResponseService;
     processRegistrationService: ProcessRegistrationService;
     processResumeService: ProcessResumeService;
+    exportService: ExportService;
     artifactReviewService: ArtifactReviewService;
     packageReviewService: PackageReviewService;
     reviewWorkspaceService: ReviewWorkspaceService;
@@ -226,6 +231,10 @@ export async function createApp(options: CreateAppOptions = {}) {
     options.processWorkSurfaceService ??
     new DefaultProcessWorkSurfaceService(platformStore, processAccessService);
   const markdownRenderer = await MarkdownRendererService.create();
+  const exportUrlSigner = new HmacExportUrlSigner(env.REVIEW_EXPORT_HMAC_SECRET);
+  const exportService =
+    options.exportService ??
+    new DefaultExportService(platformStore, exportUrlSigner, env.APP_ORIGIN);
   const artifactReviewService =
     options.artifactReviewService ??
     new DefaultArtifactReviewService(platformStore, markdownRenderer);
@@ -256,6 +265,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.decorate('processResponseService', processResponseService);
   app.decorate('processRegistrationService', processRegistrationService);
   app.decorate('processResumeService', processResumeService);
+  app.decorate('exportService', exportService);
   app.decorate('artifactReviewService', artifactReviewService);
   app.decorate('packageReviewService', packageReviewService);
   app.decorate('reviewWorkspaceService', reviewWorkspaceService);
