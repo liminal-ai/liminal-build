@@ -12,6 +12,10 @@ import {
 import type { PlatformStore } from '../projects/platform-store.js';
 import type { ArtifactReviewService } from './artifact-review.service.js';
 
+type ReviewLogger = {
+  info(fields: Record<string, unknown>, message?: string): void;
+};
+
 function buildUnavailableSelectedMember(member: PackageMember) {
   return {
     memberId: member.memberId,
@@ -77,6 +81,7 @@ export class DefaultPackageReviewService implements PackageReviewService {
   constructor(
     private readonly platformStore: PlatformStore,
     private readonly artifactReviewService: ArtifactReviewService,
+    private readonly logger?: ReviewLogger,
   ) {}
 
   async getPackageReview(args: {
@@ -106,6 +111,7 @@ export class DefaultPackageReviewService implements PackageReviewService {
       baseTarget.selectedMember === undefined ||
       selectedMember === undefined
     ) {
+      this.logPackageResolved(baseTarget);
       return packageReviewTargetSchema.parse(baseTarget);
     }
 
@@ -117,14 +123,16 @@ export class DefaultPackageReviewService implements PackageReviewService {
     });
 
     if (artifact === null) {
-      return packageReviewTargetSchema.parse({
+      const packageReview = packageReviewTargetSchema.parse({
         ...baseTarget,
         selectedMemberId: selectedMember.memberId,
         selectedMember: buildUnavailableSelectedMember(selectedMember),
       });
+      this.logPackageResolved(packageReview);
+      return packageReview;
     }
 
-    return packageReviewTargetSchema.parse({
+    const packageReview = packageReviewTargetSchema.parse({
       ...baseTarget,
       selectedMemberId: selectedMember.memberId,
       selectedMember: {
@@ -133,6 +141,8 @@ export class DefaultPackageReviewService implements PackageReviewService {
         artifact: buildPinnedArtifactReview(artifact, selectedMember),
       },
     });
+    this.logPackageResolved(packageReview);
+    return packageReview;
   }
 
   async getPackageTarget(args: {
@@ -153,5 +163,19 @@ export class DefaultPackageReviewService implements PackageReviewService {
       status: 'ready',
       package: target,
     });
+  }
+
+  private logPackageResolved(packageReview: PackageReviewTarget): void {
+    this.logger?.info(
+      {
+        event: 'review.package.resolved',
+        packageId: packageReview.packageId,
+        memberCount: packageReview.members.length,
+        selectedMemberId: packageReview.selectedMemberId ?? null,
+        selectedMemberStatus: packageReview.selectedMember?.status ?? null,
+        exportabilityAvailable: packageReview.exportability.available,
+      },
+      'Package review resolved.',
+    );
   }
 }

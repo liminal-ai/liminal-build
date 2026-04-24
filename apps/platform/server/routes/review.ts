@@ -45,6 +45,23 @@ function applyExportDownloadNoStoreHeaders(reply: FastifyReply): void {
   reply.header('Expires', '0');
 }
 
+function logAccessBlocked(args: {
+  app: FastifyInstance;
+  projectId: string;
+  processId: string;
+  reason: 'UNAUTHENTICATED' | 'PROJECT_FORBIDDEN';
+}): void {
+  args.app.log.warn(
+    {
+      event: 'review.access-blocked',
+      projectId: args.projectId,
+      processId: args.processId,
+      reason: args.reason,
+    },
+    'Review route access blocked.',
+  );
+}
+
 function renderUnavailableShell(title: string, message: string): string {
   return `<!doctype html>
 <html lang="en">
@@ -85,6 +102,12 @@ export async function registerReviewRoutes(app: FastifyInstance): Promise<void> 
         if (request.authFailureReason === 'invalid_session') {
           reply.clearCookie(sessionCookieName, { path: '/' });
         }
+        logAccessBlocked({
+          app,
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+          reason: 'UNAUTHENTICATED',
+        });
 
         return reply.redirect(buildLoginRedirectPath(request.url));
       }
@@ -96,6 +119,12 @@ export async function registerReviewRoutes(app: FastifyInstance): Promise<void> 
       });
 
       if (access.kind === 'forbidden') {
+        logAccessBlocked({
+          app,
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+          reason: 'PROJECT_FORBIDDEN',
+        });
         return reply
           .code(403)
           .type('text/html')
@@ -152,6 +181,12 @@ export async function registerReviewRoutes(app: FastifyInstance): Promise<void> 
         if (request.authFailureReason === 'invalid_session') {
           reply.clearCookie(sessionCookieName, { path: '/' });
         }
+        logAccessBlocked({
+          app,
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+          reason: 'UNAUTHENTICATED',
+        });
 
         return reply.code(401).send({
           code: 'UNAUTHENTICATED',
@@ -170,18 +205,24 @@ export async function registerReviewRoutes(app: FastifyInstance): Promise<void> 
 
         app.log.info(
           {
-            method: request.method,
-            url: request.url,
-            actorId: request.actor.userId,
-            projectId: request.params.projectId,
-            processId: request.params.processId,
-            targetId:
-              workspace.target?.targetKind === 'artifact'
-                ? workspace.target.artifact?.artifactId
-                : (workspace.target?.package?.packageId ?? null),
+            event: 'review.workspace.bootstrap',
+            selectionTargetKind: request.query.targetKind ?? null,
+            availableTargetCount: workspace.availableTargets.length,
+            responseStatus: 200,
           },
-          'Review workspace opened.',
+          'Review workspace bootstrap resolved.',
         );
+        if (workspace.target?.status === 'unavailable') {
+          app.log.warn(
+            {
+              event: 'review.target.unavailable',
+              targetKind: workspace.target.targetKind,
+              targetId: request.query.targetId ?? workspace.process.reviewTargetId ?? null,
+              reason: workspace.target.error?.code ?? 'REVIEW_TARGET_NOT_FOUND',
+            },
+            'Review target unavailable.',
+          );
+        }
 
         return reply.send(workspace);
       } catch (error) {
@@ -215,6 +256,12 @@ export async function registerReviewRoutes(app: FastifyInstance): Promise<void> 
         if (request.authFailureReason === 'invalid_session') {
           reply.clearCookie(sessionCookieName, { path: '/' });
         }
+        logAccessBlocked({
+          app,
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+          reason: 'UNAUTHENTICATED',
+        });
 
         return reply.code(401).send({
           code: 'UNAUTHENTICATED',
@@ -238,6 +285,15 @@ export async function registerReviewRoutes(app: FastifyInstance): Promise<void> 
         });
 
         if (artifactReview === null) {
+          app.log.warn(
+            {
+              event: 'review.target.unavailable',
+              targetKind: 'artifact',
+              targetId: request.params.artifactId,
+              reason: 'REVIEW_TARGET_NOT_FOUND',
+            },
+            'Review target unavailable.',
+          );
           return reply.code(404).send({
             code: 'REVIEW_TARGET_NOT_FOUND',
             message: 'The requested review target could not be found.',
@@ -277,6 +333,12 @@ export async function registerReviewRoutes(app: FastifyInstance): Promise<void> 
         if (request.authFailureReason === 'invalid_session') {
           reply.clearCookie(sessionCookieName, { path: '/' });
         }
+        logAccessBlocked({
+          app,
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+          reason: 'UNAUTHENTICATED',
+        });
 
         return reply.code(401).send({
           code: 'UNAUTHENTICATED',
@@ -300,25 +362,21 @@ export async function registerReviewRoutes(app: FastifyInstance): Promise<void> 
         });
 
         if (packageReview === null) {
+          app.log.warn(
+            {
+              event: 'review.target.unavailable',
+              targetKind: 'package',
+              targetId: request.params.packageId,
+              reason: 'REVIEW_TARGET_NOT_FOUND',
+            },
+            'Review target unavailable.',
+          );
           return reply.code(404).send({
             code: 'REVIEW_TARGET_NOT_FOUND',
             message: 'The requested review target could not be found.',
             status: 404,
           });
         }
-
-        app.log.info(
-          {
-            method: request.method,
-            url: request.url,
-            actorId: request.actor.userId,
-            projectId: request.params.projectId,
-            processId: request.params.processId,
-            packageId: request.params.packageId,
-            selectedMemberId: packageReview.selectedMemberId ?? null,
-          },
-          'Package review opened.',
-        );
 
         return reply.send(packageReview);
       } catch (error) {
@@ -352,6 +410,12 @@ export async function registerReviewRoutes(app: FastifyInstance): Promise<void> 
         if (request.authFailureReason === 'invalid_session') {
           reply.clearCookie(sessionCookieName, { path: '/' });
         }
+        logAccessBlocked({
+          app,
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+          reason: 'UNAUTHENTICATED',
+        });
 
         return reply.code(401).send({
           code: 'UNAUTHENTICATED',
@@ -454,6 +518,12 @@ export async function registerReviewRoutes(app: FastifyInstance): Promise<void> 
         if (request.authFailureReason === 'invalid_session') {
           reply.clearCookie(sessionCookieName, { path: '/' });
         }
+        logAccessBlocked({
+          app,
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+          reason: 'UNAUTHENTICATED',
+        });
 
         return reply.code(401).send({
           code: 'UNAUTHENTICATED',
@@ -532,11 +602,17 @@ export async function registerReviewRoutes(app: FastifyInstance): Promise<void> 
           applyExportDownloadNoStoreHeaders(reply);
           app.log.warn(
             {
+              event: 'review.export.token-verify-failed',
+              exportId: request.params.exportId,
+              reason: error.code,
+            },
+            'Review export token verification failed.',
+          );
+          app.log.warn(
+            {
               event: 'review.export.download-failed',
               packageId: recoverablePackageId ?? null,
               exportId: request.params.exportId,
-              tokenPrefix:
-                typeof request.query.token === 'string' ? request.query.token.slice(0, 12) : null,
               result: 'failure',
               reason: error.code,
             },

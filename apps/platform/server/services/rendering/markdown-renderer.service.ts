@@ -22,14 +22,22 @@ export interface MarkdownRendererConfig {
   shikiThemes?: { light: string; dark: string };
   shikiLangs?: string[];
   shikiLangAliases?: Record<string, string>;
+  logger?: {
+    error(fields: Record<string, unknown>, message?: string): void;
+    warn(fields: Record<string, unknown>, message?: string): void;
+  };
 }
 
 export class MarkdownRendererService {
-  static async create(_config: MarkdownRendererConfig = {}): Promise<MarkdownRendererService> {
-    return new MarkdownRendererService();
+  constructor(private readonly logger?: MarkdownRendererConfig['logger']) {}
+
+  static async create(config: MarkdownRendererConfig = {}): Promise<MarkdownRendererService> {
+    return new MarkdownRendererService(config.logger);
   }
 
-  render(args: RenderArtifactArgs): RenderArtifactResult {
+  render(
+    args: RenderArtifactArgs & { artifactId?: string; selectedVersionId?: string },
+  ): RenderArtifactResult {
     try {
       const mermaidBlocks: MermaidBlock[] = [];
       let mermaidBlockIndex = 0;
@@ -52,7 +60,10 @@ export class MarkdownRendererService {
           mermaidBlockIndex += 1;
           const blockId = `mermaid-block-${mermaidBlockIndex}`;
           const mermaidBlock = createMermaidBlock({
+            artifactId: args.artifactId,
             blockId,
+            logger: this.logger,
+            selectedVersionId: args.selectedVersionId,
             source: token.content,
           });
 
@@ -87,6 +98,18 @@ export class MarkdownRendererService {
         bodyStatus: 'ready',
       };
     } catch (error) {
+      this.logger?.error(
+        {
+          event: 'review.markdown.render-failed',
+          artifactId: args.artifactId ?? null,
+          selectedVersionId: args.selectedVersionId ?? null,
+          errorCode: 'REVIEW_RENDER_FAILED',
+          stage: 'parse',
+          err: error,
+        },
+        'Markdown review render failed.',
+      );
+
       return {
         body: '',
         mermaidBlocks: [],

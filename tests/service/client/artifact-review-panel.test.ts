@@ -168,4 +168,34 @@ describe('artifact review panel', () => {
       'Parse error',
     );
   });
+
+  it('TC-6.3a keeps artifact context visible when the selected version body fails independently', () => {
+    const selectedVersion = readyArtifactReviewTargetFixture.selectedVersion;
+    if (selectedVersion === undefined) {
+      throw new Error('Expected the ready artifact fixture to include a selected version.');
+    }
+
+    const panel = renderArtifactReviewPanel({
+      artifact: {
+        ...readyArtifactReviewTargetFixture,
+        selectedVersion: {
+          ...selectedVersion,
+          bodyStatus: 'error',
+          body: undefined,
+          mermaidBlocks: undefined,
+          bodyError: {
+            code: 'REVIEW_RENDER_FAILED',
+            message: 'The selected review target could not be rendered.',
+          },
+        },
+      },
+      targetDocument: document,
+      onSelectVersion: vi.fn(),
+    });
+
+    expect(panel.textContent).toContain(readyArtifactReviewTargetFixture.displayName);
+    expect(panel.textContent).toContain(`Selected version: ${selectedVersion.versionLabel}`);
+    expect(panel.textContent).toContain('The selected review target could not be rendered.');
+    expect(panel.querySelector('[data-artifact-review-body]')).toBeNull();
+  });
 });

@@ -111,6 +111,7 @@ export const mermaidBlockSchema = z.object({
 export type MermaidBlock = z.infer<typeof mermaidBlockSchema>;
 
 export const reviewTargetErrorCodeSchema = z.enum([
+  'REVIEW_TARGET_NOT_FOUND',
   'REVIEW_TARGET_UNSUPPORTED',
   'REVIEW_RENDER_FAILED',
   'REVIEW_MEMBER_UNAVAILABLE',

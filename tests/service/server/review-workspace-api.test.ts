@@ -306,4 +306,230 @@ describe('review workspace api', () => {
 
     await app.close();
   });
+
+  it('TC-6.1a reopens artifact review from durable route state after a reload', async () => {
+    const platformStore = buildStore({
+      includeArtifact: true,
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const url = `/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/review?targetKind=artifact&targetId=${readyArtifactReviewTargetFixture.artifactId}`;
+    const firstResponse = await app.inject({
+      method: 'GET',
+      url,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+    const secondResponse = await app.inject({
+      method: 'GET',
+      url,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(firstResponse.statusCode).toBe(200);
+    expect(secondResponse.statusCode).toBe(200);
+    expect(secondResponse.json()).toMatchObject(firstResponse.json());
+
+    await app.close();
+  });
+
+  it('TC-6.1b reopens package review from durable route state after a reload', async () => {
+    const platformStore = buildStore({
+      includePackage: true,
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const url = `/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/review?targetKind=package&targetId=${exportablePackageFixture.packageId}`;
+    const firstResponse = await app.inject({
+      method: 'GET',
+      url,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+    const secondResponse = await app.inject({
+      method: 'GET',
+      url,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(firstResponse.statusCode).toBe(200);
+    expect(secondResponse.statusCode).toBe(200);
+    expect(secondResponse.json()).toMatchObject(firstResponse.json());
+
+    await app.close();
+  });
+
+  it('TC-6.2a keeps process context visible when the requested artifact version is unavailable', async () => {
+    const platformStore = buildStore({
+      includeArtifact: true,
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/review?targetKind=artifact&targetId=${readyArtifactReviewTargetFixture.artifactId}&versionId=artifact-version-missing`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      project: {
+        projectId: projectSummary.projectId,
+      },
+      process: {
+        processId: processSummary.processId,
+        reviewTargetKind: 'artifact',
+        reviewTargetId: readyArtifactReviewTargetFixture.artifactId,
+      },
+      target: {
+        targetKind: 'artifact',
+        displayName: readyArtifactReviewTargetFixture.displayName,
+        status: 'unavailable',
+        error: {
+          code: 'REVIEW_TARGET_NOT_FOUND',
+        },
+      },
+    });
+    expect(response.json().target.artifact).toBeUndefined();
+
+    await app.close();
+  });
+
+  it('TC-6.2b keeps the workspace open with an unavailable package target when the package is gone', async () => {
+    const platformStore = buildStore({
+      includeArtifact: true,
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/review?targetKind=package&targetId=package-missing-001`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      process: {
+        processId: processSummary.processId,
+        reviewTargetKind: 'package',
+        reviewTargetId: 'package-missing-001',
+      },
+      availableTargets: [
+        {
+          targetKind: 'artifact',
+          targetId: readyArtifactReviewTargetFixture.artifactId,
+        },
+      ],
+      target: {
+        targetKind: 'package',
+        displayName: 'Unavailable package',
+        status: 'unavailable',
+        error: {
+          code: 'REVIEW_TARGET_NOT_FOUND',
+        },
+      },
+    });
+    expect(response.json().target.package).toBeUndefined();
+
+    await app.close();
+  });
+
+  it('TC-6.2c blocks direct review routes when project access is revoked', async () => {
+    const platformStore = buildStore({
+      includeArtifact: true,
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+      processAccessService: {
+        async getProcessAccess() {
+          return {
+            kind: 'forbidden' as const,
+          };
+        },
+        async assertProcessAccess() {
+          throw new Error(
+            'assertProcessAccess should not be called for forbidden HTML review routes.',
+          );
+        },
+      } as never,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/projects/${projectSummary.projectId}/processes/${processSummary.processId}/review`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.headers['content-type']).toContain('text/html');
+    expect(response.body).toContain('Access denied');
+    expect(response.body).not.toContain(readyArtifactReviewTargetFixture.displayName);
+
+    await app.close();
+  });
 });

@@ -101,6 +101,25 @@ export interface CreateAppOptions {
   processWorkSurfaceService?: ProcessWorkSurfaceService;
 }
 
+const defaultLogger: NonNullable<FastifyServerOptions['logger']> = {
+  redact: {
+    paths: [
+      'req.headers.authorization',
+      'req.headers.cookie',
+      'req.url',
+      'token',
+      '*.token',
+      'signed_url',
+      '*.signed_url',
+      'signedUrl',
+      '*.signedUrl',
+      'EXPORT_SIGNING_SECRET',
+      '*.EXPORT_SIGNING_SECRET',
+    ],
+    censor: '[REDACTED]',
+  },
+};
+
 declare module 'fastify' {
   interface FastifyInstance {
     projectAccessService: ProjectAccessService;
@@ -124,6 +143,9 @@ declare module 'fastify' {
 
 export async function createApp(options: CreateAppOptions = {}) {
   const env = options.env ?? story0PlaceholderEnv;
+  const app = Fastify({
+    logger: options.logger ?? defaultLogger,
+  });
   // ConvexPlatformStore uses the shared Convex API key when calling the
   // service-only artifact wrappers. This keeps runtime auth scoped to the
   // specific server-to-Convex seams Fastify needs.
@@ -230,17 +252,17 @@ export async function createApp(options: CreateAppOptions = {}) {
   const processWorkSurfaceService =
     options.processWorkSurfaceService ??
     new DefaultProcessWorkSurfaceService(platformStore, processAccessService);
-  const markdownRenderer = await MarkdownRendererService.create();
+  const markdownRenderer = await MarkdownRendererService.create({ logger: app.log });
   const exportUrlSigner = new HmacExportUrlSigner(env.REVIEW_EXPORT_HMAC_SECRET);
   const exportService =
     options.exportService ??
     new DefaultExportService(platformStore, exportUrlSigner, env.APP_ORIGIN);
   const artifactReviewService =
     options.artifactReviewService ??
-    new DefaultArtifactReviewService(platformStore, markdownRenderer);
+    new DefaultArtifactReviewService(platformStore, markdownRenderer, app.log);
   const packageReviewService =
     options.packageReviewService ??
-    new DefaultPackageReviewService(platformStore, artifactReviewService);
+    new DefaultPackageReviewService(platformStore, artifactReviewService, app.log);
   const reviewWorkspaceService =
     options.reviewWorkspaceService ??
     new DefaultReviewWorkspaceService(
@@ -249,10 +271,6 @@ export async function createApp(options: CreateAppOptions = {}) {
       artifactReviewService,
       packageReviewService,
     );
-  const app = Fastify({
-    logger: options.logger ?? false,
-  });
-
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
   app.decorate('projectAccessService', projectAccessService);

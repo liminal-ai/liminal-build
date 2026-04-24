@@ -1701,7 +1701,21 @@ export class ConvexPlatformStore implements PlatformStore {
       args.memberId === undefined
         ? null
         : (memberStates.find((entry) => entry.member.memberId === args.memberId) ?? null);
+    const missingRequestedMember =
+      args.memberId === undefined || requestedMember !== null
+        ? null
+        : {
+            review: {
+              memberId: args.memberId,
+              status: 'unavailable' as const,
+              error: reviewTargetErrorSchema.parse({
+                code: 'REVIEW_MEMBER_UNAVAILABLE',
+                message: 'The requested package member is currently unavailable.',
+              }),
+            },
+          };
     const readyMember =
+      missingRequestedMember ??
       requestedMember ??
       memberStates.find((entry) => entry.member.status === 'ready') ??
       memberStates[0] ??
@@ -2991,7 +3005,21 @@ export class InMemoryPlatformStore implements PlatformStore {
       args.requestedMemberId === undefined
         ? null
         : (memberStates.find((entry) => entry.member.memberId === args.requestedMemberId) ?? null);
+    const missingRequestedEntry =
+      args.requestedMemberId === undefined || requestedEntry !== null
+        ? null
+        : {
+            review: {
+              memberId: args.requestedMemberId,
+              status: 'unavailable' as const,
+              error: reviewTargetErrorSchema.parse({
+                code: 'REVIEW_MEMBER_UNAVAILABLE',
+                message: 'The requested package member is currently unavailable.',
+              }),
+            },
+          };
     const selectedEntry =
+      missingRequestedEntry ??
       requestedEntry ??
       memberStates.find((entry) => entry.member.status === 'ready') ??
       memberStates[0] ??

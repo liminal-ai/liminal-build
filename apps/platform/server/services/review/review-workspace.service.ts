@@ -4,9 +4,10 @@ import type {
   ReviewWorkspaceResponse,
   ReviewWorkspaceSelection,
 } from '../../../shared/contracts/index.js';
-import { reviewWorkspaceResponseSchema } from '../../../shared/contracts/index.js';
-import { AppError } from '../../errors/app-error.js';
-import { reviewTargetNotFoundErrorCode } from '../../errors/codes.js';
+import {
+  reviewTargetSchema,
+  reviewWorkspaceResponseSchema,
+} from '../../../shared/contracts/index.js';
 import type { AuthenticatedActor } from '../auth/auth-session.service.js';
 import type { ProcessAccessService } from '../processes/process-access.service.js';
 import type { PlatformStore } from '../projects/platform-store.js';
@@ -59,6 +60,7 @@ export class DefaultReviewWorkspaceService implements ReviewWorkspaceService {
             processId: args.processId,
             request: selectedTargetRequest,
             selection: args.selection,
+            availableTargets,
           });
 
     return reviewWorkspaceResponseSchema.parse({
@@ -111,7 +113,8 @@ export class DefaultReviewWorkspaceService implements ReviewWorkspaceService {
     processId: string;
     request: SelectedTargetRequest;
     selection: ReviewWorkspaceSelection | null;
-  }): Promise<ReviewTarget | undefined> {
+    availableTargets: ReviewTargetSummary[];
+  }): Promise<ReviewTarget> {
     if (args.request.targetKind === 'package') {
       const target = await this.packageReviewService.getPackageTarget({
         projectId: args.projectId,
@@ -124,15 +127,13 @@ export class DefaultReviewWorkspaceService implements ReviewWorkspaceService {
             : undefined,
       });
 
-      if (target === null) {
-        if (args.request.explicit) {
-          throw this.createReviewTargetNotFoundError();
-        }
-
-        return undefined;
-      }
-
-      return target;
+      return (
+        target ??
+        this.buildUnavailableTarget({
+          request: args.request,
+          availableTargets: args.availableTargets,
+        })
+      );
     }
 
     const target = await this.artifactReviewService.getArtifactTarget({
@@ -146,22 +147,39 @@ export class DefaultReviewWorkspaceService implements ReviewWorkspaceService {
           : undefined,
     });
 
-    if (target === null) {
-      if (args.request.explicit) {
-        throw this.createReviewTargetNotFoundError();
-      }
-
-      return undefined;
-    }
-
-    return target;
+    return (
+      target ??
+      this.buildUnavailableTarget({
+        request: args.request,
+        availableTargets: args.availableTargets,
+      })
+    );
   }
 
-  private createReviewTargetNotFoundError(): AppError {
-    return new AppError({
-      code: reviewTargetNotFoundErrorCode,
-      message: 'The requested review target could not be found.',
-      statusCode: 404,
+  private buildUnavailableTarget(args: {
+    request: SelectedTargetRequest;
+    availableTargets: ReviewTargetSummary[];
+  }): ReviewTarget {
+    const matchedTarget = args.availableTargets.find(
+      (target) =>
+        target.targetKind === args.request.targetKind && target.targetId === args.request.targetId,
+    );
+    const displayName =
+      matchedTarget?.displayName ??
+      (args.request.targetKind === 'artifact' ? 'Unavailable artifact' : 'Unavailable package');
+    const message =
+      args.request.targetKind === 'artifact'
+        ? 'The requested artifact or artifact version is unavailable.'
+        : 'The requested package is unavailable.';
+
+    return reviewTargetSchema.parse({
+      targetKind: args.request.targetKind,
+      displayName,
+      status: 'unavailable',
+      error: {
+        code: 'REVIEW_TARGET_NOT_FOUND',
+        message,
+      },
     });
   }
 }

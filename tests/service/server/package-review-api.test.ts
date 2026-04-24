@@ -532,6 +532,51 @@ describe('package review api', () => {
     await app.close();
   });
 
+  it('returns an unavailable selected member when an explicit memberId is missing', async () => {
+    const platformStore = buildStore();
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const missingMemberId = 'package-member-missing';
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/review/packages/package-001?memberId=${missingMemberId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      packageId: 'package-001',
+      members: expect.arrayContaining([
+        expect.objectContaining({ memberId: olderReadyMember.memberId, status: 'ready' }),
+        expect.objectContaining({ memberId: newerReadyMember.memberId, status: 'ready' }),
+      ]),
+      selectedMemberId: missingMemberId,
+      selectedMember: {
+        memberId: missingMemberId,
+        status: 'unavailable',
+        error: {
+          code: 'REVIEW_MEMBER_UNAVAILABLE',
+        },
+      },
+    });
+    expect(response.json().selectedMember.artifact).toBeUndefined();
+
+    await app.close();
+  });
+
   it('TC-4.4a keeps the package open when one member is unavailable without hiding healthy members', async () => {
     const platformStore = buildStore([
       packageReviewTargetSchema.parse({

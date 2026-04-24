@@ -941,6 +941,103 @@ describe('review workspace integration', () => {
     await server.app.close();
   });
 
+  it('TC-6.1a reopens artifact review from durable route state after a reload', async () => {
+    const fixture = createFakeConvexContext(buildReviewWorkspaceSeed());
+    registerReviewWorkspaceHandlers(fixture);
+
+    const { server } = await startConvexReviewWorkspaceServer(fixture);
+    const artifactId = 'artifact-review-convex-001';
+    const url = `${server.baseUrl}/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/review?targetKind=artifact&targetId=${artifactId}`;
+
+    try {
+      const firstResponse = await fetch(url, {
+        headers: {
+          cookie: 'lb_session=review-workspace-convex-reopen-artifact',
+        },
+      });
+      const firstBody = await firstResponse.json();
+      const secondResponse = await fetch(url, {
+        headers: {
+          cookie: 'lb_session=review-workspace-convex-reopen-artifact',
+        },
+      });
+      const secondBody = await secondResponse.json();
+
+      expect(firstResponse.status).toBe(200);
+      expect(secondResponse.status).toBe(200);
+      expect(secondBody).toMatchObject(firstBody);
+    } finally {
+      await server.app.close();
+    }
+  });
+
+  it('TC-6.1b reopens package review from durable route state after a reload', async () => {
+    const fixture = createFakeConvexContext(buildReviewWorkspaceSeed());
+    registerReviewWorkspaceHandlers(fixture);
+
+    const querySpy = vi
+      .spyOn(ConvexHttpClient.prototype, 'query')
+      .mockImplementation(async (...args) => {
+        const [ref, params] = args;
+        return fixture.ctx.runQuery(ref, params);
+      });
+    const mutationSpy = vi
+      .spyOn(ConvexHttpClient.prototype, 'mutation')
+      .mockImplementation(async (...args) => {
+        const [ref, params] = args;
+        return fixture.ctx.runMutation(ref, params);
+      });
+    const actionSpy = vi
+      .spyOn(ConvexHttpClient.prototype, 'action')
+      .mockRejectedValue(
+        new Error('Unexpected Convex action call in review workspace integration.'),
+      );
+    const store = new ConvexPlatformStore('https://test.example.convex.cloud', 'test-api-key');
+    const packageId = await store.publishPackageSnapshot({
+      processId: processSummary.processId,
+      displayName: 'Feature Specification Package',
+      packageType: 'FeatureSpecificationOutput',
+      members: [
+        {
+          artifactId: 'artifact-review-convex-001',
+          artifactVersionId: 'artifact-version-review-convex-001',
+          position: 0,
+        },
+      ],
+    });
+    const { app, baseUrl } = await startApp({
+      store,
+      processAccessService: createReviewWorkspaceProcessAccessService(),
+    });
+    const url = `${baseUrl}/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/review?targetKind=package&targetId=${packageId}`;
+
+    try {
+      const firstResponse = await fetch(url, {
+        headers: {
+          cookie: 'lb_session=review-workspace-convex-reopen-package',
+        },
+      });
+      const firstBody = await firstResponse.json();
+      const secondResponse = await fetch(url, {
+        headers: {
+          cookie: 'lb_session=review-workspace-convex-reopen-package',
+        },
+      });
+      const secondBody = await secondResponse.json();
+
+      expect(firstResponse.status).toBe(200);
+      expect(secondResponse.status).toBe(200);
+      expect(secondBody).toMatchObject(firstBody);
+      expect(mutationSpy.mock.calls.map(([ref]) => readFunctionName(ref))).toEqual(
+        expect.arrayContaining(['packageSnapshots:publishPackageSnapshot']),
+      );
+      expect(querySpy).toHaveBeenCalled();
+      expect(actionSpy).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
   it('keeps process-produced artifacts reviewable after current material refs drop them from the working set', async () => {
     const scopedProjectSummary = projectSummarySchema.parse({
       projectId: 'project-review-scoping-001',

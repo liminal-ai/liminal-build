@@ -78,8 +78,8 @@ describe('package review panel', () => {
     });
 
     expect(
-      [...panel.querySelectorAll('[data-package-member-id]')].map((node) =>
-        node.textContent?.trim(),
+      [...panel.querySelectorAll('[data-package-member-id]')].map(
+        (node) => node.textContent?.trim().split('checkpoint-')[0],
       ),
     ).toEqual(['1. Feature Specification', '2. Implementation Notes']);
   });
@@ -122,8 +122,8 @@ describe('package review panel', () => {
       `[data-package-member-id="${secondReadyMemberFixture.memberId}"]`,
     );
 
-    if (!(targetButton instanceof HTMLButtonElement)) {
-      throw new Error('Expected the package panel to render a ready member button.');
+    if (!(targetButton instanceof HTMLElement)) {
+      throw new Error('Expected the package panel to render a ready member option.');
     }
 
     targetButton.click();
@@ -149,7 +149,7 @@ describe('package review panel', () => {
     expect(
       panel
         .querySelector(`[data-package-member-id="${readyPackageMemberFixture.memberId}"]`)
-        ?.getAttribute('aria-pressed'),
+        ?.getAttribute('aria-selected'),
     ).toBe('true');
   });
 
@@ -173,7 +173,27 @@ describe('package review panel', () => {
     expect(panel.textContent).toContain(unavailablePackageFixture.displayName);
     expect(panel.textContent).toContain('The pinned package member is currently unavailable.');
     expect(panel.textContent).toContain(readyPackageMemberFixture.displayName);
-    expect(unavailableButton).toHaveProperty('disabled', true);
+    expect(unavailableButton?.getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('TC-6.3b keeps the package workspace open when one member fails independently', () => {
+    const panel = renderPackageReviewPanel({
+      packageReview: unavailablePackageFixture,
+      targetDocument: document,
+      onSelectMember: vi.fn(),
+      onExport: vi.fn(),
+      onExportExpired: vi.fn(),
+      exportState: {
+        isExporting: false,
+        lastExportByPackageId: {},
+        error: null,
+      },
+    });
+
+    expect(panel.textContent).toContain(unavailablePackageFixture.displayName);
+    expect(panel.textContent).toContain('Selected member');
+    expect(panel.textContent).toContain('The pinned package member is currently unavailable.');
+    expect(panel.textContent).toContain(readyPackageMemberFixture.displayName);
   });
 
   it('TC-5.1b hides the export trigger when the package is not exportable', () => {

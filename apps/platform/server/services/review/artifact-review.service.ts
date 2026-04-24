@@ -10,6 +10,11 @@ import type { ArtifactVersionRecord, PlatformStore } from '../projects/platform-
 
 export const ARTIFACT_CONTENT_FETCH_TIMEOUT_MS = 10_000;
 
+type ReviewLogger = {
+  info(fields: Record<string, unknown>, message?: string): void;
+  warn(fields: Record<string, unknown>, message?: string): void;
+};
+
 type ArtifactReviewState = {
   artifact: ArtifactReviewTarget;
   status: 'ready' | 'empty' | 'unsupported';
@@ -35,6 +40,7 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
   constructor(
     private readonly platformStore: PlatformStore,
     private readonly markdownRenderer: MarkdownRendererService,
+    private readonly logger?: ReviewLogger,
   ) {}
 
   async getArtifactReview(args: {
@@ -119,6 +125,20 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
           : await this.buildArtifactVersionDetail(selectedVersionRecord),
     });
 
+    if (selectedVersionRecord !== undefined) {
+      this.logger?.info(
+        {
+          event: 'review.artifact.resolved',
+          artifactId: artifactReview.artifactId,
+          selectedVersionId: selectedVersionRecord.versionId,
+          contentKind:
+            artifactReview.selectedVersion?.contentKind ?? selectedVersionRecord.contentKind,
+          bodyStatus: artifactReview.selectedVersion?.bodyStatus ?? null,
+        },
+        'Artifact review resolved.',
+      );
+    }
+
     if (currentVersion === undefined) {
       return {
         artifact: artifactReview,
@@ -163,6 +183,7 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
       return this.buildArtifactVersionError(
         version,
         'This artifact version could not be loaded for review.',
+        'missing_content_url',
       );
     }
 
@@ -177,6 +198,7 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
         return this.buildArtifactVersionError(
           version,
           'This artifact version could not be loaded for review.',
+          `http_${response.status}`,
         );
       }
 
@@ -189,18 +211,22 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
         return this.buildArtifactVersionError(
           version,
           'Artifact version loading timed out before review content became available.',
+          'timeout',
         );
       }
 
       return this.buildArtifactVersionError(
         version,
         'This artifact version could not be loaded for review.',
+        'fetch_failed',
       );
     }
 
     const rendered = this.markdownRenderer.render({
       markdown,
       themeId: 'light',
+      artifactId: version.artifactId,
+      selectedVersionId: version.versionId,
     });
 
     return {
@@ -223,7 +249,19 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
   private buildArtifactVersionError(
     version: ArtifactVersionRecord,
     message: string,
+    reason = 'render_failed',
   ): ArtifactVersionDetail {
+    this.logger?.warn(
+      {
+        event: 'review.artifact.content-fetch-failed',
+        artifactId: version.artifactId,
+        selectedVersionId: version.versionId,
+        errorCode: 'REVIEW_RENDER_FAILED',
+        reason,
+      },
+      'Artifact review content fetch failed.',
+    );
+
     return {
       versionId: version.versionId,
       versionLabel: version.versionLabel,

@@ -126,6 +126,10 @@ export function createShellApp(options: ShellAppOptions) {
               });
 
     options.root.append(page);
+
+    if (isReviewWorkspace) {
+      options.root.querySelector<HTMLElement>('[data-review-heading="true"]')?.focus();
+    }
   };
 
   options.store.subscribe(() => {

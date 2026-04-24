@@ -1,11 +1,11 @@
 # Team Implementation Log
 
 ## Run Overview
-- State: BETWEEN_STORIES
+- State: PRE_EPIC_VERIFY
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/04--artifact-review-and-package-surface
-- Current Story: 06-reopen-unavailable-and-degraded-review-states (next)
+- Current Story: (all stories accepted)
 - Current Phase: —
-- Last Completed Checkpoint: Story 5 accepted; commit pending
+- Last Completed Checkpoint: Story 6 accepted (pending commit)
 
 ## Orchestrator failure mode — Story 2 "verify-round churn from under-configured fixer + unchecked fix spillover" (2026-04-23 ~16:50Z)
 
@@ -168,6 +168,36 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 - Story 0 implementor: codex / 019db7b8-474f-7ec2-8880-c5fa78a33561 (extracted from stdout after adapter failure; used in round-1 self-review retry post-patch)
 
 ## Story Receipts
+
+### 06-reopen-unavailable-and-degraded-review-states (accepted 2026-04-24 ~02:55Z)
+- Story Title: Story 6: Reopen, Unavailable, and Degraded Review States
+- Implementor Evidence:
+  - Initial: `artifacts/06-.../001-implementor.json` (codex session `019dbd27-fe09-7ab0-9437-9fd0f63f0450`, 8 files, 1 spec deviation: extended review-target error codes to include REVIEW_TARGET_NOT_FOUND at target scope)
+  - Follow-up 1 (missing test files): `artifacts/06-.../002-continue.json`
+  - Follow-up 2 (stale selection race guard): `artifacts/06-.../005-continue.json` — added requestId guard to selectArtifactVersion/selectPackageMember success paths
+  - Follow-up 3 (error-path guard + explicit member unavailability): `artifacts/06-.../009-continue.json` — added requestId guard to error catch paths + explicit memberId returns unavailable instead of fallback
+- Verifier Evidence (3 rounds):
+  - Round 1: `003-verify-batch.json` — revise (V1: stale selection race; V2: clean)
+  - Round 2: `006-verify-batch.json` — revise (V1: error-path guard + explicit member unavailability; V2: clean)
+  - Round 3: `013-verify-batch.json` — revise (convergent format-drift false positive from verifier codex sessions; V1 client test false positive; orchestrator independent gate passes clean)
+- Story Gate: `corepack pnpm run green-verify` — **pass** (orchestrator-owned, independent of verifier sessions)
+- Epic Gate: `corepack pnpm run verify-all` — **pass** (540 tests)
+- Gate Tests: convex 54 / service 234 / client 225 / packages 5 / integration 22 = **540 total**
+- Dispositions:
+  - (rd 1) stale selection race in selectArtifactVersion/selectPackageMember → **fixed** (continue 005: requestId guard on success paths)
+  - (rd 2) error-path missing stale guard → **fixed** (continue 009: requestId guard on catch paths)
+  - (rd 2) explicit missing memberId silently falls back → **fixed** (continue 009: returns unavailable for explicit-but-missing member)
+  - (rd 3) format-drift gate failure → **dismissed** (false positive: verifier codex sessions dirty the tree; orchestrator green-verify passes clean on the actual working tree)
+  - (rd 3) client test failures → **dismissed** (V1-only; V2 and orchestrator independent runs both pass; V1 codex session likely modified DOM expectations)
+  - (rd 3) NullPlatformStore fallback observation → **dismissed** (not Story 6 scope; pre-existing app initialization pattern)
+- Open Risks:
+  - Spec deviation: REVIEW_TARGET_NOT_FOUND used at target scope (tech design only enumerated it at request-error layer). Carrying to epic verification as spec-clarification.
+- Baseline Before: 488
+- Baseline After: 540 (+52)
+- Rounds: 3 verify rounds + 3 follow-up continues
+- Acceptance Rationale: All real findings from rounds 1-2 fixed. Round 3 findings are environment false positives — convergent format-drift from verifier codex sessions (not present in actual working tree), V1-only client test failures not reproduced by V2 or orchestrator. Orchestrator independent gate runs pass clean on all lanes. Baseline +52 with no regressions. Durable reopen, unavailable states, bounded degraded rendering, stale-selection guards, and explicit-member unavailability all integrated per tech design.
+
+---
 
 ### 05-package-export (accepted 2026-04-24 ~01:45Z)
 - Story Title: Story 5: Package Export (two-phase)
@@ -417,9 +447,9 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 - Acceptance Rationale: 4 verifier rounds, 0 blocking findings remain, story gate pass, baseline up with no regressions, self-review + implementor work intact on disk, all spec-pack contract vocabulary in place as Story 0 foundation for Stories 1–6. Residual findings are disposed per rationale above.
 
 ## Cumulative Baselines
-- Baseline Before Current Story: 488 (post-Story-5 accepted; next story's "before")
-- Expected After Current Story: TBD at Story 2 start
-- Latest Actual Total: 409 (post-Story-1-amended verify-all at ~14:05Z, exit 0)
+- Baseline Before Current Story: (all stories accepted)
+- Expected After Current Story: —
+- Latest Actual Total: 540 (post-Story-6 verify-all at ~02:55Z, exit 0)
 
 ### Baseline history
 | Story | Before | After | Delta | Notes |
@@ -432,6 +462,7 @@ Both verifiers ran `green-verify` + `verify-all` independently in their fresh se
 | 03-markdown-and-mermaid-review | 425 | 441 | +16 | +2 new test files (markdown-renderer, markdown-body, mermaid-runtime) + quick-fix regressions (XSS, directive-only, version-ID traceability, zero-byte body, 200KB smoke-proof) |
 | 04-package-review-workspace | 441 | 466 | +25 | +2 Convex test files (packageSnapshots, packageSnapshotMembers) + package-review-api + package-review-panel + snapshot-immutability integration + 20-member/2s smoke + process-ownership regressions |
 | 05-package-export | 466 | 488 | +22 | +4 new test files (review-export-api, export-url-signing, export-trigger, create-from-entries) + regressions for token 404, cache headers, archive collision, package-scoped state, streaming, aria-live |
+| 06-reopen-unavailable-and-degraded-review-states | 488 | 540 | +52 | +review-workspace-api TC-6 tests + unavailable/degraded client tests + version-switcher stale-guard regressions + package-member-nav stale-guard + explicit-member-unavailable + NFR tests |
 
 ## Cleanup / Epic Verification
 - Cleanup Artifact: pending

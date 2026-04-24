@@ -1007,6 +1007,7 @@ export async function bootstrapApp(
     artifactId: string,
     versionId: string,
   ): Promise<void> => {
+    const requestId = routeLoadId;
     const currentReviewWorkspace = store.get().reviewWorkspace;
 
     if (
@@ -1021,6 +1022,12 @@ export async function bootstrapApp(
       targetId: artifactId,
       versionId,
     };
+
+    store.patch('reviewWorkspace', {
+      ...currentReviewWorkspace,
+      selection,
+      error: null,
+    });
 
     try {
       const artifact = await getArtifactReview({
@@ -1056,6 +1063,19 @@ export async function bootstrapApp(
                 artifact,
               };
 
+      const latestReviewWorkspace = store.get().reviewWorkspace;
+      const latestSelection = latestReviewWorkspace.selection;
+      if (
+        latestReviewWorkspace.projectId !== projectId ||
+        latestReviewWorkspace.processId !== processId ||
+        latestSelection === null ||
+        latestSelection.targetKind !== selection.targetKind ||
+        latestSelection.targetId !== selection.targetId ||
+        latestSelection.versionId !== selection.versionId
+      ) {
+        return;
+      }
+
       store.patch('route', {
         pathname: getRoutePathname({
           kind: 'review-workspace',
@@ -1068,7 +1088,7 @@ export async function bootstrapApp(
         selectedProcessId: null,
       });
       store.patch('reviewWorkspace', {
-        ...currentReviewWorkspace,
+        ...latestReviewWorkspace,
         selection,
         target: nextTarget,
         error: null,
@@ -1086,8 +1106,22 @@ export async function bootstrapApp(
       );
     } catch (error) {
       if (error instanceof ApiRequestError) {
+        const latestReviewWorkspace = store.get().reviewWorkspace;
+        const latestSelection = latestReviewWorkspace.selection;
+        if (
+          requestId !== routeLoadId ||
+          latestReviewWorkspace.projectId !== projectId ||
+          latestReviewWorkspace.processId !== processId ||
+          latestSelection === null ||
+          latestSelection.targetKind !== selection.targetKind ||
+          latestSelection.targetId !== selection.targetId ||
+          latestSelection.versionId !== selection.versionId
+        ) {
+          return;
+        }
+
         store.patch('reviewWorkspace', {
-          ...currentReviewWorkspace,
+          ...latestReviewWorkspace,
           error: error.payload,
         });
         return;
@@ -1103,6 +1137,7 @@ export async function bootstrapApp(
     packageId: string,
     memberId: string,
   ): Promise<void> => {
+    const requestId = routeLoadId;
     const currentReviewWorkspace = store.get().reviewWorkspace;
 
     if (
@@ -1118,6 +1153,12 @@ export async function bootstrapApp(
       memberId,
     };
 
+    store.patch('reviewWorkspace', {
+      ...currentReviewWorkspace,
+      selection,
+      error: null,
+    });
+
     try {
       const packageReview = await getPackageReview({
         projectId,
@@ -1125,6 +1166,19 @@ export async function bootstrapApp(
         packageId,
         memberId,
       });
+
+      const latestReviewWorkspace = store.get().reviewWorkspace;
+      const latestSelection = latestReviewWorkspace.selection;
+      if (
+        latestReviewWorkspace.projectId !== projectId ||
+        latestReviewWorkspace.processId !== processId ||
+        latestSelection === null ||
+        latestSelection.targetKind !== selection.targetKind ||
+        latestSelection.targetId !== selection.targetId ||
+        latestSelection.memberId !== selection.memberId
+      ) {
+        return;
+      }
 
       store.patch('route', {
         pathname: getRoutePathname({
@@ -1138,7 +1192,7 @@ export async function bootstrapApp(
         selectedProcessId: null,
       });
       store.patch('reviewWorkspace', {
-        ...currentReviewWorkspace,
+        ...latestReviewWorkspace,
         selection,
         target: {
           targetKind: 'package',
@@ -1161,8 +1215,22 @@ export async function bootstrapApp(
       );
     } catch (error) {
       if (error instanceof ApiRequestError) {
+        const latestReviewWorkspace = store.get().reviewWorkspace;
+        const latestSelection = latestReviewWorkspace.selection;
+        if (
+          requestId !== routeLoadId ||
+          latestReviewWorkspace.projectId !== projectId ||
+          latestReviewWorkspace.processId !== processId ||
+          latestSelection === null ||
+          latestSelection.targetKind !== selection.targetKind ||
+          latestSelection.targetId !== selection.targetId ||
+          latestSelection.memberId !== selection.memberId
+        ) {
+          return;
+        }
+
         store.patch('reviewWorkspace', {
-          ...currentReviewWorkspace,
+          ...latestReviewWorkspace,
           error: error.payload,
         });
         return;

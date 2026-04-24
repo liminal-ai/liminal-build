@@ -8,6 +8,7 @@ import {
   exportablePackageReviewWorkspaceFixture,
   multiTargetReviewWorkspaceFixture,
   readyArtifactReviewWorkspaceFixture,
+  unavailableReviewWorkspaceFixture,
   zeroTargetReviewWorkspaceFixture,
 } from '../../fixtures/review-workspace.js';
 
@@ -117,8 +118,9 @@ describe('review workspace page', () => {
         },
       },
     });
-    const firstTargetButton = [...dom.window.document.querySelectorAll('button')].find(
-      (button) => button.textContent === readyArtifactReviewWorkspaceFixture.target?.displayName,
+    const firstTargetOption = [...dom.window.document.querySelectorAll('[role="option"]')].find(
+      (option) =>
+        option.textContent?.includes(readyArtifactReviewWorkspaceFixture.target?.displayName ?? ''),
     );
 
     expect(dom.window.document.body.textContent).toContain('Select a review target');
@@ -127,11 +129,11 @@ describe('review workspace page', () => {
     );
     expect(dom.window.document.body.textContent).not.toContain('Status: ready');
 
-    if (!(firstTargetButton instanceof dom.window.HTMLButtonElement)) {
-      throw new Error('Expected the target selection state to render a target button.');
+    if (!(firstTargetOption instanceof dom.window.HTMLElement)) {
+      throw new Error('Expected the target selection state to render a target option.');
     }
 
-    firstTargetButton.click();
+    firstTargetOption.click();
 
     expect(onOpenReview).toHaveBeenCalledWith(
       multiTargetReviewWorkspaceFixture.project.projectId,
@@ -175,15 +177,15 @@ describe('review workspace page', () => {
 
   it('TC-1.4a back-to-process returns to the same process context', () => {
     const { dom, onOpenProcess } = renderPage();
-    const backButton = [...dom.window.document.querySelectorAll('button')].find(
-      (button) => button.textContent === 'Back to process',
+    const backLink = [...dom.window.document.querySelectorAll('a')].find(
+      (link) => link.textContent === 'Back to process',
     );
 
-    if (!(backButton instanceof dom.window.HTMLButtonElement)) {
-      throw new Error('Expected the review workspace to render a back-to-process button.');
+    if (!(backLink instanceof dom.window.HTMLAnchorElement)) {
+      throw new Error('Expected the review workspace to render a back-to-process link.');
     }
 
-    backButton.click();
+    backLink.click();
 
     expect(onOpenProcess).toHaveBeenCalledWith(
       readyArtifactReviewWorkspaceFixture.project.projectId,
@@ -214,5 +216,85 @@ describe('review workspace page', () => {
     expect(dom.window.document.body.textContent).toContain(
       'No review targets are available for this process yet.',
     );
+  });
+
+  it('TC-6.2a renders an unavailable review target without leaking stale review body content', () => {
+    const { dom, onOpenReview } = renderPage({
+      reviewWorkspace: {
+        projectId: unavailableReviewWorkspaceFixture.project.projectId,
+        processId: unavailableReviewWorkspaceFixture.process.processId,
+        selection: {
+          targetKind: 'package',
+          targetId:
+            unavailableReviewWorkspaceFixture.target?.package?.packageId ?? 'package-missing-001',
+        },
+        project: unavailableReviewWorkspaceFixture.project,
+        process: unavailableReviewWorkspaceFixture.process,
+        availableTargets: unavailableReviewWorkspaceFixture.availableTargets,
+        target: {
+          targetKind: 'package',
+          displayName:
+            unavailableReviewWorkspaceFixture.target?.displayName ?? 'Unavailable package',
+          status: 'unavailable',
+          error: {
+            code: 'REVIEW_TARGET_NOT_FOUND',
+            message: 'The requested package is unavailable.',
+          },
+        },
+        isLoading: false,
+        error: null,
+        exportState: {
+          isExporting: false,
+          lastExportByPackageId: {},
+          error: null,
+        },
+      },
+    });
+    const alternativeTarget = unavailableReviewWorkspaceFixture.availableTargets[0];
+    const alternativeTargetOption = [
+      ...dom.window.document.querySelectorAll('[role="option"]'),
+    ].find((option) => option.textContent?.includes(alternativeTarget?.displayName ?? ''));
+
+    expect(dom.window.document.body.textContent).toContain('Review target unavailable');
+    expect(dom.window.document.body.textContent).toContain('The requested package is unavailable.');
+    expect(dom.window.document.body.textContent).not.toContain('Selected member');
+
+    if (!(alternativeTargetOption instanceof dom.window.HTMLElement) || !alternativeTarget) {
+      throw new Error('Expected the unavailable review state to render another target selector.');
+    }
+
+    alternativeTargetOption.click();
+
+    expect(onOpenReview).toHaveBeenCalledWith(
+      unavailableReviewWorkspaceFixture.project.projectId,
+      unavailableReviewWorkspaceFixture.process.processId,
+      {
+        targetKind: alternativeTarget.targetKind,
+        targetId: alternativeTarget.targetId,
+      },
+    );
+  });
+
+  it('renders a review-target unavailable message when a targeted fetch rejects after the workspace is open', () => {
+    const { dom } = renderPage({
+      reviewWorkspace: {
+        ...buildStore().get().reviewWorkspace,
+        project: readyArtifactReviewWorkspaceFixture.project,
+        process: readyArtifactReviewWorkspaceFixture.process,
+        availableTargets: readyArtifactReviewWorkspaceFixture.availableTargets,
+        target: readyArtifactReviewWorkspaceFixture.target ?? null,
+        error: {
+          code: 'REVIEW_TARGET_NOT_FOUND',
+          message: 'The requested artifact or artifact version is unavailable.',
+          status: 404,
+        },
+      },
+    });
+
+    expect(dom.window.document.body.textContent).toContain(
+      readyArtifactReviewWorkspaceFixture.process.displayLabel,
+    );
+    expect(dom.window.document.body.textContent).toContain('Review target unavailable');
+    expect(dom.window.document.body.textContent).not.toContain('Feature Specification - Current');
   });
 });
