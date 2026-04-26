@@ -215,6 +215,65 @@ describe('project shell bootstrap api', () => {
     await app.close();
   });
 
+  it('returns project artifact summaries without legacy process ownership fields', async () => {
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [populatedProjectSummary],
+      },
+      projectAccessByProjectId: {
+        [populatedProjectSummary.projectId]: {
+          kind: 'accessible',
+          project: populatedProjectSummary,
+        },
+      },
+      artifactsByProjectId: {
+        [populatedProjectSummary.projectId]: [
+          {
+            artifactId: 'artifact-legacy-ownership-001',
+            displayName: 'Legacy Ownership Artifact',
+            currentVersionLabel: 'v4',
+            attachmentScope: 'process',
+            processId: 'process-legacy-001',
+            processDisplayLabel: 'Legacy Process #1',
+            updatedAt: '2026-04-13T15:00:00.000Z',
+          },
+        ],
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${populatedProjectSummary.projectId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().artifacts.items).toEqual([
+      {
+        artifactId: 'artifact-legacy-ownership-001',
+        displayName: 'Legacy Ownership Artifact',
+        currentVersionLabel: 'v4',
+        updatedAt: '2026-04-13T15:00:00.000Z',
+      },
+    ]);
+
+    await app.close();
+  });
+
   it('TC-6.3b returns a source section error without blocking healthy sections', async () => {
     const platformStore = buildPopulatedStore();
     const projectShellService = new ProjectShellService(platformStore, {

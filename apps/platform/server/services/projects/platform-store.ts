@@ -1726,9 +1726,9 @@ export class ConvexPlatformStore implements PlatformStore {
     projectId: string;
     processId: string;
   }): Promise<ReviewTargetSummary[]> {
-    const [artifacts, producedArtifactIds, packageSnapshots] = await Promise.all([
-      this.listProjectArtifacts({
-        projectId: args.projectId,
+    const [currentMaterialRefs, producedArtifactIds, packageSnapshots] = await Promise.all([
+      this.getCurrentProcessMaterialRefs({
+        processId: args.processId,
       }),
       this.client.query(listArtifactsByProducingProcessQuery, {
         processId: args.processId,
@@ -1737,10 +1737,16 @@ export class ConvexPlatformStore implements PlatformStore {
         processId: args.processId,
       }),
     ]);
-    const reviewableArtifactIds = new Set(producedArtifactIds);
-    const artifactCandidates = artifacts.filter((artifact) =>
-      reviewableArtifactIds.has(artifact.artifactId),
-    );
+    const reviewableArtifactIds = [
+      ...new Set([...currentMaterialRefs.artifactIds, ...producedArtifactIds]),
+    ];
+    const artifactCandidates =
+      reviewableArtifactIds.length === 0
+        ? []
+        : await this.listProjectArtifactsByIds({
+            projectId: args.projectId,
+            artifactIds: reviewableArtifactIds,
+          });
     const artifactTargets = (
       await Promise.all(
         artifactCandidates.map(async (artifact) => {
@@ -3172,7 +3178,12 @@ export class InMemoryPlatformStore implements PlatformStore {
     projectId: string;
     processId: string;
   }): Promise<ReviewTargetSummary[]> {
-    const reviewableArtifactIds = this.listProducedArtifactIds(args.processId);
+    const currentArtifactIds =
+      this.currentMaterialRefsByProcessId.get(args.processId)?.artifactIds ?? [];
+    const reviewableArtifactIds = new Set([
+      ...currentArtifactIds,
+      ...this.listProducedArtifactIds(args.processId),
+    ]);
     const targets = (
       await Promise.all(
         (this.artifactsByProjectId.get(args.projectId) ?? [])

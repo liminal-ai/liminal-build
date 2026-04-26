@@ -227,6 +227,101 @@ describe('artifact review api', () => {
     await app.close();
   });
 
+  it('allows artifact review when the current process references an earlier process artifact', async () => {
+    const referencedProcessSummary = processSummarySchema.parse({
+      ...processSummary,
+      processId: 'process-review-reference-001',
+      displayLabel: 'Feature Implementation #2',
+      updatedAt: '2026-04-23T12:05:00.000Z',
+    });
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectSummary.projectId]: [
+          referencedProcessSummary,
+          {
+            ...processSummary,
+            processId: 'process-review-author-001',
+            displayLabel: 'Feature Specification #1',
+          },
+        ],
+      },
+      artifactsByProjectId: {
+        [projectSummary.projectId]: [
+          {
+            artifactId: 'artifact-shared-001',
+            displayName: 'Shared Technical Design',
+            currentVersionLabel: 'design-v2',
+            updatedAt: '2026-04-23T12:04:00.000Z',
+          },
+        ],
+      },
+      artifactVersionsByArtifactId: {
+        'artifact-shared-001': [
+          {
+            versionId: 'artifact-version-shared-001',
+            artifactId: 'artifact-shared-001',
+            versionLabel: 'design-v2',
+            contentStorageId: 'storage-shared-001',
+            contentKind: 'markdown',
+            bytes: 32,
+            createdAt: '2026-04-23T12:04:00.000Z',
+            createdByProcessId: 'process-review-author-001',
+          },
+        ],
+      },
+      artifactContentsByVersionId: {
+        'artifact-version-shared-001': '# Shared Technical Design',
+      },
+      currentMaterialRefsByProcessId: {
+        [referencedProcessSummary.processId]: {
+          artifactIds: ['artifact-shared-001'],
+          sourceAttachmentIds: [],
+        },
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${referencedProcessSummary.processId}/review/artifacts/artifact-shared-001`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      artifactId: 'artifact-shared-001',
+      currentVersionLabel: 'design-v2',
+      selectedVersion: {
+        versionId: 'artifact-version-shared-001',
+        producedByProcessId: 'process-review-author-001',
+      },
+    });
+
+    await app.close();
+  });
+
   it('returns ARTIFACT_VERSION_NOT_FOUND when an explicit artifact version is unavailable', async () => {
     const platformStore = buildStore();
     const app = await buildApp({

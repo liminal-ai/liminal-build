@@ -93,20 +93,22 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
     artifactId: string;
     versionId?: string;
   }): Promise<ArtifactReviewState | null> {
-    const [artifacts, versionRecords] = await Promise.all([
+    const [artifacts, versionRecords, currentMaterialRefs] = await Promise.all([
       this.platformStore.listProjectArtifacts({
         projectId: args.projectId,
       }),
       this.platformStore.listArtifactVersions({
         artifactId: args.artifactId,
       }),
+      this.platformStore.getCurrentProcessMaterialRefs({
+        processId: args.processId,
+      }),
     ]);
 
     const artifact = artifacts.find((candidate) => candidate.artifactId === args.artifactId);
     const processCanReviewArtifact =
-      artifact?.processId === undefined
-        ? versionRecords.some((candidate) => candidate.createdByProcessId === args.processId)
-        : artifact.processId === args.processId;
+      currentMaterialRefs.artifactIds.includes(args.artifactId) ||
+      versionRecords.some((candidate) => candidate.createdByProcessId === args.processId);
 
     if (artifact === undefined || !processCanReviewArtifact) {
       return null;

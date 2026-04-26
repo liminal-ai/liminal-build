@@ -4,8 +4,8 @@
 - State: STORY_ACTIVE
 - Spec Pack Root: /Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment
 - Tech Design Shape: four-file (tech-design.md + tech-design-server.md + tech-design-client.md + test-plan.md)
-- Current Story: 00-foundation
-- Current Phase: accept
+- Current Story: 01-project-artifact-association-without-process-ownership
+- Current Phase: implement
 - Last Completed Checkpoint: story-0-gate-pass (2026-04-26)
 
 ## Run Configuration
@@ -82,10 +82,27 @@
   - S0-F3 deferred to Story 4 per test plan chunk assignment
 - User Acceptance: accepted
 
+### story-01 (Project Artifact Association Without Process Ownership)
+- Title: Story 1: Project Artifact Association Without Process Ownership
+- Implementor Evidence Refs:
+  - artifacts/01-.../001-implementor.json (initial)
+  - artifacts/01-.../005-self-review-batch.json (self-review 3/3 passes)
+- Verifier Evidence Refs:
+  - artifacts/01-.../006-verify.json (initial: pass, all ACs/TCs verified, no findings)
+- Gate Command: `corepack pnpm run green-verify`
+- Gate Result: pass
+- Gate Test Counts: convex:54 + server:242 + client:233 + packages:5 = 534
+- Dispositions: (none — no findings)
+- Baseline Before Story: 531 (convex:54 + server:239 + client:233 + packages:5)
+- Baseline After Story: 534 (convex:54 + server:242 + client:233 + packages:5)
+- Baseline Note: +3 net vs +18 planned. Clean verification pass. Server delta is new story-specific tests.
+- Open Risks: none
+- User Acceptance: accepted
+
 ## Cumulative Baselines
-- Baseline Before Current Story: 531 (convex:54 + server:239 + client:233 + packages:5)
-- Expected After Current Story: 549 (531 + 18 planned for chunk 1)
-- Latest Actual Total: 531
+- Baseline Before Current Story: 534 (convex:54 + server:242 + client:233 + packages:5)
+- Expected After Current Story: 556 (534 + 22 planned for chunk 2)
+- Latest Actual Total: 534
 
 ## Cleanup / Epic Verification
 - Cleanup Artifact: pending
@@ -145,3 +162,12 @@ When a provider-backed CLI call is backgrounded:
 **Root cause:** At the moment of tool selection, the orchestrator treated monitoring as a generic tool-use task ("watch a background process") and reached for a familiar `tail -f` pattern instead of applying the specific file paths documented in the onboarding materials. The carry-forward notes contained the correct answer ("Use `status.json`, `updatedAt`, `lastOutputAt`, stream logs to monitor") but the information did not get applied at the bridge between "I know the procedure" and "I'm now selecting tools." The docs named the right files; the orchestrator watched something else.
 
 **Corrective:** All subsequent backgrounded provider calls must use a Monitor on the actual progress status file in `artifacts/<story>/progress/`, checking for status changes and stall conditions (no `lastOutputAt` update within the silence timeout), on a 5-minute cadence.
+
+### Tooling Observation: Monitor Lifecycle
+Only one Monitor should be active at a time since CLI operations are sequential. Old monitors from prior phases complete or time out naturally but remain visible in the Claude Code status area as stale entries, creating confusion about how many monitors are actually running. **Fix:** Use `TaskStop` to explicitly stop the current monitor before arming a new one at each phase transition. This keeps exactly one active monitor at all times. The skill should document this as part of the monitoring procedure: stop the prior monitor, then arm the next one.
+
+### Tooling Observation: CLI Flag Names
+`story-continue` requires `--followup-text` (or `--followup-file`), not `--response-text`. The error message was clear (`INVALID_INVOCATION: Provide exactly one of --followup-file or --followup-text`), but the orchestrator initially guessed the wrong flag. The operations doc (`30-cli-operations.md`) presumably documents the exact flags — reading it before first use of each command would prevent this class of error.
+
+### Tooling Observation: Monitor Re-arm Cadence
+The Monitor tool has a max timeout of 600000ms (10 min). With a 5-minute polling cadence, that gives exactly 2 checks per monitor lifetime before timeout. Provider-backed CLI calls regularly run 10-20 minutes, so re-arming after timeout is expected and normal. A persistent monitor option exists but would run for the full session — overkill for a single operation watch.
