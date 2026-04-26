@@ -1,0 +1,9 @@
+Reading additional input from stdin...
+2026-04-26T22:17:34.621496Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /Users/leemoore/code/liminal-build-wt-1/convex/artifacts.ts:
+  },
+): Promise<Id<'artifacts'>> {
+  const nextFields = {
+    projectId: args.processRecord.projectId,
+    displayName: args.targetLabel,
+  };
+  const versionLabel = buildCheckpointVersionLabel(args.producedAt);

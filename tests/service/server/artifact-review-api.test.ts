@@ -183,6 +183,18 @@ describe('artifact review api', () => {
         bodyStatus: 'ready',
       },
     });
+    expect(response.json().versions).toEqual([
+      expect.objectContaining({
+        versionId: currentArtifactVersionFixture.versionId,
+        producedByProcessId: processSummary.processId,
+        producedByProcessDisplayLabel: processSummary.displayLabel,
+      }),
+      expect.objectContaining({
+        versionId: priorArtifactVersionFixture.versionId,
+        producedByProcessId: processSummary.processId,
+        producedByProcessDisplayLabel: processSummary.displayLabel,
+      }),
+    ]);
 
     await app.close();
   });
@@ -316,6 +328,7 @@ describe('artifact review api', () => {
       selectedVersion: {
         versionId: 'artifact-version-shared-001',
         producedByProcessId: 'process-review-author-001',
+        producedByProcessDisplayLabel: 'Feature Specification #1',
       },
     });
 
@@ -547,6 +560,8 @@ describe('artifact review api', () => {
       selectedVersionId: currentArtifactVersionFixture.versionId,
       selectedVersion: {
         versionId: currentArtifactVersionFixture.versionId,
+        producedByProcessId: processSummary.processId,
+        producedByProcessDisplayLabel: processSummary.displayLabel,
         bodyStatus: 'error',
         bodyError: {
           code: 'REVIEW_RENDER_FAILED',

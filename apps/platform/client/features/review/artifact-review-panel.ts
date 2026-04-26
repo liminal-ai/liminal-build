@@ -3,6 +3,15 @@ import { renderMarkdownBody } from './markdown-body.js';
 import { renderUnsupportedFallback } from './unsupported-fallback.js';
 import { renderVersionSwitcher } from './version-switcher.js';
 
+function formatProducedByLabel(args: {
+  producedByProcessId: string;
+  producedByProcessDisplayLabel: string | null;
+}): string {
+  return args.producedByProcessDisplayLabel === null
+    ? args.producedByProcessId
+    : `${args.producedByProcessDisplayLabel} (${args.producedByProcessId})`;
+}
+
 function createHeading(targetDocument: Document, text: string, level: 'h3' | 'h4' = 'h3') {
   const heading = targetDocument.createElement(level);
   heading.textContent = text;
@@ -67,6 +76,13 @@ export function renderArtifactReviewPanel(args: {
   container.append(
     createHeading(args.targetDocument, selectedVersion.versionLabel, 'h4'),
     createParagraph(args.targetDocument, `Created: ${selectedVersion.createdAt}`),
+    createParagraph(
+      args.targetDocument,
+      `Produced by: ${formatProducedByLabel({
+        producedByProcessId: selectedVersion.producedByProcessId,
+        producedByProcessDisplayLabel: selectedVersion.producedByProcessDisplayLabel,
+      })}`,
+    ),
   );
 
   if (selectedVersion.contentKind === 'unsupported') {

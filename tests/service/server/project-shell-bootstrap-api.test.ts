@@ -274,6 +274,89 @@ describe('project shell bootstrap api', () => {
     await app.close();
   });
 
+  it('derives project artifact summaries from the latest durable version after a later revision', async () => {
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [populatedProjectSummary],
+      },
+      projectAccessByProjectId: {
+        [populatedProjectSummary.projectId]: {
+          kind: 'accessible',
+          project: populatedProjectSummary,
+        },
+      },
+      processesByProjectId: {
+        [populatedProjectSummary.projectId]: [runningProcessFixture, waitingProcessFixture],
+      },
+      artifactsByProjectId: {
+        [populatedProjectSummary.projectId]: [
+          {
+            artifactId: 'artifact-multi-process-001',
+            displayName: 'Cross-Process Technical Design',
+            currentVersionLabel: 'spec-v1',
+            updatedAt: '2026-04-13T09:00:00.000Z',
+          },
+        ],
+      },
+      artifactVersionsByArtifactId: {
+        'artifact-multi-process-001': [
+          {
+            versionId: 'artifact-version-multi-process-002',
+            artifactId: 'artifact-multi-process-001',
+            versionLabel: 'impl-v2',
+            contentStorageId: 'storage-version-2',
+            contentKind: 'markdown',
+            bytes: 42,
+            createdAt: '2026-04-13T15:30:00.000Z',
+            createdByProcessId: waitingProcessFixture.processId,
+          },
+          {
+            versionId: 'artifact-version-multi-process-001',
+            artifactId: 'artifact-multi-process-001',
+            versionLabel: 'spec-v1',
+            contentStorageId: 'storage-version-1',
+            contentKind: 'markdown',
+            bytes: 28,
+            createdAt: '2026-04-13T09:00:00.000Z',
+            createdByProcessId: runningProcessFixture.processId,
+          },
+        ],
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${populatedProjectSummary.projectId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().artifacts.items).toEqual([
+      {
+        artifactId: 'artifact-multi-process-001',
+        displayName: 'Cross-Process Technical Design',
+        currentVersionLabel: 'impl-v2',
+        updatedAt: '2026-04-13T15:30:00.000Z',
+      },
+    ]);
+
+    await app.close();
+  });
+
   it('TC-6.3b returns a source section error without blocking healthy sections', async () => {
     const platformStore = buildPopulatedStore();
     const projectShellService = new ProjectShellService(platformStore, {

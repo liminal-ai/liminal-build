@@ -95,6 +95,12 @@ describe('version switcher', () => {
         node.getAttribute('data-artifact-version-id'),
       ),
     ).toEqual([currentArtifactVersionFixture.versionId, priorArtifactVersionFixture.versionId]);
+    expect(switcher.textContent).toContain(
+      `Produced by: ${currentArtifactVersionFixture.producedByProcessDisplayLabel} (${currentArtifactVersionFixture.producedByProcessId})`,
+    );
+    expect(switcher.textContent).toContain(
+      `Produced by: ${priorArtifactVersionFixture.producedByProcessDisplayLabel} (${priorArtifactVersionFixture.producedByProcessId})`,
+    );
   });
 
   it('TC-2.3a calls onSelect when the user chooses a prior version', () => {

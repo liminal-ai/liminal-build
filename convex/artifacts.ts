@@ -21,7 +21,6 @@ import { assertValidApiKey } from './serviceApiKey.js';
 
 export const artifactsTableFields = {
   projectId: v.string(),
-  processId: v.union(v.string(), v.null()),
   displayName: v.string(),
   createdAt: v.string(),
 };
@@ -393,8 +392,6 @@ async function upsertArtifactCheckpoint(
   },
 ): Promise<Id<'artifacts'>> {
   const nextFields = {
-    projectId: args.processRecord.projectId,
-    processId: args.processRecord._id,
     displayName: args.targetLabel,
   };
   const versionLabel = buildCheckpointVersionLabel(args.producedAt);
@@ -409,12 +406,14 @@ async function upsertArtifactCheckpoint(
       artifactId = existingArtifact._id;
     } else {
       artifactId = await ctx.db.insert('artifacts', {
+        projectId: args.processRecord.projectId,
         ...nextFields,
         createdAt: args.producedAt,
       });
     }
   } else {
     artifactId = await ctx.db.insert('artifacts', {
+      projectId: args.processRecord.projectId,
       ...nextFields,
       createdAt: args.producedAt,
     });

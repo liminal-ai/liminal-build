@@ -13,7 +13,9 @@ vi.mock('../../../apps/platform/client/features/review/mermaid-runtime.js', () =
 
 import { renderArtifactReviewPanel } from '../../../apps/platform/client/features/review/artifact-review-panel.js';
 import {
+  currentArtifactVersionFixture,
   emptyArtifactReviewTargetFixture,
+  priorArtifactVersionFixture,
   priorSelectedArtifactReviewTargetFixture,
   readyArtifactReviewTargetFixture,
 } from '../../fixtures/artifact-versions.js';
@@ -39,6 +41,9 @@ describe('artifact review panel', () => {
     expect(panel.textContent).toContain(
       `Selected version: ${readyArtifactReviewTargetFixture.selectedVersion?.versionLabel}`,
     );
+    expect(panel.textContent).toContain(
+      `Produced by: ${currentArtifactVersionFixture.producedByProcessDisplayLabel} (${currentArtifactVersionFixture.producedByProcessId})`,
+    );
   });
 
   it('TC-2.1b renders prior version content when a prior revision is selected', () => {
@@ -51,6 +56,9 @@ describe('artifact review panel', () => {
     expect(panel.textContent).toContain(priorSelectedArtifactReviewTargetFixture.displayName);
     expect(panel.textContent).toContain(
       `Selected version: ${priorSelectedArtifactReviewTargetFixture.selectedVersion?.versionLabel}`,
+    );
+    expect(panel.textContent).toContain(
+      `Produced by: ${priorArtifactVersionFixture.producedByProcessDisplayLabel} (${priorArtifactVersionFixture.producedByProcessId})`,
     );
     expect(panel.querySelector('[data-artifact-review-body]')?.textContent).toContain(
       'Feature Specification - Prior',
@@ -197,6 +205,9 @@ describe('artifact review panel', () => {
 
     expect(panel.textContent).toContain(readyArtifactReviewTargetFixture.displayName);
     expect(panel.textContent).toContain(`Selected version: ${selectedVersion.versionLabel}`);
+    expect(panel.textContent).toContain(
+      `Produced by: ${selectedVersion.producedByProcessDisplayLabel} (${selectedVersion.producedByProcessId})`,
+    );
     expect(panel.textContent).toContain('The selected review target could not be rendered.');
     expect(panel.querySelector('[data-artifact-review-body]')).toBeNull();
   });

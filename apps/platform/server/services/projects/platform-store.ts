@@ -2,6 +2,7 @@ import { ConvexHttpClient } from 'convex/browser';
 import { makeFunctionReference } from 'convex/server';
 import {
   type ArtifactSummary,
+  artifactSummarySchema,
   artifactReviewTargetSchema,
   type CurrentProcessRequest,
   defaultEnvironmentSummary,
@@ -2485,7 +2486,7 @@ export class InMemoryPlatformStore implements PlatformStore {
   }
 
   async listProjectArtifacts(args: { projectId: string }): Promise<ArtifactSummary[]> {
-    return this.artifactsByProjectId.get(args.projectId) ?? [];
+    return this.listArtifactsForProject(args.projectId);
   }
 
   async listProjectArtifactsByIds(args: {
@@ -2494,7 +2495,7 @@ export class InMemoryPlatformStore implements PlatformStore {
   }): Promise<ArtifactSummary[]> {
     const artifactIds = new Set(args.artifactIds);
 
-    return (this.artifactsByProjectId.get(args.projectId) ?? []).filter((artifact) =>
+    return this.listArtifactsForProject(args.projectId).filter((artifact) =>
       artifactIds.has(artifact.artifactId),
     );
   }
@@ -2710,6 +2711,9 @@ export class InMemoryPlatformStore implements PlatformStore {
       const artifactId =
         artifact.artifactId ??
         `${args.processId}:checkpoint-artifact-${existingArtifacts.length + index + 1}`;
+      const existingArtifact = existingArtifacts.find(
+        (candidate) => candidate.artifactId === artifactId,
+      );
       const versionLabel = buildCheckpointVersionLabel(artifact.producedAt);
       const versionId = `${artifactId}:${versionLabel}:${artifact.producedAt}`;
       const createdAt = new Date().toISOString();
@@ -2743,11 +2747,8 @@ export class InMemoryPlatformStore implements PlatformStore {
         artifact: {
           artifactId,
           displayName: artifact.targetLabel,
-          currentVersionLabel: versionLabel,
-          attachmentScope: 'process' as const,
-          processId: args.processId,
-          processDisplayLabel: processRecord.displayLabel,
-          updatedAt: artifact.producedAt,
+          currentVersionLabel: existingArtifact?.currentVersionLabel ?? null,
+          updatedAt: existingArtifact?.updatedAt ?? createdAt,
         },
         output: {
           outputId:
@@ -3005,7 +3006,20 @@ export class InMemoryPlatformStore implements PlatformStore {
   }
 
   private listArtifactsForProject(projectId: string): ArtifactSummary[] {
-    return this.artifactsByProjectId.get(projectId) ?? [];
+    return (this.artifactsByProjectId.get(projectId) ?? [])
+      .map((artifact) => this.buildArtifactSummaryFromStoredRecord(artifact))
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }
+
+  private buildArtifactSummaryFromStoredRecord(artifact: ArtifactSummary): ArtifactSummary {
+    const latestVersion = this.readArtifactVersions(artifact.artifactId)[0] ?? null;
+
+    return artifactSummarySchema.parse({
+      artifactId: artifact.artifactId,
+      displayName: artifact.displayName,
+      currentVersionLabel: latestVersion?.versionLabel ?? artifact.currentVersionLabel ?? null,
+      updatedAt: latestVersion?.createdAt ?? artifact.updatedAt,
+    });
   }
 
   async upsertCurrentProcessPackageContext(args: {

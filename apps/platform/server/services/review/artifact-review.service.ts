@@ -224,6 +224,7 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
     if (contentUrl === null) {
       return this.buildArtifactVersionError(
         version,
+        producedByProcessDisplayLabel,
         'This artifact version could not be loaded for review.',
         'missing_content_url',
       );
@@ -239,6 +240,7 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
       if (!response.ok) {
         return this.buildArtifactVersionError(
           version,
+          producedByProcessDisplayLabel,
           'This artifact version could not be loaded for review.',
           `http_${response.status}`,
         );
@@ -252,6 +254,7 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
       ) {
         return this.buildArtifactVersionError(
           version,
+          producedByProcessDisplayLabel,
           'Artifact version loading timed out before review content became available.',
           'timeout',
         );
@@ -259,6 +262,7 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
 
       return this.buildArtifactVersionError(
         version,
+        producedByProcessDisplayLabel,
         'This artifact version could not be loaded for review.',
         'fetch_failed',
       );
@@ -292,6 +296,7 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
 
   private buildArtifactVersionError(
     version: ArtifactVersionRecord,
+    producedByProcessDisplayLabel: string | null,
     message: string,
     reason = 'render_failed',
   ): ArtifactVersionDetail {
@@ -317,7 +322,7 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
       },
       createdAt: version.createdAt,
       producedByProcessId: version.createdByProcessId,
-      producedByProcessDisplayLabel: null,
+      producedByProcessDisplayLabel,
     };
   }
 }

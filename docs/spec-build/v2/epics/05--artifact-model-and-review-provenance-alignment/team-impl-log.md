@@ -4,7 +4,7 @@
 - State: STORY_ACTIVE
 - Spec Pack Root: /Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment
 - Tech Design Shape: four-file (tech-design.md + tech-design-server.md + tech-design-client.md + test-plan.md)
-- Current Story: 01-project-artifact-association-without-process-ownership
+- Current Story: 02-versioned-checkpoint-realignment
 - Current Phase: implement
 - Last Completed Checkpoint: story-0-gate-pass (2026-04-26)
 
@@ -99,10 +99,31 @@
 - Open Risks: none
 - User Acceptance: accepted
 
+### story-02 (Versioned Checkpoint Realignment)
+- Title: Story 2: Versioned Checkpoint Realignment
+- Implementor Evidence Refs:
+  - artifacts/02-.../001-implementor.json (initial)
+  - artifacts/02-.../005-self-review-batch.json (self-review 3/3 passes)
+  - artifacts/02-.../007-continue.json (follow-up fixing SV-02-001)
+  - artifacts/02-.../012-self-review-batch.json (post-fix self-review 3/3 passes)
+- Verifier Evidence Refs:
+  - artifacts/02-.../006-verify.json (initial: revise, SV-02-001 blocking)
+  - artifacts/02-.../013-verify.json (followup: pass, SV-02-001 resolved)
+- Gate Command: `corepack pnpm run green-verify`
+- Gate Result: pass
+- Gate Test Counts: convex:55 + server:243 + client:233 + packages:5 = 536
+- Dispositions:
+  - SV-02-001 (provenance not visible in review UI): fixed
+- Baseline Before Story: 534 (convex:54 + server:242 + client:233 + packages:5)
+- Baseline After Story: 536 (convex:55 + server:243 + client:233 + packages:5)
+- Baseline Note: +2 net vs +22 planned. Convex gained 1 (artifact version provenance), server gained 1 (provenance assertion).
+- Open Risks: none
+- User Acceptance: accepted
+
 ## Cumulative Baselines
-- Baseline Before Current Story: 534 (convex:54 + server:242 + client:233 + packages:5)
-- Expected After Current Story: 556 (534 + 22 planned for chunk 2)
-- Latest Actual Total: 534
+- Baseline Before Current Story: 536 (convex:55 + server:243 + client:233 + packages:5)
+- Expected After Current Story: 563 (536 + 27 planned for chunk 3)
+- Latest Actual Total: 536
 
 ## Cleanup / Epic Verification
 - Cleanup Artifact: pending

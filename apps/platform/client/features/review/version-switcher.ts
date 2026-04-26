@@ -1,5 +1,14 @@
 import type { ArtifactVersionSummary } from '../../../shared/contracts/index.js';
 
+function formatProducedByLabel(args: {
+  producedByProcessId: string;
+  producedByProcessDisplayLabel: string | null;
+}): string {
+  return args.producedByProcessDisplayLabel === null
+    ? args.producedByProcessId
+    : `${args.producedByProcessDisplayLabel} (${args.producedByProcessId})`;
+}
+
 function moveListboxSelection(args: {
   options: HTMLElement[];
   currentIndex: number;
@@ -104,7 +113,10 @@ export function renderVersionSwitcher(args: {
     });
     const meta = args.targetDocument.createElement('p');
 
-    meta.textContent = `Created: ${version.createdAt}`;
+    meta.textContent = `Created: ${version.createdAt} | Produced by: ${formatProducedByLabel({
+      producedByProcessId: version.producedByProcessId,
+      producedByProcessDisplayLabel: version.producedByProcessDisplayLabel,
+    })}`;
     item.append(meta);
     list.append(item);
   }
