@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "pnpm --filter @liminal-build/platform dev",
+    "convex:dev": "./scripts/start-convex.sh",
     "daytona:smoke": "pnpm --filter @liminal-build/platform daytona:smoke",
     "build": "corepack pnpm -r --filter \"./packages/*\" build && corepack pnpm --filter @liminal-build/platform build",
     "lint": "corepack pnpm exec biome lint apps packages convex tests docs/setup README.md package.json pnpm-workspace.yaml tsconfig.base.json tsconfig.json biome.json playwright.config.ts vitest.workspace.ts .env.example .gitignore",
