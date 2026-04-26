@@ -17,6 +17,23 @@ AC → TC → Test File / Test Name → Implementation Module
 
 Epic 4 adds one extra testing rule beyond Epic 3: the security hardening layers (markdown-it `html: false`, Mermaid directive stripping, DOMPurify config, tar-stream adapter hardening) must each have explicit tests that prove the hardening actually rejects hostile input, not just that the normal path works. These are non-TC decided tests because they defend invariants; each critical hardening step gets at least one dedicated test.
 
+Epic 5 alignment backfill for this plan:
+
+- reviewability tests start from process refs / pinned review context, not from
+  artifact-row ownership or `createdByProcessId` provenance
+- zero-version artifact tests assume the artifact identity is still reachable in
+  the current process review context even though it is excluded from
+  `availableTargets`
+- zero-target workspace tests use `availableTargets: []` with `target` omitted;
+  `target.status: empty` is reserved for the explicit zero-version artifact
+  case
+- package reviewability and review-enable tests treat a snapshot as reviewable
+  only when it retains at least one durable member; `unsupported` members still
+  count as durable, `unavailable` members do not
+- review-workspace bootstrap tests distinguish bounded `200` unavailable target
+  states from request-level `404 REVIEW_TARGET_NOT_FOUND` cases on
+  target-specific endpoints and export-download URLs
+
 ## Verification Tiers
 
 | Script | Command | Notes |
@@ -111,12 +128,14 @@ Planned but not required for the first TDD cycles.
 - single-version artifact fixtures (markdown and unsupported)
 - two-version artifacts
 - three-version artifacts with distinct `createdAt`
-- zero-version artifact (identity only)
+- zero-version artifact (identity only, but still reachable in the current process review context)
 
 `tests/fixtures/package-snapshots.ts`
 - single-member package snapshot
 - multi-member package with `position` ordering
+- package with unsupported-but-durable member
 - package with one unavailable member
+- pathological zero-member / zero-durable snapshot fixture for defensive read-path tests
 - package with mixed contentKinds
 
 `tests/fixtures/markdown-content.ts`
@@ -170,20 +189,20 @@ Every test file below is assigned to exactly one primary chunk. When a test exer
 |-----------|-------|---------------|---------------|-------|---------------------|
 | `convex/artifacts.test.ts` (extended) | Convex | 0 + 2 | Schema migration: `contentStorageId` removed; read paths updated to query `artifactVersions` for latest | 4 | 0 |
 | `convex/artifactVersions.test.ts` | Convex | 2 | `insertArtifactVersion` typed mutation; list by artifact; get by versionId; latest-version query; content-URL resolution; index usage | 7 | 0 |
-| `convex/packageSnapshots.test.ts` | Convex | 4 | `publishPackageSnapshot` transactional insert; list by process; immutability (no update API exposed) | 5 | 0 |
+| `convex/packageSnapshots.test.ts` | Convex | 4 | `publishPackageSnapshot` transactional insert for one process review context; list by process; immutability (no update API exposed) | 5 | 0 |
 | `convex/packageSnapshotMembers.test.ts` | Convex | 4 | Member insert (happens inside `publishPackageSnapshot`); list by snapshot in position order; pinned-version invariant | 4 | 0 |
 | `tests/service/server/review-workspace-api.test.ts` | Service | 1 | Bootstrap contract, target selection logic, review-target envelope, degraded states | 14 | 11 |
 | `tests/service/server/artifact-review-api.test.ts` | Service | 2 | Version list, version switching, content retrieval, render error degradation, unsupported fallback | 11 | 8 |
-| `tests/service/server/package-review-api.test.ts` | Service | 4 | Snapshot retrieval, member ordering, first-reviewable-member default, `PackageMemberReview` envelope status/error, `exportability` computation | 11 | 8 |
-| `tests/service/server/review-export-api.test.ts` | Service | 5 | Two-phase export: phase-1 POST preflight + signed URL; phase-2 GET streams; expired token; member-unavailable between phases; error → HTTP mapping | 10 | 6 |
+| `tests/service/server/package-review-api.test.ts` | Service | 4 | Snapshot retrieval, member ordering, first-ready-member default with durable fallback, `PackageMemberReview` envelope status/error, durability-based `exportability` computation | 11 | 8 |
+| `tests/service/server/review-export-api.test.ts` | Service | 5 | Two-phase export: phase-1 POST metadata + signed URL; phase-2 GET download; expired token; member-unavailable between phases; error → HTTP mapping | 10 | 6 |
 | `tests/service/server/markdown-renderer.test.ts` | Service | 3 | Render pipeline end-to-end, Mermaid sidecar, sanitization config, directive stripping, `html: false` enforcement, output-side XSS sanity (no residual `<script>` / `on*` / `javascript:`) | 16 | 2 |
-| `tests/service/server/process-work-surface-api.test.ts` (extended) | Service | 1 | `controls[review].enabled` consults reviewability; disabled reason populated when no reviewable targets | 4 | 1 |
+| `tests/service/server/process-work-surface-api.test.ts` (extended) | Service | 1 | `controls[review].enabled` consults reviewability; disabled reason populated when no reviewable targets or no durable package members remain | 4 | 1 |
 | `tests/service/server/export-url-signing.test.ts` | Service | 5 | Token mint/verify round-trip; tamper detection; expiry detection | 4 | 0 |
 | `tests/service/server/observability.test.ts` | Service | 6 | Log-point coverage: one test per documented log point asserting the structured fields emitted on happy and failure paths | 12 | 0 |
 | `tests/service/client/process-work-surface-page.test.ts` (extended) | Service | 1 | `review` control click navigates to review route via `onReview` callback; disabled control does not navigate | 3 | 2 |
 | `tests/service/client/review-workspace-page.test.ts` | Service | 1 | Route entry, bootstrap rendering, target-selection state, degraded states, back-to-process control | 14 | 12 |
 | `tests/service/client/artifact-review-panel.test.ts` | Service | 2 | Single-artifact render, version switcher integration, unsupported fallback, body-render failure | 8 | 7 |
-| `tests/service/client/package-review-panel.test.ts` | Service | 4 | Package composition, member-failure isolation, export trigger gated on exportability, member switching, first-reviewable default render | 11 | 8 |
+| `tests/service/client/package-review-panel.test.ts` | Service | 4 | Package composition, member-failure isolation, export trigger gated on durability-based exportability, member switching, first-ready default render | 11 | 8 |
 | `tests/service/client/version-switcher.test.ts` | Service | 2 | Version list render, selection callback, ordering, URL update via pushState | 5 | 2 |
 | `tests/service/client/package-member-nav.test.ts` | Service | 4 | Member list render, selection, unavailable-member visual state, ordering, ARIA semantics | 5 | 1 |
 | `tests/service/client/markdown-body.test.ts` | Service | 3 | HTML mount, Mermaid placeholder hydration, cache hit/miss, diagram failure, fresh-id generation, SVG sanitization | 10 | 3 |
@@ -239,7 +258,7 @@ Every test has exactly one primary chunk. The arithmetic in the chunk breakdown 
 | TC-2.2b | `TC-2.2b version identity visible` | Any version selected | GET artifact review | versionLabel returned on selectedVersion |
 | TC-2.3a | `TC-2.3a prior version opens distinctly` | Two versions; query prior | GET artifact review | selectedVersionId ≠ currentVersionId |
 | TC-2.3b | `TC-2.3b versions ordered newest to oldest` | Three versions with distinct createdAt | GET artifact review | versions[] sorted descending by createdAt |
-| TC-2.4a | `TC-2.4a no durable version state shown` | Artifact with zero versions | GET artifact review | status: empty, identity present, no selectedVersion |
+| TC-2.4a | `TC-2.4a no durable version state shown` | Artifact with zero versions but valid process review context | GET artifact review | identity present; `versions: []`; no selectedVersion |
 | TC-6.3a | `TC-6.3a artifact body render failure does not hide context` | Content fetch fails (mocked) | GET artifact review | selectedVersion.bodyStatus === 'error'; bodyError populated; version list still returned |
 
 **Non-TC decided tests:**
@@ -260,24 +279,24 @@ Every test has exactly one primary chunk. The arithmetic in the chunk breakdown 
 | TC-4.2b | `TC-4.2b package member order visible` | Members with non-zero positions | GET package review | members sorted ascending by position |
 | TC-4.3a | `TC-4.3a package context preserved while reviewing one member` | Package with `?memberId=...` | GET package review | packageId + members populated alongside selectedMember |
 | TC-4.3b | `TC-4.3b selecting different package member updates reviewed member` | Two queries with different memberIds | GET package review twice | each response's selectedMember.memberId matches query |
-| TC-4.3c | `TC-4.3c package opens first reviewable member when no explicit member` | Package with members[0] status=unavailable, members[1] status=ready, no memberId in query | GET package review | selectedMember.memberId === members[1].memberId (first with status: ready) |
+| TC-4.3c | `TC-4.3c package opens first ready member when no explicit member` | Package with members[0] status=unavailable, members[1] status=ready, no memberId in query | GET package review | selectedMember.memberId === members[1].memberId (first with status: ready) |
 | TC-4.4a | `TC-4.4a package remains open when one member fails` | Package with one unavailable member | GET package review | package returned; failing member status: unavailable; others ready |
 
 **Non-TC decided tests:**
 
 | Test Name | Reason |
 |-----------|--------|
-| `response includes export-available flag when all members are ready` | Drives client export-trigger visibility |
-| `response omits export-available flag when any member is unavailable` | Matches AC-5.1b |
+| `response includes export-available flag when all members are durable` | Drives client export-trigger visibility even when one member is `unsupported` |
+| `response omits export-available flag when any member is unavailable or no durable members remain` | Matches AC-5.1b |
 
 ### `tests/service/server/review-export-api.test.ts`
 
 | TC | Test Name | Setup | Action | Assert |
 |----|-----------|-------|--------|--------|
-| TC-5.1a | `TC-5.1a export current reviewed package` | Exportable package | POST export | 200; contentType: application/gzip; body is a valid gzipped tar; stream contains expected entries |
+| TC-5.1a | `TC-5.1a export current reviewed package` | Exportable package | POST export | 200; response is export metadata with `downloadUrl`, `expiresAt`, `contentType: application/gzip`, `packageFormat: mpkz` |
 | TC-5.1b | `TC-5.1b export not falsely offered for non-exportable target` | Package with unavailable member | POST export | 409 `REVIEW_EXPORT_NOT_AVAILABLE` immediately; no bytes streamed |
-| TC-5.2a | `TC-5.2a export matches reviewed versions` | Package pinned at V1; V2 also exists | POST export | extracted archive contains V1 content (not V2) |
-| TC-5.2b | `TC-5.2b export includes manifest of package and version identities` | Exportable package | POST export | extracted archive's first entry is `_nav.md` with package identity + member identities |
+| TC-5.2a | `TC-5.2a export matches reviewed versions` | Package pinned at V1; V2 also exists | GET download URL from successful POST | extracted archive contains V1 content (not V2) |
+| TC-5.2b | `TC-5.2b export includes manifest of package and version identities` | Exportable package | GET download URL from successful POST | extracted archive's first entry is `_nav.md` with package identity + member identities |
 | TC-5.3b | `TC-5.3b expired export requires re-export` | Expired signed URL (time advanced past expiresAt) | GET download URL | 404 `REVIEW_TARGET_NOT_FOUND` |
 
 **Non-TC decided tests:**
@@ -286,7 +305,8 @@ Every test has exactly one primary chunk. The arithmetic in the chunk breakdown 
 |-----------|--------|
 | `export rejects when package is deleted between review and export click` | Concurrent state change defense |
 | `export rejects with 401 for unauthenticated request` | Auth invariant |
-| `export response contentType is application/gzip and packageFormat is mpkz` | Contract shape |
+| `successful phase-1 export response carries application/gzip and packageFormat: mpkz` | Contract shape |
+| `unsupported-but-durable member remains exportable` | Guards the aligned exportability rule |
 
 ### `tests/service/server/markdown-renderer.test.ts`
 
@@ -390,7 +410,7 @@ Every test has exactly one primary chunk. The arithmetic in the chunk breakdown 
 | TC-4.2a | `TC-4.2a package membership visible` | Package with members | Mount panel | member nav lists each member |
 | TC-4.2b | `TC-4.2b member order visible` | Members with increasing positions | Mount panel | DOM order matches position ascending |
 | TC-4.3a | `TC-4.3a package context preserved with selected member` | Package with selectedMember | Mount panel | package identity + nav render alongside member detail |
-| TC-4.3c | `TC-4.3c first reviewable member default` | Package with members[0] status=unavailable, members[1] status=ready | Mount panel | selectedMember is members[1] (first with status: ready); members[0] rendered non-navigable |
+| TC-4.3c | `TC-4.3c first ready member default` | Package with members[0] status=unavailable, members[1] status=ready | Mount panel | selectedMember is members[1] (first with status: ready); members[0] rendered non-navigable |
 | TC-4.4a | `TC-4.4a package remains open when one member fails` | One unavailable member | Mount panel | package identity + member nav + healthy members render; unavailable member non-navigable |
 | TC-5.1b | `TC-5.1b export trigger hidden for non-exportable package` | Package with unavailable member | Mount panel | export trigger not rendered |
 
@@ -398,7 +418,7 @@ Every test has exactly one primary chunk. The arithmetic in the chunk breakdown 
 
 | Test Name | Reason |
 |-----------|--------|
-| `export trigger rendered for fully-exportable package` | Positive case for AC-5.1 |
+| `export trigger rendered for fully-exportable package, including unsupported-but-durable member cases` | Positive case for AC-5.1 |
 | `unavailable member hover does not attempt to fetch content` | No-fetch-on-unavailable invariant |
 | `selectedMember is rendered via the same artifact review panel used for single-artifact review` | Composition invariant |
 
@@ -474,7 +494,7 @@ Every test has exactly one primary chunk. The arithmetic in the chunk breakdown 
 | `lists versions by artifactId ordered by createdAt descending` | Drives AC-2.3b |
 | `resolves storage URL for a version via internalQuery` | Fastify integration |
 | `uses by_artifactId_createdAt index for version list queries` | Performance invariant |
-| `uses by_createdByProcessId_createdAt index for reviewability count` | Performance invariant |
+| `reviewability ignores createdByProcessId provenance and starts from process refs plus version existence` | Alignment invariant |
 
 ### `convex/packageSnapshots.test.ts`
 
@@ -482,8 +502,8 @@ Every test has exactly one primary chunk. The arithmetic in the chunk breakdown 
 
 | Test Name | Reason |
 |-----------|--------|
-| `inserts package snapshot with processId and publishedAt` | Core table behavior |
-| `lists snapshots by processId ordered by publishedAt descending` | Drives reviewability count |
+| `inserts package snapshot with publication-context processId and publishedAt while enforcing at least one member` | Core table behavior |
+| `lists snapshots by processId ordered by publishedAt descending` | Drives reviewability within a process review context |
 | `snapshot rows are immutable — no update function is exposed` | Immutability invariant |
 
 ### `convex/packageSnapshotMembers.test.ts`
@@ -492,7 +512,7 @@ Every test has exactly one primary chunk. The arithmetic in the chunk breakdown 
 
 | Test Name | Reason |
 |-----------|--------|
-| `inserts members with pinned artifactVersionId` | Pin invariant (AC-4.1b) |
+| `inserts members with pinned artifactVersionId` | Pin invariant (AC-4.1b), including packages whose members come from multiple producing processes in one project |
 | `lists members by packageSnapshotId ordered by position ascending` | Drives AC-4.2b |
 | `member row cannot be updated after snapshot publication` | Immutability invariant |
 | `reports unavailable status when pinned artifactVersionId no longer resolves` | Drives AC-4.4a |
@@ -628,7 +648,7 @@ Every test file is assigned to exactly one primary chunk. Cross-chunk references
 
 ### Chunk 0: Foundation
 
-**Scope:** Monorepo wiring (`pnpm-workspace.yaml`, root `package.json`, root `tsconfig.json`), workspace package scaffold with build/test/typecheck scripts, shared contracts (Zod schemas for review responses + error codes), **Artifact storage model change — remove `contentStorageId`, `currentVersionLabel`, and `updatedAt` from the `artifacts` table; add `createdAt`. This is a schema rewrite under the repo's pre-customer stance; no user-data-preservation migration**, three new Convex tables (`artifactVersions`, `packageSnapshots`, `packageSnapshotMembers`), typed internal-mutation skeletons (`insertArtifactVersion`, `publishPackageSnapshot`), vendored `github-slugger` + `markdown-it-anchor` stubs, purpose-built task-list renderer skeleton, render service skeleton, test fixtures.
+**Scope:** Monorepo wiring (`pnpm-workspace.yaml`, root `package.json`, root `tsconfig.json`), workspace package scaffold with build/test/typecheck scripts, shared contracts (Zod schemas for review responses + error codes), **Artifact storage model change — remove `processId`, `contentStorageId`, `currentVersionLabel`, and `updatedAt` from the `artifacts` table; add `createdAt`. This is a schema rewrite under the repo's pre-customer stance; no user-data-preservation migration**, three new Convex tables (`artifactVersions`, `packageSnapshots`, `packageSnapshotMembers`), typed internal-mutation skeletons (`insertArtifactVersion`, `publishPackageSnapshot`), vendored `github-slugger` + `markdown-it-anchor` stubs, purpose-built task-list renderer skeleton, render service skeleton, test fixtures.
 
 **ACs:** supports all
 **TC conditions:** 0
@@ -637,7 +657,7 @@ Every test file is assigned to exactly one primary chunk. Cross-chunk references
 
 ### Chunk 1: Review Entry and Workspace Bootstrap
 
-**Scope:** Review route module, review workspace service, process-surface `controls[review].enabled` consultation, `process-work-surface-page.ts` wiring to navigate on review click, target-resolution + reviewability pure modules, review workspace page shell, router extension, bootstrap wiring, store slice.
+**Scope:** Review route module, review workspace service, process-surface `controls[review].enabled` consultation, `process-work-surface-page.ts` wiring to navigate on review click, target-resolution + reviewability pure modules, review workspace page shell, router extension, bootstrap wiring, store slice. Reviewability in this chunk is process-ref / pinned-context based rather than artifact-ownership based.
 
 **ACs:** AC-1.1 through AC-1.4
 **TC conditions:** 10
@@ -667,7 +687,7 @@ Every test file is assigned to exactly one primary chunk. Cross-chunk references
 
 ### Chunk 4: Package Review Workspace
 
-**Scope:** Typed `publishPackageSnapshot` internal mutation + member insert transactional invariants; `packageSnapshots` + `packageSnapshotMembers` reads; package review service with first-reviewable-member default; `PackageMemberReview` envelope with status/error/artifact?; member list; package context preservation; member-failure degradation; exportability computation.
+**Scope:** Typed `publishPackageSnapshot` internal mutation + member insert transactional invariants; `packageSnapshots` + `packageSnapshotMembers` reads; package review service with first-ready-member default plus durable fallback; `PackageMemberReview` envelope with status/error/artifact?; member list; package context preservation; member-failure degradation; durability-based exportability computation. Package members may pin versions from multiple processes in the same project.
 
 **ACs:** AC-4.1 through AC-4.4
 **TC conditions:** 8

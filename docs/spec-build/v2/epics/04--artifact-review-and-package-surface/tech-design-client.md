@@ -123,7 +123,11 @@ The `getReviewWorkspace` call drives the initial bootstrap. `getArtifactReview` 
 
 The fallback error parser is extended so the browser can distinguish Epic 4 error codes:
 
-- `REVIEW_TARGET_NOT_FOUND` (404) — the requested target does not exist
+- `REVIEW_TARGET_NOT_FOUND` (404) — the requested target-specific endpoint or
+  export-download URL cannot be resolved. On review-workspace bootstrap, the
+  same code may also arrive inside a `200` response as `target.error.code`
+  when project/process context resolves but the selected target is now
+  unavailable
 - `REVIEW_EXPORT_NOT_AVAILABLE` (409) — the target is not currently exportable
 - `REVIEW_EXPORT_FAILED` (503) — export preparation failed
 
@@ -164,7 +168,7 @@ All new review UI lives under `features/review/`. The one modification outside t
 | `features/processes/process-work-surface-page.ts` | **MODIFIED** | Wire the `review` control's `onAction` dispatcher: when the user clicks the `review` control (already rendered from Epic 3's `controls` array with `enabled: true` when reviewability exists), invoke the page-provided `onReview` callback which navigates to the review route | store, callback from bootstrap | AC-1.1 |
 | `review-workspace-page.ts` | NEW | Route-driven composition: header, process context, target selector or review panel, back-to-process control | store, browser api, child panels | AC-1, AC-6 |
 | `artifact-review-panel.ts` | NEW | Render one `ArtifactReviewTarget`: identity, version switcher, body area, unsupported fallback | markdown-body, version-switcher | AC-2, AC-3 |
-| `package-review-panel.ts` | NEW | Render one `PackageReviewTarget`: package identity, member nav, selected member review, export trigger gated on `exportability.available` | artifact-review-panel (for selected member's artifact), package-member-nav, export-trigger | AC-4, AC-5 |
+| `package-review-panel.ts` | NEW | Render one `PackageReviewTarget`: package identity, member nav, selected member review, export trigger gated on `exportability.available` when the snapshot retains at least one durable member and no member is unavailable | artifact-review-panel (for selected member's artifact), package-member-nav, export-trigger | AC-4, AC-5 |
 | `markdown-body.ts` | NEW | Mount server-rendered HTML via `innerHTML`; locate `.mermaid-placeholder` nodes and replace with rendered SVG | mermaid-runtime, mermaid-cache | AC-3 |
 | `mermaid-runtime.ts` | NEW | Initialize Mermaid once per session; wrap `mermaid.render()` with fresh-id generation, error boundary, and client-side SVG sanitization via `dompurify` directly (not `isomorphic-dompurify`, which pulls jsdom into the client bundle) | mermaid, dompurify | AC-3 |
 | `mermaid-cache.ts` | NEW (lifted) | LRU cache keyed on `fnv1a(source):themeId` | — | AC-3 |
@@ -442,10 +446,10 @@ sequenceDiagram
 
 - package context (package identity, packageType, member list) remains visible while switching members; only the selectedMember area updates
 - the member nav visually marks the selected member and preserves package order (AC-4.2b)
-- **the default-selected member when no `memberId` is specified is computed server-side** as the first reviewable member (first member with `status === 'ready'`), falling through to `members[0]` only when no member is ready. The client renders whichever member the server marked as `selectedMemberId`; no client-side default-selection logic
+- **the default-selected member when no `memberId` is specified is computed server-side** as the first `ready` member, falling through to the first durable `unsupported` member only when no member is ready. If no durable member exists, the package is unavailable and this panel does not mount. The client renders whichever member the server marked as `selectedMemberId`; no client-side default-selection logic
 - one unavailable member (`members[].status === 'unavailable'`) renders a non-navigable, grayed-out entry in the member nav with the unavailable affordance; other members remain navigable
 - **`PackageMemberReview` carries its own `status` and optional `error`**, distinct from the inner `artifact` field. When `selectedMember.status === 'ready'`, the artifact-review-panel renders the populated `artifact` as it would for single-artifact review. When `selectedMember.status !== 'ready'`, the client renders the degraded-state affordance with the member's error message; `artifact` is not expected to be populated in that case
-- package review panel hosts the export trigger (see Flow 5) as a peer control alongside the member nav; trigger visibility gates on `target.exportability.available`
+- package review panel hosts the export trigger (see Flow 5) as a peer control alongside the member nav; trigger visibility gates on `target.exportability.available`, which remains `true` for unsupported-but-durable members and flips to `false` only when no durable members remain or any member is unavailable
 
 ### TC Mapping for this Flow
 
@@ -456,7 +460,7 @@ sequenceDiagram
 | TC-4.2b | member order visible | `tests/service/client/package-review-panel.test.ts` | members with increasing positions | DOM order matches position ascending |
 | TC-4.3a | package context preserved on member review | `tests/service/client/package-review-panel.test.ts` | package with selectedMember | package identity + member nav rendered alongside member detail |
 | TC-4.3b | selecting different member updates detail | `tests/service/client/package-member-nav.test.ts` | click different member | selectedMember area shows new member's artifact content |
-| TC-4.3c | first reviewable member default | `tests/service/client/package-review-panel.test.ts` | package with members (first unavailable, second ready), no memberId | selectedMember is the second member (first with status: ready) |
+| TC-4.3c | first ready member default | `tests/service/client/package-review-panel.test.ts` | package with members (first unavailable, second ready), no memberId | selectedMember is the second member (first with status: ready) |
 | TC-4.4a | package remains open when one member fails | `tests/service/client/package-review-panel.test.ts` | package with one unavailable member | package identity + member nav + healthy members rendered; unavailable member shown non-navigable with affordance |
 
 ## Flow 5: Export Trigger
@@ -499,7 +503,7 @@ sequenceDiagram
 
 ### Design Notes
 
-- **The export button is not rendered at all** when `exportability.available === false`. The client does not attempt to determine exportability by walking members itself — the server's exportability field is authoritative (AC-5.1b)
+- **The export button is not rendered at all** when `exportability.available === false`. The client does not attempt to determine exportability by walking members itself — the server's exportability field is authoritative (AC-5.1b). Unsupported-but-durable members do not suppress the trigger on their own
 - **Two-phase flow**: phase 1 returns JSON metadata; phase 2 is a direct anchor navigation to the signed URL. The client's `review-workspace-api.ts` handles only phase 1. Phase 2 is the user clicking the rendered `<a href>` — no client-side `fetch` is involved
 - The download anchor includes both `href={downloadUrl}` and `download={downloadName}` so browsers that honor the `download` attribute save with the suggested filename; others fall back to the URL's last segment
 - **Expired URL handling**: if the user waits past `expiresAt` and clicks the download link, the server returns 404 at phase 2. The client has no direct signal from that 404 (the browser handles the failed navigation). The user re-clicks the export button to re-trigger phase 1 and get a fresh URL
@@ -512,7 +516,7 @@ sequenceDiagram
 | TC | Tests | Module | Setup | Assert |
 |----|-------|--------|-------|--------|
 | TC-5.1a | export current package | `tests/service/client/export-trigger.test.ts` | exportable package; API mocks 200 | download link renders with downloadName + downloadUrl |
-| TC-5.1b | export not offered for non-exportable | `tests/service/client/package-review-panel.test.ts` | package with unavailable member | export trigger not rendered |
+| TC-5.1b | export not offered for non-exportable | `tests/service/client/package-review-panel.test.ts` | package with unavailable member or zero durable members | export trigger not rendered |
 | TC-5.2a | export matches reviewed versions | *(server-side concern — see server doc)* | — | — |
 | TC-5.3a | export failure does not close review | `tests/service/client/export-trigger.test.ts` | API returns 503 | failure affordance renders; package review panel remains operational |
 | TC-5.3b | expired export requires re-export | `tests/service/client/export-trigger.test.ts` | user clicks export twice; first response expires, second returns fresh | both clicks POST; second click renders fresh download link |
@@ -644,7 +648,7 @@ The epic's accessibility NFR requires review navigation, version selection, and 
 ### Text Affordances
 
 - Review target identity, version identity, package identity, member identity all render as readable text — not as color-coded or icon-only badges
-- **Review-target status** (`ready`, `empty`, `error`, `unsupported`, `unavailable`) renders as a readable label ("Unavailable", "Unsupported format", etc.) next to any icon or color indicator, never as color/icon alone
+- **Review-target status** (`ready`, `empty`, `error`, `unsupported`, `unavailable`) renders as a readable label ("Unavailable", "Unsupported format", "No version yet", etc.) next to any icon or color indicator, never as color/icon alone; `empty` is reserved for the explicit zero-version artifact case
 - **Mermaid render failure** per-diagram renders as "Diagram failed to render: {sanitized message}" in the placeholder slot; the error text is programmatically associated with the failed region via `aria-describedby`
 - **Unsupported-format fallback** renders with explicit text like "This version's format is not reviewable in the current release" alongside the artifact identity
 - **Degraded-state component** receives `title` and `message` props that always render as text; color is supplementary

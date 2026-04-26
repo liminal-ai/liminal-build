@@ -1,4 +1,12 @@
-# Epic 3 Pre-Verification Cleanup
+# Epic 3 Pre-Verification Cleanup (Historical)
+
+Historical note:
+
+This document captures pre-round-2 triage only. It is retained for lineage, but
+it is not the current Epic 3 status source of truth. Use
+`implementation-addendum.md` for the current post-fix implementation and
+closure state. A fresh reader should treat the sections below as superseded
+historical context unless a later document points back to a specific item.
 
 Compiled from all story-cycle verification artifacts (Stories 0-6).
 

@@ -1,3 +1,6 @@
+> Historical verification artifact. Superseded as current-state guidance by
+> `implementation-addendum.md`. Retained for audit trail only.
+
 # Epic 3 Nit-Fix Batch — Verifier A Review (Codex GPT-5.4)
 
 ## VERDICT

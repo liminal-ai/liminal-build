@@ -91,7 +91,7 @@ Planned but not required for the first TDD cycles.
 
 `tests/fixtures/materials.ts`
 
-- artifact with version context
+- referenced project artifact with version context
 - output linked to artifact
 - output without linked artifact
 - source attachment fixture
@@ -193,6 +193,7 @@ Planned but not required for the first TDD cycles.
 | `returns section envelopes with stable shape across ready empty and error states` | Envelope shape is a design-critical contract |
 | `returns live-unavailable signal without failing the durable bootstrap` | Supports durable bootstrap plus disconnected live-state rule |
 | `rejects project/process mismatch where the process exists but does not belong to the requested project` | Prevents cross-project record leakage |
+| `returns referenced project artifacts in current materials even when another process produced the visible version` | Current materials follow the process reference set, not a primary-process field on the artifact row |
 
 ### `tests/service/server/process-actions-api.test.ts`
 
@@ -416,7 +417,8 @@ updates.
 
 ### Chunk 4: Materials and Outputs
 
-**Scope:** Materials section, current outputs, linked-artifact de-duplication.
+**Scope:** Materials section, referenced project artifacts, current outputs,
+linked-artifact de-duplication.
 **ACs:** AC-4.1 to AC-4.4
 **TC tests:** 8
 **Non-TC tests:** 2
@@ -459,13 +461,16 @@ section-by-section degradation.
    appears.
 9. Trigger a current-request change and confirm the pinned request clears or is
    replaced while the historical request remains in the timeline.
-10. Seed one linked output + artifact pair and confirm the materials section does
+10. Seed one project artifact first produced by another process, reference it
+    from the open process, and confirm it appears in current materials with its
+    revision context.
+11. Seed one linked output + artifact pair and confirm the materials section does
     not show a duplicate unlinked output row.
-11. Seed one running side-work item and one completed side-work item and confirm
+12. Seed one running side-work item and one completed side-work item and confirm
     both remain distinguishable.
-12. Disconnect live transport and confirm the visible state remains on screen and
+13. Disconnect live transport and confirm the visible state remains on screen and
     the live-status banner changes.
-13. Reconnect and confirm the banner clears, the surface reconciles, and
+14. Reconnect and confirm the banner clears, the surface reconciles, and
     finalized history items are not duplicated.
-14. Force one secondary section into an error state and confirm the healthy
+15. Force one secondary section into an error state and confirm the healthy
     sections remain visible.

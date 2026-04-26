@@ -42,7 +42,7 @@ Story 0 is foundational only. It owns shared infrastructure and contract setup, 
 | Path 2.2 | Open an accessible project from the index or a direct URL | Story 2 | TC-2.2a, TC-2.2b |
 | Path 2.3 | Keep the active project clear across render, refresh, and browser navigation | Story 2 | TC-2.3a, TC-2.3b, TC-2.3c |
 | Path 2.4 | Render process, artifact, and source sections with empty-state handling | Story 3 | TC-3.1a, TC-3.1b, TC-3.1c |
-| Path 2.5 | Show process, artifact, and source summary context, including association scope and section-level failures | Story 3 | TC-3.2a, TC-3.3e, TC-3.4e, TC-6.3a, TC-6.3b, TC-6.3c |
+| Path 2.5 | Show process, artifact, and source summary context, including explicit artifact process-context semantics, source association scope, and section-level failures | Story 3 | TC-3.2a, TC-3.3e, TC-3.4e, TC-6.3a, TC-6.3b, TC-6.3c |
 | Path 3.1 | Create a supported process in the current project without manual naming | Story 4 | TC-4.1a, TC-4.2a, TC-4.2d |
 | Path 3.2 | Preserve multiple process identities and keep the list legible as work accumulates | Story 4 | TC-4.3b, TC-4.4a, TC-4.4b, TC-4.4c |
 | Path 3.3 | Restore durable shell state after reloads, new sessions, or server restarts | Story 5 | TC-5.1a, TC-5.1b, TC-5.1c |

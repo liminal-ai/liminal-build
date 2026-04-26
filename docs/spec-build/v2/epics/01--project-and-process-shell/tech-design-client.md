@@ -217,7 +217,7 @@ Responsibilities:
 | Module | Responsibility |
 |--------|----------------|
 | `process-section.ts` | Render process summaries, current focus, status chips, next action, and available actions |
-| `artifact-section.ts` | Render artifact summaries, version labels, and attachment context |
+| `artifact-section.ts` | Render artifact summaries, version labels, and explicit current-reference/producing-process context when present |
 | `source-attachment-section.ts` | Render source summaries, purpose, target ref, hydration state, and attachment context |
 | `section-envelope.ts` | Shared renderer helpers for `ready`, `empty`, and `error` states |
 
@@ -384,7 +384,7 @@ sequenceDiagram
 | TC-3.1a | populated shell sections render | `tests/service/client/project-shell-page.test.ts` | All sections `ready` | Three populated sections visible |
 | TC-3.1b | empty shell sections render | `tests/service/client/project-shell-page.test.ts` | All sections `empty` | Empty states shown |
 | TC-3.1c | partial population renders mixed states | `tests/service/client/project-shell-page.test.ts` | Processes `ready`, others `empty` | Mixed section states render coherently |
-| TC-3.3a through TC-3.3e | artifact section render behavior | `tests/service/client/artifact-section.test.ts` | Mock artifact envelopes | Version, scope context, ordering render correctly |
+| TC-3.3a through TC-3.3e | artifact section render behavior | `tests/service/client/artifact-section.test.ts` | Mock artifact envelopes | Version, explicit process-context semantics, ordering render correctly |
 | TC-3.4a through TC-3.4e | source section render behavior | `tests/service/client/source-attachment-section.test.ts` | Mock source envelopes | Purpose, ref, hydration, scope, ordering render correctly |
 | TC-6.3a through TC-6.3c | one failed section does not block shell | `tests/service/client/project-shell-page.test.ts` | One section `error`, others not | Shell still renders project and healthy sections |
 

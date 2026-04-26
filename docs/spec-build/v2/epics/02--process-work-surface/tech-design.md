@@ -61,7 +61,8 @@ The technical architecture already constrains the shape of this work. Fastify is
 the control plane. Convex is the durable state layer behind that control plane.
 The browser consumes typed upsert objects over WebSocket instead of raw provider
 deltas. The platform is process-first, not transcript-first, and process types
-remain code-defined modules with process-owned semantics. The design therefore
+remain code-defined modules with process-specific semantics. The design
+therefore
 needs to add a dedicated process-surface route, a browser store that can hold
 durable and live state together, and a server-side projection/action layer that
 keeps the shared work surface generic without flattening process-specific
@@ -81,7 +82,8 @@ The highest-risk area in this design is state coherence across three different
 truth layers. The browser needs a durable bootstrap for reload and re-entry, a
 live current-object stream for in-session coherence, and a clear boundary
 between visible user-facing process history and the fuller canonical archive
-planned for Epic 5. The design therefore needs to introduce a forward-compatible
+planned for later archive work. The design therefore needs to introduce a
+forward-compatible
 visible-history model for the process surface without pretending to solve the
 entire archive problem early.
 
@@ -179,7 +181,7 @@ user is disconnected.
 Introduce a process module registry for the first time. Epic 1 could derive
 shell summaries from the generic `processes` row and minimal type-state rows.
 Epic 2 needs more than that: current materials, current request, current output
-visibility, action availability, and response semantics are process-owned.
+visibility, action availability, and response semantics are process-specific.
 
 Each process module implements a shared interface:
 
@@ -212,6 +214,11 @@ export interface ProcessWorkSurfaceModule<TState> {
 This keeps the shared process work surface generic while letting each process
 module own its phase semantics, prompts, output shaping, and response behavior.
 
+For materials, the projection returns the current artifact/source references and
+output summaries for the process working set. Server readers resolve project
+artifact rows from those references rather than assuming the current process
+owns the artifact record.
+
 ### Q6. What exact data model should represent visible side work if full inspectable subthreads remain out of scope?
 
 Use a dedicated `processSideWorkItems` table for current summary state and a
@@ -236,11 +243,11 @@ Visible history records the chronological moments:
 This matches the epic: users see current side-work status in a summary section
 without requiring a full subordinate-thread viewer.
 
-### Q7. What exact persistence grain should Epic 2 use for visible process history before Epic 5 delivers the full canonical archive?
+### Q7. What exact persistence grain should Epic 2 use for visible process history before the later archive and derived-view work lands?
 
 Add a durable `processHistoryItems` table now as the user-facing visible history
-layer for the process surface. Do not implement the full Feature 5 canonical
-archive taxonomy in Epic 2.
+layer for the process surface. Do not implement the later canonical archive
+taxonomy in Epic 2.
 
 This table stores user-facing visible items only:
 
@@ -255,8 +262,8 @@ Each row is a stable visible item, not a raw streaming delta. Rows may move from
 `current` to `finalized`, but they are never replayed as opaque low-level
 provider fragments in the browser.
 
-Epic 5 can later add the lower-level canonical archive and derive richer views
-without invalidating the Epic 2 process surface.
+Later archive work can add the lower-level canonical archive and derive richer
+views without invalidating the Epic 2 process surface.
 
 ### Q8. What exact error and retry model should the work surface use when the durable bootstrap succeeds but live transport is unavailable?
 
@@ -285,7 +292,7 @@ status remain visible while the failing section shows an error state.
 |---------|--------|------------------|
 | Projects | Inherited from platform tech arch | Provides the project context and access boundary for entering a process surface |
 | Processes | Inherited from platform tech arch | Primary domain for process-surface bootstrap, process actions, process module dispatch, and live state publication |
-| Artifacts | Inherited from platform tech arch | Supplies current artifact context for the materials section |
+| Artifacts | Inherited from platform tech arch | Supplies project-level artifact context for the process's current material references |
 | Sources | Inherited from platform tech arch | Supplies current source context for the materials section |
 | Archive | Inherited from platform tech arch | Informs the durable-vs-live boundary and future archive compatibility, but full canonical archive behavior remains out of scope |
 | Review Workspace | Inherited from platform tech arch | Adjacent surface only; Epic 2 keeps current materials visible without delivering rich review workflows |
@@ -753,7 +760,7 @@ without re-deriving that state from history.
 |-----------|--------------|
 | `socket.io` | Adds an unnecessary protocol layer and fallback transport complexity when the platform architecture already chose plain WebSocket with typed upsert messages |
 | Bare `ws` route integration without Fastify plugin | Works technically, but loses Fastify route lifecycle integration and increases custom wiring burden for auth/access checks |
-| Implementing the full Feature 5 canonical archive now | Solves a broader problem than Epic 2 needs and would blur milestone boundaries |
+| Implementing the later archive/derived-view layer now | Solves a broader problem than Epic 2 needs and would blur milestone boundaries |
 
 ## Verification Scripts
 
@@ -836,7 +843,7 @@ questions needed to begin story derivation and technical enrichment.
 | Item | Related AC | Reason Deferred | Future Work |
 |------|-----------|-----------------|-------------|
 | Full inspectable delegated subthreads | AC-5.3, AC-5.4 | Epic 2 only needs side-work summary/result visibility | Future process orchestration epic |
-| Full canonical archive entry taxonomy and turn derivation | AC-3.3, AC-6.1 adjacency | Owned by Feature 5 | Epic 5 |
+| Full canonical archive entry taxonomy and turn derivation | AC-3.3, AC-6.1 adjacency | Deferred to the later archive/derived-view work after Epic 6 | Later archive epic |
 | Rich markdown/Mermaid artifact reading inside the process surface | AC-4.x adjacency | Epic 2 keeps materials visible, not fully reviewable | Epic 4 |
 | Environment/runtime-driven live progress from sandbox execution | AC-2.x adjacency | Epic 2 defines the process-surface and live contract first | Epic 3 |
 

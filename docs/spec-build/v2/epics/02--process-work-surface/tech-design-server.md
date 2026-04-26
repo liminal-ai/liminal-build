@@ -46,7 +46,7 @@ route behavior correctly.
 | Sources | Materials reader resolves current source context for the process surface |
 | Archive | Epic 2 adds visible process history only; the full canonical archive remains a later concern |
 
-The process surface is process-owned. Project services are still relevant for
+The process surface is process-scoped. Project services are still relevant for
 entry and access, but the main server-side implementation should live under
 `services/processes/` instead of extending the Epic 1 shell services beyond
 their natural role.
@@ -158,14 +158,14 @@ Epic 2 adds three new durable concerns:
 
 - visible process history
 - current side-work summaries
-- current process-owned outputs
+- current process output summaries
 
 It also upgrades the generic process record so the shared work surface can find
 the current unresolved request efficiently.
 
 ### Design Stance
 
-Do not implement the full Feature 5 canonical archive now. Epic 2 only needs
+Do not implement the later archive/derived-view layer now. Epic 2 only needs
 durable, user-facing visible history that supports reload, reconnect, and pinned
 current request projection. The full low-level archive taxonomy remains a later
 layer.
@@ -182,10 +182,10 @@ on `processes`; live surface rows move into their own tables.
 | `processes` | MODIFIED | Generic process identity and surface summary fields | Add `currentRequestHistoryItemId` pointer |
 | `processHistoryItems` | NEW | Durable visible process history items for the process surface | User-facing history only, not full canonical archive |
 | `processSideWorkItems` | NEW | Current side-work summary items | Active items plus recent outcomes still relevant to parent process |
-| `processOutputs` | NEW | Current process-owned output summaries | Outputs in progress and outputs not yet published as durable artifacts |
-| `artifacts` | EXISTS | Durable artifact rows | Read as current materials when process surface references them |
+| `processOutputs` | NEW | Current process output summaries | Outputs in progress and outputs not yet published as durable artifacts |
+| `artifacts` | EXISTS | Durable project artifact rows | Read as current materials through explicit process references, even when another process produced the visible version |
 | `sourceAttachments` | EXISTS | Durable source rows | Read as current materials when process surface references them |
-| `processProductDefinitionStates` | MODIFIED | ProductDefinition-specific state | Add small bounded fields needed for current materials projection |
+| `processProductDefinitionStates` | MODIFIED | ProductDefinition-specific state | Add small bounded current artifact/source reference fields needed for current materials projection |
 | `processFeatureSpecificationStates` | MODIFIED | FeatureSpecification-specific state | Same pattern |
 | `processFeatureImplementationStates` | MODIFIED | FeatureImplementation-specific state | Same pattern |
 
@@ -535,11 +535,17 @@ This avoids separate tables for what is logically one user-facing request.
 
 **Covers:** AC-4.1, AC-4.2, AC-4.3, AC-4.4
 
-The materials flow is where the shared surface meets process-owned semantics.
-Artifacts and source attachments already exist as generic tables, but the
-current-material view is process-owned. The process module decides which artifact
-IDs and source IDs are currently relevant. The server then reads those durable
-rows and combines them with current process-owned outputs.
+The materials flow is where the shared surface meets process-specific
+working-set semantics. Artifacts and source attachments already exist as
+project-level durable rows, but the current-material view is a process-scoped
+projection over the active working set. The process module decides which
+artifact IDs, source IDs, and current output summaries are currently relevant.
+The server then resolves those durable rows and combines them with current
+process outputs.
+
+This reader must follow explicit process references. It must not assume current
+artifact visibility can be derived from a primary-process field on the artifact
+row.
 
 ```mermaid
 sequenceDiagram
@@ -562,6 +568,9 @@ server keeps the artifact in `currentArtifacts` and omits a second unconnected
 entry from `currentOutputs`. `processOutputs` is reserved for outputs still in
 progress, outputs not yet published as artifacts, or outputs that still need a
 separate current-state row.
+
+Current-material visibility is driven by the process's explicit reference set
+and linked output/artifact context, not by artifact ownership.
 
 **Skeleton Requirements:**
 

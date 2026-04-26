@@ -78,7 +78,15 @@ Out:
 
 **AC-2.4:** If an artifact exists but has no reviewable durable version yet, the workspace shows a clear no-version state instead of implying a reviewable draft exists.
 
-Note: TC-2.4a covers direct artifact-review access, such as a bookmarked or manually entered URL that names a zero-version artifact. The target list correctly excludes zero-version artifacts under Story 1's reviewability rules.
+Note: TC-2.4a covers direct artifact-review access, such as a bookmarked or
+manually entered URL that names a zero-version artifact inside an otherwise
+valid process review context. The target list correctly excludes zero-version
+artifacts under Story 1's reviewability rules.
+
+Empty-state note: Story 2 is the only place that uses the review-target
+`empty` state. Zero-target workspace states still omit `target` entirely; the
+`empty` state is reserved for an explicitly selected artifact whose identity
+resolves in the current process review context but whose version list is empty.
 
 - **TC-2.4a: No durable version state shown**
   - Given: Artifact record exists but no reviewable version has been published
@@ -88,6 +96,11 @@ Note: TC-2.4a covers direct artifact-review access, such as a bookmarked or manu
 ### Technical Design
 <!-- Jira: Technical Notes or sub-section of Description -->
 This story adds durable artifact-version truth to the review workspace and keeps version identity explicit on every artifact read.
+
+Epic 5 alignment backfill: the reviewed artifact is a project-scoped identity.
+Story 2 is version-aware, not owner-aware. A later process may review or revise
+an artifact first produced elsewhere as long as that artifact is reachable
+through the current process review context.
 
 #### Endpoint
 
@@ -158,6 +171,16 @@ Story 2 depends on the version identity fields and ordering rules in this shape.
 | `404` | `REVIEW_TARGET_NOT_FOUND` | Requested artifact or artifact version does not exist in the requested review context |
 
 See the tech design document for full architecture, implementation targets, and test mapping.
+
+Bootstrap-specific note: Story 2's dedicated artifact endpoint may still return
+`404 REVIEW_TARGET_NOT_FOUND` when the requested artifact/version does not
+resolve in the requested review context. The review-workspace bootstrap route is
+different: when project/process context resolves but the selected target is now
+unavailable, Story 6 uses a bounded `200` unavailable target state instead.
+When the artifact identity resolves but has zero durable versions, the
+artifact-specific endpoint returns the artifact identity plus an empty
+`versions` array, and the review-workspace wrapper maps that condition to
+`target.status: empty`.
 
 ### Definition of Done
 <!-- Jira: Definition of Done or Acceptance Criteria footer -->

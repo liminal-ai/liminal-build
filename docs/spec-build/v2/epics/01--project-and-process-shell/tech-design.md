@@ -37,7 +37,7 @@ spec defects remain.
 | Issue | Spec Location | Resolution | Status |
 |-------|---------------|------------|--------|
 | Partial section failures were required behavior but were not represented in the original shell response contract | AC-6.3, Data Contracts | Epic was backfilled with section envelopes carrying `status`, `items`, and optional `error` | Resolved |
-| Artifact and source summaries did not explain why an item appeared in the shell | AC-3.3, AC-3.4 | Epic was backfilled with minimal project-vs-process attachment context | Resolved |
+| Artifact and source summaries did not explain why an item appeared in the shell | AC-3.3, AC-3.4 | Epic was backfilled with explicit shell context: artifact `processContext` separates current-process reference from producing-process history, while sources keep true attachment context | Resolved |
 | Logout behavior was missing from the original auth flow | Scope, Flow 1 | Epic now includes sign-out scope, endpoint, and AC/TC coverage | Resolved |
 | The original shell contract implied array-only sections while the planned implementation uses one aggregated bootstrap | Data Contracts, Tech Design Questions | This design keeps the aggregated bootstrap and composes independent section readers behind it | Resolved — clarified |
 | Optional `processId` on the shell route implied `PROCESS_NOT_FOUND` in the error table, but AC-6.2b requires the shell to remain usable when the selected process is missing | Query parameter contract, AC-6.2b | Aggregated shell bootstrap returns `200` for accessible projects and the client clears invalid process selection route state after comparing against `processes.items`; `PROCESS_NOT_FOUND` remains reserved for dedicated process resources | Resolved — clarified |
@@ -375,13 +375,21 @@ export interface ProcessSummary {
   updatedAt: string;
 }
 
+export interface ArtifactProcessReference {
+  processId: string;
+  processDisplayLabel: string;
+}
+
+export interface ArtifactProcessContext {
+  currentProcessReference: ArtifactProcessReference | null;
+  producingProcess: ArtifactProcessReference | null;
+}
+
 export interface ArtifactSummary {
   artifactId: string;
   displayName: string;
   currentVersionLabel: string | null;
-  attachmentScope: AttachmentScope;
-  processId: string | null;
-  processDisplayLabel: string | null;
+  processContext: ArtifactProcessContext | null;
   updatedAt: string;
 }
 
@@ -428,6 +436,13 @@ export interface RequestError {
   status: number;
 }
 ```
+
+For `ArtifactSummary`, `processContext` is descriptive shell context only. It
+is `null` when no process explanation is needed; when present, at least one of
+its child fields is non-null. It can separately surface a current process
+reference and producing-process history, but it does not imply that the
+artifact belongs to one process instead of the project or that Epic 1 ships a
+deeper lineage surface.
 
 ### Runtime Prerequisites
 
@@ -639,7 +654,7 @@ user-visible shell until late in the sequence.
 | WebSocket live shell updates | AC-5.x adjacency | Live updates belong to active process work, not shell stand-up | Epic 2 |
 | Environment hydration and provider behavior | AC-5.2 adjacency | Shell only shows summary state; environment model begins later | Epic 3 |
 | Artifact review surface | AC-3.3 adjacency | Shell summaries only in Epic 1 | Epic 4 |
-| Repository hydration and freshness resolution workflows | AC-3.4 adjacency | Shell summary visibility only in Epic 1 | Epic 5 |
+| Repository hydration and freshness resolution workflows | AC-3.4 adjacency | Shell summary visibility only in Epic 1 | Epic 6 |
 | Pagination / virtualization | AC-3.x, AC-4.4 | Not needed at current NFR scale | Future performance hardening |
 
 ## Related Documentation

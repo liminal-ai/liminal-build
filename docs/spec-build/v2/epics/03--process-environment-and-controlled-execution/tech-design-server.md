@@ -118,7 +118,7 @@ recovery actions reuse that recorded provider.
 | Processes | Existing `routes/processes.ts`, process action services, process live hub, and process module registry remain the public control-plane seam |
 | Environments | New server-owned orchestration, provider adapter, hydration, checkpoint, and recovery modules live under `services/processes/environment/` |
 | Tool Runtime | Execution happens through a server-owned call into an in-environment executor boundary; no browser-facing runtime controller is added |
-| Artifacts | Existing artifact persistence remains canonical for artifact checkpoint success, with process-facing projection returning to the process surface |
+| Artifacts | Existing project-level artifact persistence remains canonical for artifact checkpoint success; revising an existing artifact appends a new version while process-facing projection returns to the process surface |
 | Sources | Existing source attachments gain durable `accessMode`; source writability gates code checkpointing but does not create a new direct browser action |
 | Archive | Epic 3 still does not implement the full archive. Settled environment/checkpoint moments appear in visible process history and logs, not a new archive domain API |
 
@@ -199,8 +199,8 @@ convex/
 | `environment/provider-adapter-registry.ts` | NEW | Resolve the correct provider adapter by `providerKind` and environment policy | app config, provider adapters | AC-2, AC-5 |
 | `environment/daytona-provider-adapter.ts` | NEW | Hosted Daytona lifecycle implementation behind the provider contract | Daytona SDK/API, research-gated | AC-2, AC-3, AC-5 |
 | `environment/local-provider-adapter.ts` | NEW | Local fast-follow provider implementation behind the same contract | local runtime/process strategy, research-gated | AC-2, AC-3, AC-5 |
-| `environment/hydration-planner.ts` | NEW | Build a deterministic working-set hydration plan from current artifacts, outputs, and attached sources | `PlatformStore`, current material refs | AC-2, AC-5 |
-| `environment/checkpoint-planner.ts` | NEW | Decide artifact/code checkpoint targets, enforce writability, and shape latest-result projection | `PlatformStore`, source summaries | AC-4, AC-6 |
+| `environment/hydration-planner.ts` | NEW | Build a deterministic working-set hydration plan from current artifact references and versions, outputs, and attached sources | `PlatformStore`, current material refs | AC-2, AC-5 |
+| `environment/checkpoint-planner.ts` | NEW | Decide artifact/code checkpoint targets, enforce writability, apply append-version behavior for existing artifacts, and shape latest-result projection | `PlatformStore`, source summaries | AC-4, AC-6 |
 | `environment/code-checkpoint-writer.ts` | NEW | Apply code persistence to canonical source targets without exposing provider/runtime internals to the browser | GitHub boundary, checkpoint planner | AC-4 |
 | `environment/script-execution.service.ts` | NEW | Send a one-shot script payload into the environment executor and normalize the result for the outer controller | provider adapter | AC-3, AC-4 |
 | `live/process-live-normalizer.ts` | MODIFIED | Add `environment` as a first-class live entity and embed latest checkpoint result inside it | shared contracts, environment summary projection | AC-2, AC-3, AC-4, AC-6 |
@@ -265,7 +265,7 @@ Epic 3 adds one new durable concern and extends two existing ones:
 It intentionally does **not** add a separate browser-facing ordered checkpoint
 history table. The epic only promises latest-result visibility. Settled
 checkpoint moments may still appear in visible process history, and canonical
-success history already lives in GitHub or artifact versions.
+success history already lives in GitHub or in project artifact/version state.
 
 ### Design Stance
 
@@ -283,7 +283,7 @@ shared records. Environment summary belongs in its own table keyed by
 Do not add a platform-owned append-only checkpoint table in Epic 3.
 
 - successful code checkpoint history already exists in GitHub
-- successful artifact checkpoint history should exist in artifact/version state
+- successful artifact checkpoint history should exist in project artifact/version state
 - latest visible checkpoint state is sufficient for the process surface
 - failed or blocked checkpoint moments should appear in process-visible history
   and logs
@@ -296,6 +296,7 @@ The server should own the following environment states:
 |-------|---------|----------------------|
 | `absent` | No current environment exists | `start` or `resume` may create one if process state allows |
 | `preparing` | Environment exists or is being created while hydration/setup is in progress | wait for readiness or failure |
+| `rehydrating` | Environment still exists and is being refreshed from canonical truth after a recovery action | wait for readiness or failure |
 | `ready` | Environment is hydrated and available for execution | `start` or `resume` may proceed if process state allows |
 | `running` | Active execution is occurring in the environment | recovery controls disabled |
 | `checkpointing` | Durable writes are settling | process should not present as idle |
@@ -314,7 +315,7 @@ The server should own the following environment states:
 | `processHistoryItems` | MODIFIED | Visible process-facing history | Add settled checkpoint/recovery process events as needed |
 | `processOutputs` | MODIFIED | Current process output summaries | Remains an input to hydration and artifact checkpoint planning |
 | `sourceAttachments` | MODIFIED | Durable source summary rows | Add `accessMode` so writability is durable and explicit |
-| process-specific state tables | UNCHANGED SHAPE FOR EPIC 3 | Continue to store process-owned artifact/source refs | Environment orchestration consumes them but does not move their meaning into the generic layer |
+| process-specific state tables | UNCHANGED SHAPE FOR EPIC 3 | Continue to store process-specific artifact/source refs | Environment orchestration consumes those references but does not move their meaning into the generic layer |
 
 ### Convex Field Outline
 
@@ -345,6 +346,7 @@ export const checkpointOutcomeValidator = v.union(
 export const environmentStateValidator = v.union(
   v.literal('absent'),
   v.literal('preparing'),
+  v.literal('rehydrating'),
   v.literal('ready'),
   v.literal('running'),
   v.literal('checkpointing'),
@@ -360,6 +362,10 @@ export const checkpointResultValidator = v.object({
   checkpointKind: checkpointKindValidator,
   outcome: checkpointOutcomeValidator,
   targetLabel: v.string(),
+  artifactId: v.union(v.string(), v.null()),
+  artifactVersionId: v.union(v.string(), v.null()),
+  artifactVersionLabel: v.union(v.string(), v.null()),
+  versionProvenanceProcessId: v.union(v.id('processes'), v.null()),
   targetRef: v.union(v.string(), v.null()),
   completedAt: v.string(),
   failureReason: v.union(v.string(), v.null()),
@@ -462,6 +468,7 @@ export interface EnvironmentSummaryRecord {
   state:
     | 'absent'
     | 'preparing'
+    | 'rehydrating'
     | 'ready'
     | 'running'
     | 'checkpointing'
@@ -486,11 +493,19 @@ export interface LastCheckpointResult {
   checkpointKind: 'artifact' | 'code' | 'mixed';
   outcome: 'succeeded' | 'failed';
   targetLabel: string;
+  artifactId: string | null;
+  artifactVersionId: string | null;
+  artifactVersionLabel: string | null;
+  versionProvenanceProcessId: string | null;
   targetRef: string | null;
   completedAt: string;
   failureReason: string | null;
 }
 ```
+
+Epic 3 keeps `versionProvenanceProcessId` as the checkpoint-summary field name.
+It refers to the same artifact-version provenance identity Epic 5 documents as
+`producedByProcessId`.
 
 ### Provider Adapter
 
@@ -510,6 +525,7 @@ export interface HydrationPlan {
   fingerprint: string;
   artifactInputs: Array<{
     artifactId: string;
+    artifactVersionId: string | null;
     displayName: string;
     versionLabel: string | null;
   }>;
@@ -601,7 +617,8 @@ rather than as an opaque free-form string.
 
 ```ts
 export interface ArtifactCheckpointCandidate {
-  artifactId: string;
+  artifactId: string | null;
+  baseVersionId: string | null;
   displayName: string;
   revisionLabel: string | null;
   contentsRef: string;
@@ -803,7 +820,8 @@ sequenceDiagram
 - `start` and `resume` services should become thin wrappers over
   `ProcessEnvironmentService`
 - hydration planning should use the current-materials projection model already
-  established in Epic 2; no project-wide "hydrate everything" behavior
+  established in Epic 2; hydrate the process's referenced project-level
+  artifacts and versions, not the whole project's artifact set
 - `accessMode` should be visible during planning but should not itself change
   whether source hydration occurs; it changes whether later code checkpointing is
   permitted
@@ -887,9 +905,14 @@ sequenceDiagram
 Checkpointing is the server step that turns environment-local work back into
 canonical truth. The important architectural boundary is that the environment
 never writes canonical state directly. The outer controller plans checkpoint
-targets, applies artifact persistence through the existing durable store, applies
-code persistence through the source boundary, and then projects the latest
-visible checkpoint result back onto the environment summary.
+targets, applies artifact persistence through the existing durable store,
+applies code persistence through the source boundary, and then projects the
+latest visible checkpoint result back onto the environment summary. For artifact
+work, that means checkpointing either creates a new project-level artifact or
+appends a new version to an existing project-level artifact already referenced
+by the process. In both cases, the resulting version records the producing
+process as version-level provenance rather than moving artifact ownership onto
+the latest process.
 
 The first cut should keep code persistence intentionally narrow:
 
@@ -911,7 +934,7 @@ sequenceDiagram
     Note over Orch,Live: AC-4.1 to AC-4.5
     Orch->>Planner: build checkpoint plan(executionResult, source summaries)
     Planner-->>Orch: artifact/code/mixed/none
-    Orch->>Store: persist artifact outputs
+    Orch->>Store: persist project artifact outputs / versions
     alt writable source candidates exist
         Orch->>Git: apply code checkpoint to attached writable target ref
         Git-->>Orch: code checkpoint outcome
@@ -953,6 +976,18 @@ should not invent an intermediate branch automatically in this slice. That keeps
 branch-management workflow out of Epic 3 and matches the attached-source model
 already established in the epic.
 
+Artifact checkpoint planning should stay just as narrow:
+
+- if `artifactId` is present on a checkpoint candidate, persist a new version on
+  that existing project-level artifact
+- if `artifactId` is absent, create a new project-level artifact and its first
+  version
+- record the current `processId` as provenance on the persisted artifact version
+- surface `artifactId`, `artifactVersionId`, `artifactVersionLabel`, and
+  `versionProvenanceProcessId` through `lastCheckpointResult` when present
+- treat that field as the process-surface alias for the same stored producing
+  process identity Epic 5 names `producedByProcessId`
+
 If a source is marked writable but the attached target is not a writable branch
 or otherwise cannot accept direct writes, the checkpoint planner should treat
 that as a blocked write target and surface a failed or blocked checkpoint result
@@ -962,12 +997,12 @@ rather than inventing a new branch automatically.
 
 | TC | Tests | Module | Setup | Assert |
 |----|-------|--------|-------|--------|
-| TC-4.1a | durable artifact output persists | `tests/service/server/process-actions-api.test.ts` | execution result contains artifact outputs | artifact persistence called, latest result updated |
-| TC-4.1b | artifact output recoverable after reopen | `tests/integration/process-work-surface.test.ts` | successful artifact checkpoint then reopen | bootstrap returns latest checkpoint result and durable artifact state |
+| TC-4.1a | durable artifact output persists | `tests/service/server/process-actions-api.test.ts` | execution result contains artifact outputs for an existing or new project artifact target | artifact persistence called, latest result updated with artifact target/version metadata |
+| TC-4.1b | artifact output recoverable after reopen | `tests/integration/process-work-surface.test.ts` | successful artifact checkpoint then reopen | bootstrap returns latest checkpoint result and durable artifact version state |
 | TC-4.2a | writable source code checkpoint succeeds | `tests/service/server/process-actions-api.test.ts` | writable source candidate + Git writer stub | code checkpoint writer called with attached target ref |
 | TC-4.2b | code checkpoint result process-visible | `tests/service/server/process-live-updates.test.ts` | successful code checkpoint | environment payload includes latest checkpoint result with source identity/ref |
 | TC-4.3a | read-only source cannot receive checkpoint | `tests/service/server/process-actions-api.test.ts` | read-only source candidate | no code checkpoint call made; result reflects ineligible path |
-| TC-4.4a | artifact checkpoint result visible | `tests/service/server/process-live-updates.test.ts` | successful artifact checkpoint | environment latest result reflects artifact success |
+| TC-4.4a | artifact checkpoint result visible | `tests/service/server/process-live-updates.test.ts` | successful artifact checkpoint | environment latest result reflects artifact success and version metadata |
 | TC-4.4b | code checkpoint result visible | `tests/service/server/process-live-updates.test.ts` | successful code checkpoint | environment latest result includes target ref |
 | TC-4.5a | artifact checkpoint failure shown | `tests/service/server/process-live-updates.test.ts` | artifact persistence fails | latest result outcome failed + visible event |
 | TC-4.5b | code checkpoint failure shown | `tests/service/server/process-live-updates.test.ts` | Git writer fails | latest result outcome failed + blocked reason/history |
@@ -1007,7 +1042,7 @@ sequenceDiagram
         EnvSvc-->>Route: AppError 409/422/503
         Route-->>Browser: immediate rejection
     else accepted
-        EnvSvc->>Store: set state = preparing or rebuilding
+        EnvSvc->>Store: set state = rehydrating or rebuilding
         EnvSvc->>Live: publish environment update
         EnvSvc->>Orch: continue recovery
         Orch->>Provider: rehydrateEnvironment(...) or rebuildEnvironment(...)
@@ -1022,11 +1057,11 @@ sequenceDiagram
 |----|-------|--------|-------|--------|
 | TC-5.1a | stale distinct from failed | `tests/service/server/process-work-surface-api.test.ts` | stale env state row | bootstrap returns `stale` |
 | TC-5.1b | lost distinct from absent | `tests/service/server/process-work-surface-api.test.ts` | lost env state row | bootstrap returns `lost` |
-| TC-5.2a | rehydrate refreshes stale working copy | `tests/service/server/process-actions-api.test.ts` | stale recoverable environment | provider rehydrate called |
-| TC-5.2b | rehydrate updates visible state | `tests/service/server/process-live-updates.test.ts` | successful rehydrate | environment state transitions to ready/running |
+| TC-5.2a | rehydrate refreshes stale working copy | `tests/service/server/process-actions-api.test.ts` | stale recoverable environment | accepted response shows `rehydrating`; provider rehydrate called |
+| TC-5.2b | rehydrate updates visible state | `tests/service/server/process-live-updates.test.ts` | successful rehydrate | environment state transitions from `rehydrating` to ready/running |
 | TC-5.3a | rebuild replaces lost environment | `tests/service/server/process-actions-api.test.ts` | lost environment | provider rebuild called, new environment id stored |
 | TC-5.3b | rebuild does not depend on prior survival | `tests/service/server/process-actions-api.test.ts` | missing prior env handle | rebuild still succeeds from canonical inputs |
-| TC-5.4a | durable artifact state survives recovery | `tests/integration/process-work-surface.test.ts` | checkpoint then rebuild | artifact state still visible after recovery |
+| TC-5.4a | durable artifact state survives recovery | `tests/integration/process-work-surface.test.ts` | checkpoint then rebuild | artifact version state still visible after recovery |
 | TC-5.4b | durable code persistence survives recovery | `tests/integration/process-work-surface.test.ts` | code checkpoint then rebuild | latest checkpoint result and source state still visible |
 | TC-5.5a | rebuild blocked by missing canonical prerequisite | `tests/service/server/process-actions-api.test.ts` | missing material refs or unavailable canonical source | immediate 422/503 rejection |
 | TC-5.5b | rehydrate blocked when rebuild required | `tests/service/server/process-actions-api.test.ts` | nonrecoverable env state | immediate 409 rejection with rebuild guidance |
@@ -1166,6 +1201,8 @@ These should appear in the test plan even though they are not 1:1 epic TCs:
   changes
 - read-only and writable source candidates mixed in one run produce the correct
   partial checkpoint plan
+- revising an existing project artifact appends a new version without changing
+  the artifact target recorded on the process
 - latest checkpoint result overwrite semantics do not duplicate visible history
   unless the new outcome is itself user-visible
 - the executor receives only the process-scoped tool API and not raw GitHub or

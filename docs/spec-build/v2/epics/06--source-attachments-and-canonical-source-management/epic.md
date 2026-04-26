@@ -1,4 +1,4 @@
-# Epic 5: Source Attachments and Canonical Source Management
+# Epic 6: Source Attachments and Canonical Source Management
 
 This epic defines the complete requirements for Liminal Build source
 attachments and canonical source management. It serves as the source of truth
@@ -15,7 +15,8 @@ informed or received process work.
 **Context:** The user is working in a project shell or process work surface and
 needs to attach one or more repositories, classify them for research, review,
 or implementation, control whether they are writable, see whether they are
-hydrated or stale, and later understand where durable code work landed.
+`not_hydrated`, `hydrated`, `stale`, or `unavailable`, and later understand
+where durable code work landed.
 **Mental Model:** "This process works from named canonical sources. I can see
 which repositories are attached, what they are for, whether they are writable,
 whether they are hydrated, and which repository and ref this work came from or
@@ -33,13 +34,18 @@ This feature makes source attachments a real managed part of the platform.
 After it ships, the user can attach repositories to a project or to one
 process, set or update purpose, access mode, and target ref, see hydration and
 freshness state across the project and process surfaces, request rehydration
-when the attached source is stale or missing, detach sources without erasing the
-history of work that already used them, and review provenance showing which
-repository and ref informed or received code work. This epic is the first
-implementation epic derived from PRD Feature 5. It covers source attachment
-lifecycle and canonical-source management. Full archive, turn, chunk, and
-derived-view behavior are deferred to Epic 6. External-source and MCP-backed
-attachment flows are deferred to later source-integration work.
+when the attached source is `stale` or `not_hydrated`, detach sources without
+erasing the history of work that already used them, and review provenance
+showing which repository and ref informed or received code work. This epic is
+the first
+source-management implementation epic derived from PRD Feature 5, and it
+sequences after Epic 5's artifact-model alignment. It covers source attachment
+lifecycle and canonical-source management while explicitly inheriting the
+aligned artifact model where artifacts remain project-level assets and process
+materials remain reference-based. Full archive, turn, chunk, and derived-view
+behavior are deferred to Epic 7. External-source and MCP-backed attachment
+flows are deferred to later source-integration work beyond the current Epic 5,
+Epic 6, and Epic 7 sequence.
 
 ---
 
@@ -56,8 +62,9 @@ summary-only source state:
 - Update purpose, access mode, and target ref for an existing source attachment
 - Distinguish project-scoped shared source attachments from process-scoped
   source attachments
-- Request rehydration or refresh for stale, missing, or not-yet-hydrated
-  source attachments where recovery is possible
+- Request rehydration or refresh for `stale` or `not_hydrated` source
+  attachments, including recoverable missing-working-copy cases classified as
+  `stale`
 - Detach a source attachment from current project or process use without
   erasing prior visible provenance
 - Provenance visibility showing which attached repositories and refs informed
@@ -66,7 +73,15 @@ summary-only source state:
 - Degraded and unavailable source-management behavior when one source, one
   refresh path, or one provenance lookup fails independently
 
-Source-management read integration in Epic 5 follows these rules:
+Epic 6 inherits Epic 5's aligned artifact world rather than redefining it:
+
+- project artifacts remain durable project-level assets
+- process materials and review context remain reference-based rather than
+  ownership-based
+- source provenance complements artifact version provenance and does not replace
+  it
+
+Source-management read integration in Epic 6 follows these rules:
 
 - the existing project shell source attachment section remains the current
   project-level read surface for attached sources
@@ -78,12 +93,15 @@ Source-management read integration in Epic 5 follows these rules:
 ### Out of Scope
 
 - Full-fidelity archive, turn derivation, chunk derivation, or archive browsing
-- Attachment of MCP-backed or other non-repository external sources
+- Attachment of MCP-backed or other non-repository external sources in the
+  current Epic 5, Epic 6, and Epic 7 sequence
 - Generic external integration catalog
 - Full GitHub branch-management, pull-request-management, or review workflows
 - Full environment execution and checkpointing behavior already delivered in
   Epic 3
-- Full artifact review and package/export behavior delivered in Epic 4
+- Baseline artifact review and package/export surfaces delivered in Epic 4
+- Artifact-model alignment, project-level artifact ownership, and
+  review/package provenance realignment now covered by Epic 5
 - Process-independent generalized source-management framework beyond the current
   project and process surfaces
 
@@ -91,27 +109,29 @@ Source-management read integration in Epic 5 follows these rules:
 
 | ID | Assumption | Status | Owner | Notes |
 |----|------------|--------|-------|-------|
-| A1 | Epic 1 project shell and Epic 2 process work surface are already in place | Validated | Platform | Epic 5 extends the existing shell and process surfaces rather than adding a separate standalone source-management app |
-| A2 | Epic 3 already made the minimal hydrate-and-checkpoint loop real for already-attached writable sources | Validated | Platform | Epic 5 broadens source-management around that loop rather than replacing it |
-| A3 | GitHub remains the canonical source of truth for code | Validated | Platform | Sandboxed working copies remain disposable |
-| A4 | A repository may be attached at project scope for shared reuse or at process scope for one process | Validated | Platform | Current repo summaries already model both scopes |
-| A5 | The first source-management slice is repository-focused and does not yet include MCP-backed or other external-source attachment | Validated | Platform | External-source attachment is deferred to later source-integration work |
-| A6 | Purpose and access mode are durable properties of a source attachment, not transient per-run hints | Validated | Platform | Later process work and provenance read them from durable source state |
-| A7 | Detaching a source attachment removes it from current active use but does not erase prior process history or prior durable code-update visibility | Validated | Product + Platform | Current work and prior provenance remain distinct concerns |
-| A8 | Epic 5 implements the source-management half of PRD Feature 5 and Epic 6 will implement the archive and derived-view half | Validated | Platform | The Feature 5 implementation split is intentional and should be reflected in upstream planning documents |
-| A9 | Attach, update, refresh, and detach settle through request/response behavior in the existing shell and process surfaces rather than through a separate source-management live subscription | Validated | Platform | Epic 5 does not add a new live-update surface |
+| A1 | Epic 1 project shell and Epic 2 process work surface are already in place | Validated | Platform | Epic 6 extends the existing shell and process surfaces rather than adding a separate standalone source-management app |
+| A2 | Epic 5 already aligned artifacts as project-level assets with process references and version-level provenance | Validated | Platform | Epic 6 inherits that artifact world and does not redefine artifact ownership or review/package eligibility |
+| A3 | Epic 3 already made the minimal hydrate-and-checkpoint loop real for already-attached writable sources | Validated | Platform | Epic 6 broadens source-management around that loop rather than replacing it |
+| A4 | GitHub remains the canonical source of truth for code | Validated | Platform | Sandboxed working copies remain disposable |
+| A5 | A repository may be attached at project scope for shared reuse or at process scope for one process | Validated | Platform | Current repo summaries already model both scopes |
+| A6 | The first source-management slice is repository-focused and does not yet include MCP-backed or other external-source attachment | Validated | Platform | External-source attachment is deferred to later source-integration work beyond the current Epic 5, Epic 6, and Epic 7 sequence |
+| A7 | Purpose and access mode are durable properties of a source attachment, not transient per-run hints | Validated | Platform | Later process work and provenance read them from durable source state |
+| A8 | Detaching a source attachment removes it from current active use but does not erase prior process history or prior durable code-update visibility | Validated | Product + Platform | Current work and prior provenance remain distinct concerns |
+| A9 | Epic 6 implements the repository-focused source-management half of PRD Feature 5 and Epic 7 will implement the archive and derived-view half | Validated | Platform | The Feature 5 implementation split is intentional, and external/MCP source attachment remains a later follow-on beyond the current sequence |
+| A10 | Attach, update, refresh, and detach settle through request/response behavior in the existing shell and process surfaces rather than through a separate source-management live subscription | Validated | Platform | Epic 6 does not add a new live-update surface |
 
 ---
 
 ## PRD Backfills
 
-This epic required one clarification in
-`docs/spec-build/v2/core-platform-prd.md` to keep the implementation epic and
-the PRD aligned.
+This epic depends on PRD clarifications needed to keep the implementation
+sequence and the platform model aligned.
 
 | PRD Area | Backfill | Why |
 |----------|----------|-----|
-| Feature 5 overview | Feature 5 now states that implementation may land as more than one epic, with source-management first and archive/derived-view work later | This epic intentionally covers the source-management half of Feature 5 while Epic 6 will cover the archive half |
+| Feature sequencing between Feature 4 and Feature 5 | The platform may require an interstitial artifact-model alignment epic after review/package surfaces ship and before broader source-management work begins | Epic 6 inherits the aligned artifact world from Epic 5 instead of absorbing artifact-model correction into source-management scope |
+| Feature 5 overview | Feature 5 now states that implementation may land as more than one epic, with repository-focused source-management first and archive/derived-view work later | This epic intentionally covers the repository-focused source-management half of Feature 5 while Epic 7 covers the archive half |
+| Feature 5 source scope | MCP-backed and other external-source attachment is explicitly deferred beyond the current Epic 5, Epic 6, and Epic 7 sequence | Prevents Epic 6 from inheriting orphaned external-source scope that the current plan does not assign |
 
 ---
 
@@ -125,7 +145,12 @@ existing project shell and process work surface, make the chosen scope clear,
 and record enough durable source identity to support later hydration and
 provenance.
 
-Epic 5 uses these route and uniqueness rules:
+This flow inherits Epic 5's aligned artifact model: project artifacts remain
+project-level assets and process current materials remain reference-based.
+Attaching a source changes canonical code inputs for a project or process; it
+does not create or transfer artifact ownership.
+
+Epic 6 uses these route and uniqueness rules:
 
 - create route determines attachment scope
 - a project-scoped attachment belongs to the project as shared current source
@@ -255,24 +280,34 @@ attached source definition.
 
 ### 3. Hydration and Freshness Management
 
-The user needs to know whether an attached source is hydrated, stale, missing,
-or unavailable before relying on it. When recovery is possible, the platform
-needs a visible rehydration or refresh path without hiding the rest of the
-source state.
+The user needs to know whether an attached source is `not_hydrated`,
+`hydrated`, `stale`, or `unavailable` before relying on it. When recovery is
+possible, the platform needs a visible rehydration or refresh path without
+hiding the rest of the source state.
 
-In Epic 5:
+In Epic 6:
 
+- `not_hydrated` means the durable attachment exists but no successful
+  hydration has been recorded yet
+- `hydrated` means the attachment's current working copy matches its durable
+  source definition
+- `stale` means the durable attachment still exists but the current working
+  copy no longer matches it or is recoverably missing; "missing" is surfaced
+  here as a `freshnessReason`, not as a fifth state
+- `unavailable` means the canonical source or current access path cannot be
+  resolved safely right now
 - freshness is evaluated when the current shell or process surface reads durable
   source state and when the user explicitly requests refresh
-- Epic 5 does not add background polling for source freshness
+- Epic 6 does not add background polling for source freshness
 - a branch ref may later become `stale` if the canonical ref changes after a
   prior hydration
-- a tag or commit ref usually remains current unless it becomes unavailable
+- a tag or commit ref usually remains `hydrated` rather than becoming `stale`;
+  if it can no longer be resolved, it becomes `unavailable`
 
 1. User opens a project shell or process work surface with one or more attached
    sources
 2. System shows hydration and freshness state for each source attachment
-3. User sees that a source is stale, missing, or not yet hydrated
+3. User sees that a source is `stale`, `not_hydrated`, or `unavailable`
 4. User requests rehydration or refresh where recovery is possible
 5. System updates the source attachment state
 
@@ -286,8 +321,9 @@ stale, or unavailable.
   - When: The current shell or process surface renders them
   - Then: Each source attachment shows its current hydration or freshness state
 
-**AC-3.2:** If a source attachment is stale, missing, or not yet hydrated, the
-platform shows a rehydration or refresh path where recovery is possible.
+**AC-3.2:** If a source attachment is `stale` or `not_hydrated`, the platform
+shows a rehydration or refresh path. `Unavailable` attachments do not falsely
+promise recovery.
 
 - **TC-3.2a: Rehydration path shown for stale source**
   - Given: A source attachment is stale
@@ -306,7 +342,7 @@ platform shows a rehydration or refresh path where recovery is possible.
 state without erasing the rest of the source-management surface.
 
 - **TC-3.3a: Source refresh updates in place**
-  - Given: User requests rehydration or refresh for one stale or missing source attachment
+  - Given: User requests rehydration or refresh for one stale or not-yet-hydrated source attachment
   - When: The request succeeds
   - Then: That source attachment updates in place without hiding the rest of the source list
 - **TC-3.3b: Refresh progress is visible while the request is in flight**
@@ -327,11 +363,12 @@ updates. Provenance must stay visible even after the active environment is gone.
 4. System shows which sources informed or received that work
 5. User understands the canonical source path of the work
 
-In Epic 5, provenance is process-specific. The project shell continues to show
-attached source state. The process work surface is where the user sees which
-repositories and refs informed or received that process's work.
+In Epic 6, source provenance is process-specific and complements the
+artifact-version provenance aligned in Epic 5. The project shell continues to
+show attached source state. The process work surface is where the user sees
+which repositories and refs informed or received that process's work.
 
-Epic 5 records provenance durably at two moments:
+Epic 6 records provenance durably at two moments:
 
 - `informed_work` provenance is recorded when process work uses attached sources
   as part of current process work
@@ -341,6 +378,12 @@ Epic 5 records provenance durably at two moments:
 Provenance remains durable after detach because each provenance entry stores
 canonical repository identity and target ref in its own record, not only the
 attachment reference.
+
+Each provenance relationship resolves independently. If one provenance lookup
+cannot fully enrich current attachment context, the provenance endpoint still
+returns the remaining entries and a bounded degraded entry for the failing
+relationship using the durable repository identity and ref already stored on
+that provenance record.
 
 #### Acceptance Criteria
 
@@ -371,6 +414,21 @@ durable code updates.
   - Given: A source attachment is read-only
   - When: User views source provenance after code work
   - Then: The platform does not present that source attachment as the durable code-write target
+
+**AC-4.4:** One failing provenance lookup does not fail the rest of the
+provenance surface.
+
+- **TC-4.4a: One degraded provenance entry does not hide healthy entries**
+  - Given: A process has multiple provenance relationships and one cannot fully
+    resolve current attachment context
+  - When: User loads process source provenance
+  - Then: The healthy provenance entries remain visible and the failing one is
+    returned as a bounded degraded entry
+- **TC-4.4b: Degraded provenance entry falls back to durable identity**
+  - Given: One provenance lookup cannot enrich current attachment metadata
+  - When: The provenance surface loads
+  - Then: The degraded entry still shows the durable repository identity and
+    target ref already recorded for that relationship
 
 ### 5. Detaching Sources and Preserving Prior Provenance
 
@@ -471,7 +529,7 @@ source-management surface remains visible.
 - **TC-6.3a: One failing source does not hide healthy sources**
   - Given: A source-management surface includes one unavailable source and other healthy sources
   - When: The surface renders
-  - Then: The healthy sources remain visible and only the failing source shows an unavailable or degraded state
+  - Then: The healthy sources remain visible and only the failing source shows the appropriate stale or unavailable state
 
 ---
 
@@ -479,28 +537,28 @@ source-management surface remains visible.
 
 ### Browser Routes
 
-Epic 5 works inside the existing project and process surfaces.
+Epic 6 works inside the existing project and process surfaces.
 
 | Route | Description |
 |-------|-------------|
 | `/projects/{projectId}` | Project shell showing project-scoped shared source attachments |
 | `/projects/{projectId}/processes/{processId}` | Process work surface showing process-scoped source attachments and source provenance |
 
-Epic 5 does not introduce a separate standalone source-management page in the
+Epic 6 does not introduce a separate standalone source-management page in the
 first cut.
 
 ### Endpoints
 
 | Operation | Method | Path | Description |
 |-----------|--------|------|-------------|
-| Get project shell | GET | `/api/projects/{projectId}` | Existing project-shell read path extended with Epic 5 source metadata in `sourceAttachments.items` |
-| Get process work surface | GET | `/api/projects/{projectId}/processes/{processId}` | Existing process work-surface read path extended with Epic 5 source metadata in `materials.currentSources` |
+| Get project shell | GET | `/api/projects/{projectId}` | Existing project-shell read path extended with Epic 6 source metadata in `sourceAttachments.items` |
+| Get process work surface | GET | `/api/projects/{projectId}/processes/{processId}` | Existing process work-surface read path extended with Epic 6 source metadata in `materials.currentSources` |
 | Attach project-scoped source | POST | `/api/projects/{projectId}/source-attachments` | Creates one project-scoped repository attachment |
 | Attach process-scoped source | POST | `/api/projects/{projectId}/processes/{processId}/source-attachments` | Creates one process-scoped repository attachment |
 | Update source attachment | PATCH | `/api/projects/{projectId}/source-attachments/{sourceAttachmentId}` | Updates durable source metadata for one existing source attachment; `sourceAttachmentId` identifies the attachment regardless of whether it is project-scoped or process-scoped |
 | Refresh source attachment | POST | `/api/projects/{projectId}/source-attachments/{sourceAttachmentId}/refresh` | Requests rehydration or refresh for one recoverable source attachment; `sourceAttachmentId` identifies the attachment regardless of whether it is project-scoped or process-scoped |
 | Detach source attachment | DELETE | `/api/projects/{projectId}/source-attachments/{sourceAttachmentId}` | Removes one source attachment from current active use; `sourceAttachmentId` identifies the attachment regardless of whether it is project-scoped or process-scoped |
-| Get process source provenance | GET | `/api/projects/{projectId}/processes/{processId}/source-provenance` | Returns process-specific provenance entries for attached sources that informed or received work |
+| Get process source provenance | GET | `/api/projects/{projectId}/processes/{processId}/source-provenance` | Returns process-specific provenance entries for attached sources that informed or received work, complementing artifact-version provenance from Epic 5; one degraded provenance lookup does not fail the whole read |
 
 ### Source Attachment Request
 
@@ -513,7 +571,7 @@ first cut.
 | accessMode | enum | yes | `read_only` or `read_write` | Whether durable code work may land back in this source |
 | targetRef | string | no | non-empty when present | Branch, tag, or commit ref if known. Branch refs may later become `stale`; tag or commit refs usually remain current unless unavailable |
 
-Create-scope ownership is route-based in Epic 5:
+Create-scope ownership is route-based in Epic 6:
 
 - `POST /api/projects/{projectId}/source-attachments` always creates a
   project-scoped source attachment
@@ -545,8 +603,11 @@ Create-scope ownership is route-based in Epic 5:
 | targetRef | string | no | non-empty when present | Branch, tag, or commit ref if known |
 | hydrationState | enum | yes | `not_hydrated`, `hydrated`, `stale`, or `unavailable` | Current hydration or freshness state |
 | lastHydratedAt | string | no | ISO 8601 UTC when present | Most recent successful hydration time |
-| freshnessReason | string | no | non-empty when present | Current reason the source is stale, missing, or unavailable |
+| freshnessReason | string | no | non-empty when present | Current reason the source is `stale` or `unavailable`; recoverable missing-working-copy cases are expressed as `stale` rather than as a fifth state |
 | updatedAt | string | yes | ISO 8601 UTC | Most recent durable update time |
+
+Epic 6 uses only these four attachment states. `missing` is represented through
+`freshnessReason` under `stale` or `unavailable`, not as a separate enum value.
 
 ### Source Provenance Entry
 
@@ -557,7 +618,12 @@ Create-scope ownership is route-based in Epic 5:
 | relationshipKind | enum | yes | `informed_work` or `received_code_update` | How this source relates to the process work |
 | repositoryFullName | string | yes | `owner/name` format, non-empty | Canonical repository identity |
 | targetRef | string | no | non-empty when present | Ref that informed or received the work |
+| entryStatus | enum | yes | `ready` or `degraded` | Whether this provenance entry resolved cleanly or is returned with bounded degradation |
+| degradationReason | string | no | non-empty when present | Why this provenance entry is degraded when `entryStatus` is `degraded` |
 | recordedAt | string | yes | ISO 8601 UTC | Time this provenance relationship was recorded |
+
+These entries complement the artifact version provenance defined in Epic 5.
+They do not redefine artifact ownership or version producer lineage.
 
 ### Attach Source Attachment Response
 
@@ -592,12 +658,16 @@ Create-scope ownership is route-based in Epic 5:
 
 **Sort order:** Provenance entries are ordered by `recordedAt` descending.
 
+A successful provenance read may contain both `ready` and `degraded` entries.
+Per-entry provenance degradation does not force a request-level error when the
+rest of the provenance surface is still readable.
+
 ### Refresh Failure Boundary
 
-In Epic 5, attach, update, refresh, and detach are request/response actions
+In Epic 6, attach, update, refresh, and detach are request/response actions
 inside the existing shell and process surfaces rather than long-running live
 workflows. Refresh returns only after the source attachment settles into a new
-durable source state or fails with an immediate request-level error. Epic 5
+durable source state or fails with an immediate request-level error. Epic 6
 does not introduce a separate source-management live subscription.
 
 ### Error Responses
@@ -622,6 +692,8 @@ Technical dependencies:
 
 - Epic 1 project shell source summary visibility
 - Epic 2 process materials visibility
+- Epic 5 artifact-model alignment for project-level artifacts, process
+  references, and review/package provenance rules
 - Epic 3 environment hydration and checkpoint loop for already-attached sources
 - Fastify-owned routes and shared client/server contract surfaces
 - GitHub-backed canonical source integration for repository identity and durable
@@ -629,9 +701,9 @@ Technical dependencies:
 
 Process dependencies:
 
-- Product confirmation that Epic 5 remains repository-focused and does not yet
-  include MCP-backed or other external-source attachment
-- Epic 6 for full archive, turn, chunk, and derived-view behavior
+- Epic 7 for full archive, turn, chunk, and derived-view behavior
+- Later source-integration follow-on after Epic 7 for MCP-backed or other
+  external-source attachment
 - Downstream process-specific epics to define when a process uses shared
   project-scoped sources versus process-scoped sources
 
@@ -664,6 +736,8 @@ Process dependencies:
   history
 - One unavailable source attachment does not fail the rest of the
   source-management surface
+- One degraded provenance lookup does not fail the rest of the provenance
+  surface
 - Reloading or reopening project or process surfaces restores the latest
   durable source attachment state
 
@@ -692,14 +766,17 @@ Questions for the Tech Lead to address during design:
    creating a separate source-management app?
 2. What exact durable schema should represent project-scoped and process-scoped
    source attachments, including canonical repository identity and provenance
-   visibility?
+   visibility, without reintroducing artifact-ownership semantics already
+   settled in Epic 5?
 3. What exact conflict rule should apply when the same repository and target ref
    are attached more than once in related contexts?
-4. What exact refresh and freshness-check policy should determine when a source
-   is `stale`, `not_hydrated`, or `unavailable`?
+4. What exact refresh and freshness-check policy should map durable conditions
+   into Epic 6's four source states: `not_hydrated`, `hydrated`, `stale`, and
+   `unavailable`?
 5. What exact provenance surface should show informed-work relationships and
-   received-code-update relationships without duplicating process history?
-6. How should Epic 5 extend the current shell and process surfaces so source
+   received-code-update relationships without duplicating process history or
+   artifact-version provenance from Epic 5?
+6. How should Epic 6 extend the current shell and process surfaces so source
    attachment management remains coherent across project-scoped and
    process-scoped use?
 
@@ -707,11 +784,16 @@ Questions for the Tech Lead to address during design:
 
 ## Recommended Story Breakdown
 
+These stories assume Epic 5 artifact alignment is already complete. No story in
+this epic owns artifact-model migration or review/package provenance
+realignment.
+
 ### Story 0: Foundation (Infrastructure)
 
 Create the shared source-management foundation: source attachment vocabulary,
 repository identity contracts, provenance shapes, error classes, hydration and
-freshness fixtures, and test helpers used by all later stories.
+freshness fixtures for the four-state model, Epic 5-aligned material/provenance
+seams, and test helpers used by all later stories.
 
 ### Story 1: Attach Repositories to a Project or Process
 
@@ -737,8 +819,9 @@ controls how an attached repository is used.
 
 ### Story 3: Hydration and Freshness Management
 
-**Delivers:** The user can see whether attached sources are hydrated, stale, or
-unavailable and can request recovery where possible.
+**Delivers:** The user can see whether attached sources are `not_hydrated`,
+`hydrated`, `stale`, or `unavailable` and can request recovery where Epic 6
+allows it.
 **Prerequisite:** Story 2
 **ACs covered:**
 
@@ -749,13 +832,15 @@ unavailable and can request recovery where possible.
 ### Story 4: Provenance and Canonical Source Visibility
 
 **Delivers:** The user can tell which attached repositories and refs informed or
-received process work.
+received process work, and the provenance surface degrades one failing lookup
+without hiding the rest.
 **Prerequisite:** Story 3
 **ACs covered:**
 
 - AC-4.1 (informing source provenance visible)
 - AC-4.2 (receiving source provenance visible)
 - AC-4.3 (read-only source not shown as write target)
+- AC-4.4 (one failing provenance lookup degrades independently)
 
 ### Story 5: Detach Sources and Preserve Prior Provenance
 
@@ -792,6 +877,6 @@ bounded source failures.
 - [ ] Scope boundaries are explicit
 - [ ] Story breakdown covers all ACs
 - [ ] Stories sequence logically
-- [ ] Archive work, external-source attachment, and broader GitHub workflow management are explicitly deferred
+- [ ] Artifact-model alignment (Epic 5), archive work (Epic 7), external-source attachment, and broader GitHub workflow management are explicitly deferred or out of scope
 - [ ] External review completed before Tech Design handoff
 - [ ] Self-review complete

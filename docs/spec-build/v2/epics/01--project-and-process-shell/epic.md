@@ -30,7 +30,11 @@ ships, the user can sign in, see the projects they can access, create or open a
 project, view its current processes, artifacts, and source attachments, and
 create a new process from a supported `ProcessType`. The shell restores durable
 state when the user returns and makes interrupted work visible before the deeper
-process work surface begins in Epic 2.
+process work surface begins in Epic 2. In this shell, artifacts are still
+project-level durable assets. If the shell shows process context for an
+artifact, that context is explanatory only and helps the user understand a
+current process reference and/or producing-process history, not artifact
+ownership.
 
 ---
 
@@ -57,7 +61,7 @@ This epic delivers the shared platform container above all process types:
 - Active process chat or control surface (Epic 2)
 - Environment hydration, process execution, and tool harness behavior (Epic 3)
 - Markdown review, Mermaid rendering, and package/export workflows (Epic 4)
-- Repository hydration, freshness resolution, and canonical archive derivation behavior (Epic 5)
+- Repository hydration, freshness resolution, and canonical archive derivation behavior (Epic 6)
 - Membership invitation, removal, or full team administration workflows
 - Manual process naming or renaming workflows
 - Generic workflow-schema authoring or no-code process configuration
@@ -287,9 +291,11 @@ it needs next, and which high-level shell actions are currently available.
 | TC-3.2h | `interrupted` | Summary identifies the process as interrupted and not currently progressing |
 
 **AC-3.3:** Each artifact summary shows the artifact's identity, current
-version context, and when needed whether the artifact is project-scoped or tied
-to a specific process, without requiring the user to open a separate review
-surface.
+version context, and when needed explicit process context that explains why the
+artifact is visible in the shell, without requiring the user to open a separate
+review surface. That context may include a current process reference, a
+producing-process note, or both. The artifact itself remains a project-level
+durable asset.
 
 - **TC-3.3a: Current artifact revision shown**
   - Given: A project artifact has one or more versions
@@ -307,10 +313,12 @@ surface.
   - Given: The project contains multiple artifacts with different update times
   - When: The artifact list renders
   - Then: Artifacts are ordered by most recently updated first
-- **TC-3.3e: Process-associated artifact context shown**
-  - Given: An artifact is associated with a specific process rather than only the project
+- **TC-3.3e: Process artifact context shown**
+  - Given: The shell is surfacing an artifact with current process reference
+    context, producing-process context, or both
   - When: The artifact appears in the shell
-  - Then: The summary shows enough association context to tell which process it is tied to
+  - Then: The summary shows which kind of process relationship is being
+    surfaced without implying that the artifact belongs only to that process
 
 **AC-3.4:** Each source attachment summary shows repository identity and
 high-level source state, including purpose, target ref when available,
@@ -676,15 +684,41 @@ with a `Create Process Response` body.
 
 ### Artifact Summary
 
+Supersession note: earlier Epic 1 drafts modeled artifact shell context with
+source-style `attachmentScope`, `processId`, and `processDisplayLabel` fields.
+That draft contract is superseded here. Artifact summaries use explicit
+`processContext` semantics instead because artifacts remain project-level
+assets, not attachments, and the shell may need to surface current process
+reference and producing-process context separately.
+
+In Epic 1, artifact summaries are still summaries of project-level durable
+artifacts. `processContext` is summary-only shell context. It explains why the
+artifact is visible in the shell, but it does not make the artifact owned by
+one process row or imply a full lineage/review surface.
+
 | Field | Type | Required | Validation | Description |
 |-------|------|----------|------------|-------------|
 | artifactId | string | yes | non-empty | Stable artifact identifier |
 | displayName | string | yes | non-empty | Artifact display name |
 | currentVersionLabel | string | no | non-empty when present | Current revision or version label |
-| attachmentScope | enum | yes | `project` or `process` | Whether the artifact is attached at project level or tied to a specific process |
-| processId | string | no | non-empty when present | Process identifier when the artifact is tied to a specific process |
-| processDisplayLabel | string | no | non-empty when present | Process display label when the artifact is tied to a specific process |
+| processContext | Artifact Process Context | no | present when the shell needs to explain artifact/process context | Explicit shell-only process context for the artifact summary |
 | updatedAt | string | yes | ISO 8601 UTC | Most recent durable artifact update time |
+
+When `processContext` is present, at least one of its subfields is present.
+
+#### Artifact Process Context
+
+| Field | Type | Required | Validation | Description |
+|-------|------|----------|------------|-------------|
+| currentProcessReference | Artifact Process Reference | no | present when the shell is surfacing current process material/reference context | Process that currently references the artifact in the shell's durable summary context |
+| producingProcess | Artifact Process Reference | no | present when the shell is surfacing historical producing-process context | Process historically associated with producing the artifact when that summary context is known |
+
+#### Artifact Process Reference
+
+| Field | Type | Required | Validation | Description |
+|-------|------|----------|------------|-------------|
+| processId | string | yes | non-empty | Stable process identifier for the referenced process |
+| processDisplayLabel | string | yes | non-empty | Human-readable process label for the referenced process |
 
 **Sort order:** Artifact list is sorted by `updatedAt` descending.
 

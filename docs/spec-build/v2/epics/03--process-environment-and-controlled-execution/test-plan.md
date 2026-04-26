@@ -97,6 +97,7 @@ Planned but not required for the first TDD cycles.
 - environment summary fixtures for:
   - `absent`
   - `preparing`
+  - `rehydrating`
   - `ready`
   - `running`
   - `checkpointing`
@@ -116,10 +117,11 @@ Planned but not required for the first TDD cycles.
 
 `tests/fixtures/checkpoint-results.ts`
 
-- artifact success
+- artifact success with project artifact id, artifact version id/label, and version provenance
+  - Epic 3 fixture field name remains `versionProvenanceProcessId`; this is the same producing-process identity Epic 5 names `producedByProcessId`
 - code success
 - mixed success
-- artifact failure
+- artifact failure with artifact target metadata when available
 - code failure
 - latest-only overwrite fixtures
 
@@ -128,12 +130,13 @@ Planned but not required for the first TDD cycles.
 - current sources with `read_only`
 - current sources with `read_write`
 - mixed writable/read-only source set
-- current artifacts and outputs used for hydration planning
+- current artifact references with version ids plus outputs used for hydration planning
 
 `tests/fixtures/live-process.ts`
 
 - `environment` snapshot message
 - `environment` upsert to `preparing`
+- `environment` upsert to `rehydrating`
 - `environment` upsert to `ready`
 - `environment` upsert to `running`
 - `environment` upsert to `checkpointing`
@@ -169,16 +172,16 @@ Planned but not required for the first TDD cycles.
 | `tests/service/server/process-actions-api.test.ts` | Service | start/resume/rehydrate/rebuild acceptance rules, hydration plan selection, checkpoint planning guards | 10 |
 | `tests/service/server/script-execution.service.test.ts` | Service | executor payload contract and process-scoped tool-harness boundary | 2 |
 | `tests/service/server/process-live-updates.test.ts` | Service | `environment` entity publication, typed upsert semantics, checkpoint-result live visibility | 7 |
-| `tests/service/client/process-work-surface-page.test.ts` | Service | page-level bootstrap, action orchestration, immediate rejection handling, durable render coherence | 12 |
-| `tests/service/client/process-controls.test.ts` | Service | stable visible controls, matrix state coverage, disabled reasons | 14 |
+| `tests/service/client/process-work-surface-page.test.ts` | Service | page-level bootstrap, action orchestration, immediate rejection handling, durable render coherence | 13 |
+| `tests/service/client/process-controls.test.ts` | Service | stable visible controls, matrix state coverage, disabled reasons | 15 |
 | `tests/service/client/process-environment-panel.test.ts` | Service | environment summary rendering, checkpoint visibility, recovery-state presentation | 10 |
 | `tests/service/client/process-materials-section.test.ts` | Service | source `accessMode` rendering and no-misleading-checkpoint-path presentation | 4 |
 | `tests/service/client/process-live.test.ts` | Service | live `environment` reconciliation, accepted-action vs later-failure behavior, current-object updates | 12 |
 | `tests/service/client/process-live-status.test.ts` | Service | live unavailable / reconnect UI | 2 |
 | `tests/integration/process-work-surface.test.ts` | Integration | reopen, durable environment summary, latest checkpoint visibility, no-duplication guarantees | 9 |
 
-**Planned total:** 103 tests  
-**TC conditions covered:** 57  
+**Planned total:** 105 tests  
+**TC conditions covered:** 58  
 **Non-TC decided tests:** 36
 
 Some TC conditions are intentionally asserted at more than one layer:
@@ -193,6 +196,7 @@ Some TC conditions are intentionally asserted at more than one layer:
 | TC | Test Name | Setup | Action | Assert |
 |----|-----------|-------|--------|--------|
 | TC-1.1c | `TC-1.1c preparing state renders preparing label and disables recovery controls` | Bootstrap with `environment.state = preparing` and full control set | Mount controls | Preparing state shown; start/resume/rehydrate/rebuild/restart disabled |
+| TC-1.1c.1 | `TC-1.1c.1 rehydrating state renders rehydrating label and disables recovery controls` | Bootstrap with `environment.state = rehydrating` and full control set | Mount controls | Rehydrating state shown; start/resume/rehydrate/rebuild/restart disabled |
 | TC-1.1d | `TC-1.1d ready state renders ready label and keeps recovery controls disabled` | Bootstrap with `environment.state = ready` | Mount controls | Ready label shown; rehydrate/rebuild disabled |
 | TC-1.1e | `TC-1.1e running state renders running label and disables recovery controls` | Bootstrap with `environment.state = running` | Mount controls | Running label shown; recovery controls disabled |
 | TC-1.1f | `TC-1.1f checkpointing state renders checkpointing label and disables lifecycle controls` | Bootstrap with `environment.state = checkpointing` | Mount controls | Checkpointing label shown; start/resume/rehydrate/rebuild/restart disabled |
@@ -222,6 +226,7 @@ Some TC conditions are intentionally asserted at more than one layer:
 | TC-2.1a | `TC-2.1a start enters preparation state in the same session` | Draft process with enabled `start`; accepted start response | Click `start` | Page updates to visible preparation state without reload |
 | TC-2.1b | `TC-2.1b resume enters preparation state when environment work is needed` | Resumable process with enabled `resume`; accepted resume response | Click `resume` | Page updates to visible preparation state |
 | TC-3.4a | `TC-3.4a execution failure leaves the page legible` | Existing rendered surface then failed environment update | Apply update | Core process sections remain visible with failure state |
+| TC-5.2a | `TC-5.2a accepted rehydrate enters rehydrating in the same session` | Stale environment with enabled `rehydrate`; accepted rehydrate response | Click `rehydrate` | Page updates to `environment.state = rehydrating` without reload |
 | TC-5.5a | `TC-5.5a rebuild blocked by missing canonical prerequisite shows immediate action rejection` | Rebuild request rejected with prerequisite error | Click `rebuild` | `actionError` visible, no false ready state |
 | TC-5.5b | `TC-5.5b rehydrate blocked when rebuild is required shows immediate action rejection` | Rehydrate request rejected with recoverability error | Click `rehydrate` | `actionError` visible with rebuild guidance |
 | TC-6.3a | `TC-6.3a durable surface remains usable when live updates fail` | Bootstrap success, websocket connection fails | Mount page | Process and environment remain readable |
@@ -239,9 +244,9 @@ Some TC conditions are intentionally asserted at more than one layer:
 | TC | Test Name | Setup | Action | Assert |
 |----|-----------|-------|--------|--------|
 | TC-4.2b | `TC-4.2b code checkpoint result is process-visible` | Environment summary with successful code checkpoint result | Mount panel | Source target and target ref visible |
-| TC-4.4a | `TC-4.4a artifact checkpoint result is visible` | Environment summary with successful artifact checkpoint result | Mount panel | Artifact checkpoint success visible |
+| TC-4.4a | `TC-4.4a artifact checkpoint result is visible` | Environment summary with successful artifact checkpoint result | Mount panel | Artifact checkpoint success and artifact version details visible |
 | TC-4.4b | `TC-4.4b code checkpoint result is visible` | Environment summary with successful code checkpoint result | Mount panel | Code checkpoint success visible |
-| TC-4.5a | `TC-4.5a artifact checkpoint failure is shown` | Environment summary with failed artifact checkpoint result | Mount panel | Artifact failure visible |
+| TC-4.5a | `TC-4.5a artifact checkpoint failure is shown` | Environment summary with failed artifact checkpoint result | Mount panel | Artifact failure visible with target metadata when available |
 | TC-4.5b | `TC-4.5b code checkpoint failure is shown` | Environment summary with failed code checkpoint result | Mount panel | Code failure visible |
 | TC-5.1a | `TC-5.1a stale environment is distinct` | `environment.state = stale` | Mount panel | Stale label visible |
 | TC-5.1b | `TC-5.1b lost environment is distinct` | `environment.state = lost` | Mount panel | Lost label visible |
@@ -281,7 +286,7 @@ Some TC conditions are intentionally asserted at more than one layer:
 | TC-3.2b | `TC-3.2b browser does not reconstruct raw stream fragments` | Typed environment/process upserts only | Apply live messages | Store updates directly from current-object payloads |
 | TC-3.3a | `TC-3.3a waiting is distinct from running` | Process waiting update plus non-running environment update | Apply live messages | Waiting shown without running state |
 | TC-3.3b | `TC-3.3b checkpointing is distinct from running` | Environment checkpointing update | Apply live message | Checkpointing stored distinctly |
-| TC-5.2b | `TC-5.2b rehydrate updates visible state in the same session` | Accepted rehydrate then ready/running environment update | Apply live messages | Page/store move from stale/preparing to ready/running |
+| TC-5.2b | `TC-5.2b rehydrate updates visible state in the same session` | Accepted rehydrate then ready/running environment update | Apply live messages | Page/store move from stale/rehydrating to ready/running |
 
 **Non-TC decided tests**
 
@@ -306,10 +311,10 @@ Some TC conditions are intentionally asserted at more than one layer:
 
 | TC | Test Name | Setup | Action | Assert |
 |----|-----------|-------|--------|--------|
-| TC-2.2a | `TC-2.2a current materials hydrate into the environment` | Process with current artifacts, outputs, and sources; provider stub | POST `start` or `resume` | Provider receives hydration plan built from current materials only |
+| TC-2.2a | `TC-2.2a current materials hydrate into the environment` | Process with current artifact references and versions, outputs, and sources; provider stub | POST `start` or `resume` | Provider receives hydration plan built from current materials only |
 | TC-2.2b | `TC-2.2b process with partial working set still hydrates correctly` | Process with only a subset of material categories | POST `start` or `resume` | Hydration plan omits absent categories and still accepts |
 | TC-4.2a | `TC-4.2a writable source code checkpoint succeeds` | Successful execution with writable source candidate and GitHub writer stub | Trigger checkpoint path | Code checkpoint writer called for attached writable source |
-| TC-5.2a | `TC-5.2a rehydrate refreshes stale working copy` | Recoverable stale environment | POST `rehydrate` | Provider rehydrate path called |
+| TC-5.2a | `TC-5.2a rehydrate refreshes stale working copy` | Recoverable stale environment | POST `rehydrate` | Accepted response returns `environment.state = rehydrating` and provider rehydrate path is called |
 | TC-5.3a | `TC-5.3a rebuild replaces lost environment` | Lost environment state | POST `rebuild` | Provider rebuild path called and accepted |
 | TC-5.3b | `TC-5.3b rebuild does not depend on prior working copy survival` | Missing environment handle but canonical inputs available | POST `rebuild` | Rebuild accepted without prior handle |
 
@@ -327,7 +332,7 @@ Some TC conditions are intentionally asserted at more than one layer:
 | TC | Test Name | Setup | Action | Assert |
 |----|-----------|-------|--------|--------|
 | TC-3.2b | `TC-3.2b live publication emits typed current objects rather than raw fragments` | Provider/executor emits progress data | Publish/live flow | Browser-facing payload is typed current-object state |
-| TC-4.1a | `TC-4.1a durable artifact output persists and latest result is published live` | Successful artifact checkpoint after execution | Publish/live flow | Environment live payload includes latest artifact checkpoint result |
+| TC-4.1a | `TC-4.1a durable artifact output persists and latest result is published live` | Successful artifact checkpoint after execution | Publish/live flow | Environment live payload includes latest artifact checkpoint result with artifact target/version metadata |
 | TC-4.5b | `TC-4.5b code checkpoint failure is shown through live environment state` | Failed code checkpoint after accepted action | Publish/live flow | Environment payload includes failed latest checkpoint result |
 
 **Non-TC decided tests**
@@ -356,7 +361,7 @@ Some TC conditions are intentionally asserted at more than one layer:
 | Test Name | Reason |
 |-----------|--------|
 | `bootstrap returns environment summary in the primary response contract` | Contract-critical even if client tests cover rendering |
-| `bootstrap returns latest checkpoint result when one exists` | Contract-critical reopen shape |
+| `bootstrap returns latest checkpoint result when one exists, including artifact version metadata for artifact checkpoints` | Contract-critical reopen shape |
 | `bootstrap returns environment unavailable instead of failing the whole surface when environment data cannot be read` | Section-level degradation equivalent for the new environment slice |
 | `bootstrap returns source accessMode in current source references` | Contract-critical materials extension |
 | `bootstrap omits no core process data when environment is absent or lost` | Prevents environment state from eclipsing process truth |
@@ -369,7 +374,7 @@ Some TC conditions are intentionally asserted at more than one layer:
 | Test Name | Reason |
 |-----------|--------|
 | `upserts one environment row per process and resolves it by processId` | Core table behavior |
-| `stores and overwrites lastCheckpointResult with latest-only semantics` | Guards latest-result design |
+| `stores and overwrites lastCheckpointResult with latest-only semantics while preserving artifact version metadata` | Guards latest-result design |
 | `marks lost environment without mutating process lifecycle state` | Preserves state separation |
 | `stores workingSetFingerprint used for stale detection` | Supports rehydrate vs rebuild semantics |
 | `stores blockedReason separately from process nextActionLabel` | Preserves environment/process state separation |
@@ -399,8 +404,8 @@ Some TC conditions are intentionally asserted at more than one layer:
 | TC | Test Name | Setup | Action | Assert |
 |----|-----------|-------|--------|--------|
 | TC-1.4a | `TC-1.4a reload preserves environment truth` | Seed process with environment summary, then mutate durable env state before reload | Reload route | Reloaded surface reflects durable environment truth |
-| TC-4.1b | `TC-4.1b artifact output remains recoverable after reopen` | Successful artifact checkpoint | Reopen route | Latest checkpoint result and durable artifact state visible |
-| TC-5.4a | `TC-5.4a durable artifact state survives rebuild` | Checkpoint artifact success, then rebuild | Reopen after rebuild | Artifact state remains visible |
+| TC-4.1b | `TC-4.1b artifact output remains recoverable after reopen` | Successful artifact checkpoint | Reopen route | Latest checkpoint result and durable artifact version state visible |
+| TC-5.4a | `TC-5.4a durable artifact state survives rebuild` | Checkpoint artifact success, then rebuild | Reopen after rebuild | Artifact version state remains visible |
 | TC-5.4b | `TC-5.4b durable code persistence survives rebuild` | Successful writable-source checkpoint, then rebuild | Reopen after rebuild | Latest checkpoint result and durable source state remain visible |
 | TC-6.1a | `TC-6.1a reopen restores durable state` | Prior environment work and latest checkpoint result | Reopen route | Surface restores latest durable state |
 | TC-6.2a | `TC-6.2a durable work remains after environment absence` | Remove current environment after successful checkpoint | Reopen route | Durable result still visible |
@@ -496,7 +501,7 @@ behavior, no-duplication guarantees.
 **Relevant docs:** `tech-design-client.md` §Flow 1, §Flow 5;
 `tech-design-server.md` §Flow 6
 
-**File-inventory running total:** 93 planned tests across all layers
+**File-inventory running total:** 105 planned tests across all layers
 
 ## Manual Verification Checklist
 
@@ -504,13 +509,14 @@ behavior, no-duplication guarantees.
 2. Sign in through the local WorkOS environment.
 3. Open a process route and verify the environment panel renders on first load.
 4. Verify the full stable control set is visible, including disabled controls.
-5. Open fixtures for `preparing`, `ready`, `stale`, `lost`, `failed`, and
-   `unavailable` environment states and confirm each state renders distinctly.
+5. Open fixtures for `preparing`, `rehydrating`, `ready`, `stale`, `lost`,
+   `failed`, and `unavailable` environment states and confirm each state renders distinctly.
 6. Start a draft process and confirm the page moves into visible preparation
    without a full reload.
 7. Resume a resumable process and confirm the page updates in-session.
 8. Trigger a stale environment and confirm `rehydrate` is available while
-   `rebuild` explains why it is blocked.
+   `rebuild` explains why it is blocked, then trigger `rehydrate` and confirm
+   the surface enters `rehydrating` before later readiness or failure.
 9. Trigger a lost environment and confirm `rebuild` is available while
    `rehydrate` explains why it is blocked.
 10. Trigger a blocked `rehydrate` and a blocked `rebuild` and confirm each
@@ -518,7 +524,8 @@ behavior, no-duplication guarantees.
 11. Seed writable and read-only sources and confirm `accessMode` renders
     correctly.
 12. Trigger an artifact checkpoint success and confirm the latest checkpoint
-    result appears in the environment panel.
+    result appears in the environment panel with the project artifact target and
+    resulting version details.
 13. Trigger a code checkpoint success and confirm the target source and target
     ref are visible.
 14. Trigger a checkpoint failure and confirm the latest checkpoint result shows

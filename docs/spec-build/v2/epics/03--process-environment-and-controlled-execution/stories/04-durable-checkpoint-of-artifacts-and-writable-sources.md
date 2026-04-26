@@ -21,7 +21,7 @@ Deliver the durable checkpoint slice so environment work persists to canonical a
 
 In:
 
-- Persist artifact outputs durably for the process
+- Persist artifact outputs durably to project-level artifact state referenced by the process
 - Persist writable-source code changes back to canonical code truth
 - Keep read-only sources out of code checkpoint paths
 - Show checkpoint results clearly on the process surface
@@ -43,16 +43,16 @@ Out:
 
 ### Acceptance Criteria
 <!-- Jira: Acceptance Criteria field -->
-**AC-4.1:** Artifact outputs produced during controlled environment work can checkpoint back to durable artifact state for the process.
+**AC-4.1:** Artifact outputs produced during controlled environment work can checkpoint back to project-level durable artifact state without reassigning artifact ownership to the checkpointing process.
 
 - **TC-4.1a: Durable artifact output persists**
   - Given: Process produces artifact output during environment work
   - When: Checkpointing succeeds
-  - Then: The resulting artifact output appears in durable process state and remains available after the environment is gone
+  - Then: The resulting artifact output appears as a new durable project artifact or as a new version of an existing project artifact referenced by the process, and remains available after the environment is gone
 - **TC-4.1b: Artifact output remains recoverable after reopen**
   - Given: Artifact output checkpointing succeeded earlier
   - When: User later reloads or reopens the process
-  - Then: The checkpointed artifact output remains visible from durable state
+  - Then: The checkpointed artifact output remains visible from durable state, including the version created for that checkpoint when an existing artifact was revised
 
 This TC becomes fully end-to-end exercisable once Story 6 lands. Story 4 establishes the durable artifact persistence contract and checkpoint state that Story 6 restores on reopen.
 
@@ -79,7 +79,7 @@ This TC becomes fully end-to-end exercisable once Story 6 lands. Story 4 establi
 - **TC-4.4a: Artifact checkpoint result visible**
   - Given: Artifact checkpointing succeeds
   - When: The process surface updates
-  - Then: The surface shows that durable artifact work persisted
+  - Then: The surface shows that durable artifact work persisted to a project-level artifact target and identifies the resulting version
 - **TC-4.4b: Code checkpoint result visible**
   - Given: Writable-source checkpointing succeeds
   - When: The process surface updates
@@ -108,6 +108,10 @@ This story owns the durable checkpoint visibility contract for artifacts and wri
 | `checkpointKind` | enum | yes | `artifact`, `code`, or `mixed` | Type of durable work that persisted |
 | `outcome` | enum | yes | `succeeded` or `failed` | Result of the checkpoint attempt |
 | `targetLabel` | string | yes | non-empty | Canonical target that received or failed to receive the durable work |
+| `artifactId` | string | no | non-empty when present | Project-level artifact target when the checkpoint applies to artifact output |
+| `artifactVersionId` | string | no | non-empty when present | Exact artifact version created by the checkpoint when artifact persistence succeeds |
+| `artifactVersionLabel` | string | no | non-empty when present | Human-readable label for the artifact version created by the checkpoint |
+| `versionProvenanceProcessId` | string | no | non-empty when present | Process recorded as provenance for `artifactVersionId` when artifact output persists; this is the same producing-process identity Epic 5 names `producedByProcessId` on artifact versions |
 | `targetRef` | string | no | non-empty when present | Canonical target ref when the checkpoint applies to code |
 | `completedAt` | string | yes | ISO 8601 UTC | Time the checkpoint attempt settled |
 | `failureReason` | string | no | non-empty when present | Current visible reason for checkpoint failure |
@@ -117,9 +121,15 @@ This story owns the durable checkpoint visibility contract for artifacts and wri
 | Field | Type | Required | Validation | Description |
 |---|---|---|---|---|
 | `lastCheckpointAt` | string | no | ISO 8601 UTC when present | Time the most recent checkpoint attempt settled |
-| `lastCheckpointResult` | Last Checkpoint Result or null | yes | present | Latest visible checkpoint outcome for this process environment; `null` when no checkpoint has settled yet |
+| `lastCheckpointResult` | Last Checkpoint Result or null | yes | present | Latest visible checkpoint outcome for this process environment; artifact checkpoints point at a project-level artifact target and the version created by this process when present; `null` when no checkpoint has settled yet |
 
-Checkpoint visibility in this epic is latest-result only. When a new checkpoint settles, `lastCheckpointResult` replaces the prior visible checkpoint result. Historical checkpoint moments may also appear in visible history, but this epic does not define a separate ordered checkpoint-results list.
+Checkpoint visibility in this epic is latest-result only. When a new checkpoint settles, `lastCheckpointResult` replaces the prior visible checkpoint result. Historical checkpoint moments may also appear in visible history, but this epic does not define a separate ordered checkpoint-results list. If the checkpoint revised an existing artifact, the new result identifies the same project-level artifact plus the newly created version rather than implying that artifact ownership moved to the latest process.
+
+Epic 3 keeps `versionProvenanceProcessId` in the process-surface checkpoint
+payload. Epic 5's artifact-model pack uses `producedByProcessId` for the same
+artifact-version provenance identity. This is only a naming cross-walk; it does
+not import Epic 5 review, package, or broader artifact-surface behavior into
+Story 4.
 
 Story 4 owns the persisted checkpoint state and latest-result shape. Story 6 consumes that durable state when the process route reopens later without an active environment.
 
@@ -144,10 +154,10 @@ See the tech design document for full architecture, implementation targets, and 
 
 ### Definition of Done
 <!-- Jira: Definition of Done or Acceptance Criteria footer -->
-- Artifact outputs persist to durable process-visible artifact state
+- Artifact outputs persist to project-level durable artifact state referenced by the process
 - Writable-source code changes persist to canonical code truth and show source identity plus target ref
 - Read-only sources never present code checkpointing as an available durable path
-- The environment summary shows the latest checkpoint result clearly for both success and failure
+- The environment summary shows the latest checkpoint result clearly for both success and failure, including artifact version details when applicable
 - Checkpoint failure leaves a visible recovery or retry path instead of silently dropping work
 - TC-4.1b is expected to run end-to-end after Story 6 adds reopen restoration; Story 4 still owns the durable state established before that reopen
 - Story tests cover TC-4.1a through TC-4.5b

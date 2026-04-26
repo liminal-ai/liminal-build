@@ -79,10 +79,10 @@ tools, artifacts, sources, archive, and review.
 | Processes | Fastify | Process lifecycle control, phase transitions, delegated work orchestration, process-module dispatch | Projects, Artifacts, Environments, Archive | Process types are executed through this domain and do not bypass it with ad hoc controllers |
 | Environments | Fastify + provider backends | Disposable environments, hydration, checkpointing, environment identity, provider abstraction | Processes, Sources | Processes that need filesystem work request environments through this domain |
 | Tool Runtime | Sandbox runtime | TypeScript scripted execution, process-scoped tool exposure, capability wiring inside the environment | Environments | Tool execution happens inside the environment and does not talk directly to canonical stores by default |
-| Artifacts | Fastify + Convex + client review surface | Artifact records, versions, project/process attachment, package/export assembly | Projects, MDV-derived renderer | Artifact storage stays generic; process modules assign meaning |
-| Sources | Fastify | GitHub source attachment, hydration provenance, MCP boundaries, external source mediation | Environments, Processes | Repos and external sources are attached to processes explicitly rather than discovered informally |
+| Artifacts | Fastify + Convex + client review surface | Project-scoped artifact records, versions, version provenance, process references, package/export assembly | Projects, MDV-derived renderer | Artifact storage stays generic and project-scoped; process modules assign meaning and working context |
+| Sources | Fastify + Convex + upstream source systems | Project- and process-scoped repository attachments, durable source-state records, hydration/freshness metadata, source provenance, and future controlled source-integration boundaries | Environments, Processes | Repository attachments are first-class durable records at project or process scope; MCP/external source mediation remains an explicit later extension seam rather than informal discovery |
 | Archive | Fastify + Convex + cache/index layers | Full-fidelity low-level process history, turn derivation, later chunk/view derivation inputs | Processes | Canonical history is preserved at entry grain; turns and chunks are derived over it |
-| Review Workspace | Client + Fastify-backed APIs | Markdown/Mermaid rendering, artifact reading, process-aware review surface, package viewing | Artifacts, Processes, Archive | Review lives in the same platform surface as orchestration rather than in an external viewer |
+| Review Workspace | Client + Fastify-backed APIs | Markdown/Mermaid rendering, artifact reading, pinned-context review surface, package viewing | Artifacts, Processes, Archive | Review lives in the same platform surface as orchestration, and eligibility follows process reference or pinned package context rather than artifact ownership |
 
 ```mermaid
 flowchart TD
@@ -137,27 +137,36 @@ first-party process module enters through the Processes domain, uses the
 Artifacts and Archive domains, and requests environment work through the
 Environments domain.
 
-The state ownership between those domains is:
+The high-level state ownership between those domains is:
 
 ```mermaid
 erDiagram
     PROJECT ||--o{ PROCESS : contains
     PROJECT ||--o{ ARTIFACT : contains
+    PROJECT ||--o{ PACKAGE_SNAPSHOT : contains
     PROCESS ||--o{ ARCHIVE_ENTRY : records
-    PROCESS ||--o{ PROCESS_REPOSITORY : attaches
+    PROJECT ||--o{ SOURCE_ATTACHMENT : contains
+    PROCESS o|--o{ SOURCE_ATTACHMENT : scopes_when_process_scoped
     PROCESS ||--o| ENVIRONMENT : uses
     ARTIFACT ||--o{ ARTIFACT_VERSION : versions
-    PROCESS ||--o{ PROCESS_ARTIFACT : references
+    PROCESS ||--o{ PROCESS_ARTIFACT_REF : references
+    PROCESS ||--o{ PACKAGE_SNAPSHOT : assembles_in
+    ARTIFACT_VERSION }o--|| PROCESS : produced_by
+    PACKAGE_SNAPSHOT ||--o{ PACKAGE_MEMBER : pins
+    PACKAGE_MEMBER }o--|| ARTIFACT_VERSION : targets
     TURN ||--o{ ARCHIVE_ENTRY : groups
     CHUNK ||--o{ TURN : summarizes
-    PROCESS_REPOSITORY }o--|| REPOSITORY_REF : targets
+    SOURCE_ATTACHMENT }o--|| REPOSITORY_REF : targets
 ```
 
 | Interaction | Downstream Inherits |
 |-------------|---------------------|
-| Project contains both processes and artifacts | Process modules should attach their work to a project rather than inventing separate containers |
-| Processes reference artifacts rather than redefining their meaning | Artifact semantics stay process-owned and version-aware |
-| Processes attach repositories by reference | Repo identity and repo relationship are separate concerns |
+| Project contains processes, artifacts, and package snapshots | Shared reviewable assets stay project-scoped even when different processes assemble them into packages |
+| Processes reference artifacts rather than owning them | A process can work with an existing project artifact without rewriting artifact ownership |
+| Artifact versions carry producing-process provenance | Later revisions show which process produced each version without changing the artifact's project identity |
+| Pinned package members target explicit artifact versions | Reviewable packs can combine versions from multiple processes in the same project without floating to newer revisions |
+| Review and package eligibility come from process reference or pinned package context | Review and package publication do not depend on a single primary-process field on the artifact |
+| Projects or processes attach repositories by reference | Repo identity and repo relationship are separate concerns |
 | Processes may use an environment without making it canonical | Environment loss must be survivable through rehydration |
 | Full-fidelity archive entries are canonical while turns are derived | Context-management features can evolve without rewriting the archive |
 | Chunks summarize turns instead of replacing them | Derived views remain rebuildable from the archive |
@@ -232,18 +241,44 @@ semantics matter more here than generic runtime flexibility.
 **Consequence:** New process types require code, schema, and migrations. The
 platform does not attempt to define one dynamic universal process-state schema.
 
-### Artifact Semantics Stay Process-Owned
+### Artifact Records Are Project-Scoped; Meaning Stays Process-Owned
 
-**Choice:** The Artifacts domain stores generic artifacts and versions. Process
-modules define what those artifacts mean.
+**Choice:** Artifact records are durable project-scoped assets. Processes
+reference those artifacts, may create new versions, and each version carries
+producing-process provenance. Process modules still define what those artifacts
+mean.
 
 **Rationale:** The same artifact model should support PRDs, tech architecture
 docs, epics, tech designs, publish outputs, review docs, and future process
-outputs without hard-coding a global ontology for each one.
+outputs without hard-coding a global ontology for each one. Later processes
+must be able to revise or review existing project artifacts without the model
+implying that the artifact changed owners.
 
 **Consequence:** "Accepted epic", "current tech design", and similar meanings
 live in process-specific state and phase logic rather than in the generic
-artifact layer.
+artifact layer. Current process references and pinned review/package context
+live outside the artifact identity itself, and the artifact layer does not need
+to encode a single primary-process owner.
+
+### Review and Package Context Pins Explicit Versions
+
+**Choice:** Review eligibility and package-publication eligibility are granted
+by current process reference or pinned package context. Package members pin
+explicit artifact versions and may compose artifacts produced across multiple
+processes within one project.
+
+**Rationale:** A process must be able to review project artifacts it currently
+uses even when those artifacts were first created or later revised by other
+processes. Spec-oriented packages also need to combine explicit versions from
+across planning, specification, and implementation work without drifting to
+later revisions automatically.
+
+**Consequence:** Review and packaging stay process-aware without making artifact
+ownership equal review access. Package/export assembly works from pinned members
+and explicit version context rather than from whichever artifact versions happen
+to be current later, and a publishing process does not sweep in arbitrary
+project artifact versions outside its current reference or pinned package
+context.
 
 ### Full-Fidelity Archive Is Canonical
 
@@ -324,15 +359,21 @@ into shared infrastructure. The initial platform does not require that.
 
 ### Repository Attachments Need Purpose and Access
 
-**Choice:** Processes attach repositories with explicit purpose, access mode,
-target ref, and hydration state.
+**Choice:** Repositories may be attached at project or process scope with
+explicit purpose, access mode, target ref, and hydration state.
 
 **Rationale:** A repo may be present for research, review, or implementation.
 Those are different relationships to the same canonical source and should not be
-left implicit.
+left implicit. Some repos need to be shared across several processes, while
+others only matter to one process context.
 
-**Consequence:** Repository attachments belong to process state. Environments
-materialize those attachments as working copies when hydrated.
+**Consequence:** Source attachments belong to durable source state scoped to a
+project or one process. Environments materialize the relevant attachments as
+working copies when hydrated.
+
+In the current Epic 5, Epic 6, and Epic 7 sequence, this domain is
+repository-focused. MCP-backed and other external-source attachment flows
+remain a later extension seam rather than scope assigned to Epic 6 or Epic 7.
 
 ### Any Process May Need Repositories
 
@@ -477,7 +518,7 @@ sequenceDiagram
     participant T as In-Sandbox Script Executor
 
     C->>F: Start or resume process
-    F->>X: Load project, process state, artifacts, repo assignments
+    F->>X: Load project, process state, artifact refs, pinned package context, repo assignments
     alt Repo attachments exist
         F->>G: Resolve refs and fetch source material
     end
@@ -488,7 +529,7 @@ sequenceDiagram
     F->>A: Send scripted payload to executor
     A->>T: Execute script inside environment
     T-->>F: Outputs, file changes, tool results
-    F->>X: Persist process state and artifact versions
+    F->>X: Persist process state, artifact references, and artifact versions
     alt Code changes published
         F->>G: Push commit / branch / PR updates
     end
@@ -497,7 +538,8 @@ sequenceDiagram
 
 **Breakdown:**
 
-1. Fastify loads canonical project/process/artifact state from Convex.
+1. Fastify loads canonical project/process state, relevant project artifacts,
+   and any pinned package context from Convex.
 2. Fastify resolves any assigned repo inputs from GitHub.
 3. Fastify uses an environment adapter to create or resume the process
    environment through the provider abstraction.
@@ -507,7 +549,7 @@ sequenceDiagram
    environment.
 7. Fastify appends completed canonical history entries into the Archive domain.
 8. Fastify checkpoints durable results back to Convex and, when relevant, to
-   GitHub.
+   GitHub, including new artifact versions and updated process references.
 9. The client never treats the environment filesystem as source of truth.
 
 **Downstream inherits:** Every process type that needs filesystem work follows
@@ -526,8 +568,10 @@ and toolset; it does not invent a new canonical-source model.
   state schemas and persistence rather than relying on dynamic generic blobs.
 - **Any process may need repositories.** Repo hydration is not reserved only for
   implementation work.
-- **Artifacts remain generic.** Process specs must define which artifacts matter
-  and why rather than assuming global artifact semantics already exist.
+- **Artifacts remain generic and project-scoped.** Process specs must define
+  which artifacts matter, which process references are current, and which
+  pinned versions belong in review/package contexts rather than assuming global
+  artifact semantics already exist.
 - **Archive entries stay low-grain.** Process specs should not store only
   already-grouped turns or already-compressed summaries as canonical history.
 - **Controlled execution is default.** Scripted process code should be executed
@@ -791,7 +835,10 @@ Not the source of truth for:
 - [ ] Filesystem working copies are clearly not canonical truth
 - [ ] Canonical artifact truth and canonical code truth are clearly distinct
 - [ ] Process types are clearly code-defined, not dynamic
-- [ ] Artifact semantics are clearly process-owned
+- [ ] Artifact records are clearly project-scoped while meaning and working
+      context remain process-owned
+- [ ] Review/package eligibility is clearly based on process reference or
+      pinned version context rather than artifact ownership
 - [ ] Repository purpose/access/hydration are clearly first-class concerns
 - [ ] Environment hydration and checkpointing are shown as core flows
 - [ ] Canonical archive entry taxonomy and finalized-entry rule are explicit

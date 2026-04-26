@@ -22,9 +22,9 @@ Deliver the package-review substrate and workspace so one durable package snapsh
 In:
 
 - Provide the `publishPackageSnapshot` typed internal mutation that persists one durable ordered package snapshot for downstream process-module publication flows
-- Open one durable package snapshot as one reviewable package rather than as unrelated standalone artifacts
+- Open one durable package snapshot as one reviewable package rather than as unrelated standalone artifacts, even when pinned members come from multiple processes in the same project
 - Preserve package membership and package order exactly as published in the package snapshot
-- Default to the first reviewable member when no explicit member is selected
+- Default to the first ready member when one exists, while still allowing the package to open on a durable unsupported member when no member is ready
 - Keep package context visible while the user moves between members
 - Keep the package open when one member is unsupported or unavailable and other members remain healthy
 
@@ -81,7 +81,7 @@ These package-review test conditions are exercisable through tests and manual Co
 - **TC-4.3c: Package opens first member when no explicit member is selected**
   - Given: User opens one package without an explicit selected member
   - When: The package workspace loads
-  - Then: The workspace opens the first reviewable member in package order
+  - Then: The workspace opens the first `ready` member in package order, falling back to the first durable `unsupported` member only when no member is `ready`
 
 **AC-4.4:** If one package member is unavailable or unreadable, the package workspace remains open and shows that member failure without hiding the healthy members.
 
@@ -103,9 +103,16 @@ This story adds package-snapshot review on top of the process-aware review works
 #### Downstream Publication Handoff
 
 - Epic 4 owns `publishPackageSnapshot`, a typed internal mutation that downstream process-module code calls when its publication decision fires.
-- The mutation persists one durable package snapshot for one process as a fixed ordered set of artifact versions in package order.
+- The mutation persists one durable package snapshot for one process review context as a fixed ordered set of artifact versions in package order.
+- `publishPackageSnapshot` requires at least one member. A pathologically zero-member snapshot is treated as unavailable on read and does not make the process reviewable.
+- Pinned package members may come from multiple producing processes in the same project; the publishing process context does not imply member ownership.
 - The published snapshot becomes the source of truth for Story 4 package review and Story 5 export. Later artifact revisions do not mutate earlier package snapshots.
 - Until a downstream process-module production flow calls this mutation, package review remains exercisable through tests and manual Convex seeding.
+
+Package reviewability note: a package is reviewable when the snapshot remains
+reachable in the current process review context and has at least one durable
+member. For Story 4, `unsupported` members still count as durable review
+members; `unavailable` members do not.
 
 #### Review Endpoint Query Parameters
 
@@ -129,7 +136,7 @@ Note: The canonical shared contract definitions are established in Story 0 (Foun
 
 **Sort order:** Package members are ordered by the package's defined review order.
 
-**Default selection:** When no `memberId` is supplied in the query state, the server selects the first member with `status: ready`, falling through to the first member only when no member is in `ready` state.
+**Default selection:** When no `memberId` is supplied in the query state, the server selects the first member with `status: ready`, falling through to the first durable member (`status: unsupported`) only when no member is in `ready` state. If no durable member remains, the package is unavailable rather than selectable.
 
 #### Package Member
 
@@ -141,7 +148,7 @@ Note: The canonical shared contract definitions are established in Story 0 (Foun
 | `displayName` | string | yes | non-empty | Artifact display name in the package |
 | `versionId` | string | yes | non-empty | Durable artifact version identifier for this package snapshot member |
 | `versionLabel` | string | yes | non-empty | Durable artifact version label for this package snapshot member |
-| `status` | enum | yes | `ready`, `unsupported`, or `unavailable` | Reviewability state for this member |
+| `status` | enum | yes | `ready`, `unsupported`, or `unavailable` | Reviewability state for this member: `ready` means renderable in the current workspace, `unsupported` means durable but not renderable in the current workspace, and `unavailable` means the pinned version no longer resolves durably |
 
 #### Package Member Review
 
@@ -163,8 +170,8 @@ Note: The canonical shared contract definitions are established in Story 0 (Foun
 
 | `available` | Other fields | Semantics |
 |---|---|---|
-| `true` | *(no other fields)* | Every package member is `status: ready`; the export action is offered |
-| `false` | `reason: string` (required, non-empty) | At least one package member is `unsupported` or `unavailable`; the export action is hidden and the reason may be surfaced |
+| `true` | *(no other fields)* | The snapshot has at least one durable member and no package member is `unavailable`; `unsupported` members do not by themselves block export |
+| `false` | `reason: string` (required, non-empty) | The snapshot has zero durable members or at least one package member is `unavailable`; the export action is hidden and the reason may be surfaced |
 
 #### Review Target Error Codes
 
@@ -196,8 +203,9 @@ See the tech design document for full architecture, implementation targets, and 
 <!-- Jira: Definition of Done or Acceptance Criteria footer -->
 - One durable package snapshot opens as one reviewable set rather than as unrelated standalone artifacts
 - `publishPackageSnapshot` persists durable ordered package snapshots for downstream process-module publication flows
-- Package membership and member order remain visible and stable against the published package snapshot
-- Member selection keeps package context visible and defaults to the first reviewable member when no explicit member is selected
+- Package membership and member order remain visible and stable against the published package snapshot, including members pinned from multiple processes in the same project
+- Member selection keeps package context visible and defaults to the first ready member when one exists, otherwise the first durable unsupported member
 - One unsupported or unavailable member does not hide the healthy members of the package
+- Zero-member or zero-durable-member snapshots do not enable review and are treated as unavailable on read
 - Package review of up to 20 members meets the 2-second target under normal conditions, and package member navigation remains keyboard reachable
 - Story tests cover TC-4.1a through TC-4.1b, TC-4.2a through TC-4.2b, TC-4.3a through TC-4.3c, and TC-4.4a

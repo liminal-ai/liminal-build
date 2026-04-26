@@ -129,7 +129,7 @@ This story owns live execution visibility and the browser-facing environment upd
 | Field | Type | Required | Validation | Description |
 |---|---|---|---|---|
 | `environmentId` | string | no | non-empty when present | Stable environment identifier for the current working copy |
-| `state` | enum | yes | `absent`, `preparing`, `ready`, `running`, `checkpointing`, `stale`, `failed`, `lost`, `rebuilding`, or `unavailable` | Current environment state shown on the process surface |
+| `state` | enum | yes | `absent`, `preparing`, `rehydrating`, `ready`, `running`, `checkpointing`, `stale`, `failed`, `lost`, `rebuilding`, or `unavailable` | Current environment state shown on the process surface |
 | `statusLabel` | string | yes | non-empty | User-visible label for the current environment state |
 | `blockedReason` | string | no | non-empty when present | Current reason the environment cannot proceed to the next expected action |
 | `lastHydratedAt` | string | no | ISO 8601 UTC when present | Time the working set was last hydrated into the environment |
@@ -155,6 +155,7 @@ This story owns live execution visibility and the browser-facing environment upd
 | State | Meaning |
 |---|---|
 | `preparing` | Environment is being prepared and not yet ready for active work |
+| `rehydrating` | Existing working state is being restored into the environment before active work resumes |
 | `ready` | Environment is prepared and ready for process work |
 | `running` | Environment is actively executing process work |
 | `checkpointing` | Environment is persisting durable work after active execution |

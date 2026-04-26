@@ -203,9 +203,12 @@ erDiagram
     PROJECT ||--o{ SOURCE_ATTACHMENT : contains
 ```
 
-`artifacts` and `sourceAttachments` carry `projectId` and optional `processId`.
-That preserves the project as the top-level container while still letting the
-shell answer whether an item is project-scoped or process-scoped.
+`artifacts` and `sourceAttachments` carry `projectId`, but they do not use
+process context in the same way. For source attachments, Epic 1 keeps true
+attachment scope through optional `processId` context. For artifacts, the shell
+uses explicit descriptive summary context instead: optional current process
+reference and optional producing-process context are separate concepts, and the
+artifact still belongs to the project rather than to one process row.
 
 Each process row is type-exclusive with respect to process-specific state. A
 `ProductDefinition` process gets exactly one row in
@@ -275,7 +278,8 @@ export interface ProcessFeatureImplementationStateRow {
 
 export interface ArtifactRow {
   projectId: string;
-  processId: string | null;
+  currentProcessReferenceId: string | null;
+  producingProcessId: string | null;
   displayName: string;
   currentVersionLabel: string | null;
   updatedAt: string;
@@ -572,7 +576,7 @@ sequenceDiagram
 | TC-3.1b | empty shell response | `tests/service/client/project-shell-page.test.ts` | Project has no items | All three sections render empty states |
 | TC-3.1c | partial population | `tests/service/client/project-shell-page.test.ts` | Only process data exists | Process section renders while the others stay empty |
 | TC-3.2a through TC-3.2h | process summary projection cases | `tests/service/client/process-section.test.ts` | Mock envelope variants | Visible status/action rendering matches summary |
-| TC-3.3a through TC-3.3e | artifact summary projection cases | `tests/service/client/artifact-section.test.ts` | Mock artifact envelopes | Identity, version, scope, and ordering render correctly |
+| TC-3.3a through TC-3.3e | artifact summary projection cases | `tests/service/client/artifact-section.test.ts` | Mock artifact envelopes | Identity, version, explicit current-reference/producing-process context, and ordering render correctly |
 | TC-3.4a through TC-3.4e | source summary projection cases | `tests/service/client/source-attachment-section.test.ts` | Mock source envelopes | Purpose, ref, hydration state, scope, and ordering render correctly |
 | TC-5.2a through TC-5.2c | shell loads without environment | `tests/service/server/project-shell-bootstrap-api.test.ts` | Processes without environments | Shell still returns durable summaries |
 | TC-6.2b | invalid selected process reference | `tests/service/client/project-router.test.ts` | URL includes missing `processId` | Shell renders, selection cleared, banner shown |

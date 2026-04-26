@@ -61,7 +61,8 @@ behavior:
   lifecycle behavior (Epic 3)
 - Full markdown review, Mermaid rendering, and package/export workflows (Epic 4)
 - Full canonical archive entry taxonomy, turn derivation, or chunk/view
-  derivation behavior (Epic 5)
+  derivation behavior in the later archive/derived-view work that follows
+  Epic 6
 - Full inspectable delegated subthreads or separate subordinate-process work
   surfaces
 - Manual process naming or renaming workflows
@@ -74,7 +75,7 @@ behavior:
 | A1 | Epic 1's project shell, process summaries, and access model are already in place | Validated | Platform | Epic 2 extends the shell rather than replacing it |
 | A2 | A process may spend substantial stretches in back-and-forth discussion with the user | Validated | Product | Conversation stays process-owned rather than becoming a separate product surface |
 | A3 | Epic 2 must support active process work before Epic 3 delivers full environment and tool-runtime behavior | Validated | Platform | The work surface and control surface arrive before the full execution substrate |
-| A4 | Current process materials may include artifacts, source attachments, and current outputs even when the richer review surface is not yet delivered | Validated | Platform | Epic 2 keeps materials visible; Epic 4 deepens review |
+| A4 | Current process materials may include referenced project artifacts, source attachments, and current outputs even when the richer review surface is not yet delivered | Validated | Platform | Epic 2 keeps current working-set materials visible; Epic 4 deepens review |
 | A5 | Side work or isolated process activity, when shown in Epic 2, appears as summary/result information rather than as a separate inspectable subthread | Unvalidated | Product + Platform | This keeps Milestone 1 scoped to one shared process surface |
 | A6 | Process modules own exact prompts, phase semantics, and decision rules while the platform owns the shared work surface behaviors | Validated | Platform | Matches the crafted-process stance in the core PRD and architecture |
 | A7 | Live process updates may disconnect transiently; the process surface must remain usable from durable state during that interruption | Validated | Platform | The work surface cannot depend on an uninterrupted socket to remain legible |
@@ -331,7 +332,10 @@ requiring manual refresh.
 The process work surface needs to behave like a workspace, not only like a
 history log. The user needs the current process materials, current outputs, and
 current revision context visible enough to follow what the process is working
-with right now.
+with right now. Those materials are the process's current working set. A
+visible artifact here may be a project artifact first created or last revised
+by another process; its presence reflects the current process reference, not
+artifact ownership.
 
 1. User opens a process work surface
 2. System shows the current materials and outputs relevant to the current phase
@@ -605,7 +609,7 @@ failing section shows an error state without hiding the healthy sections.
 | process.availableActions | array of enum | yes | values from `start`, `respond`, `resume`, `review`, or `restart` | High-level actions currently available from the work surface |
 | process.updatedAt | string | yes | ISO 8601 UTC | Most recent durable process update time |
 | history | Process History Section Envelope | yes | present | Visible process history for the active process or a section-level error state |
-| materials | Process Materials Section Envelope | yes | present | Current materials and outputs relevant to the active process or a section-level error state |
+| materials | Process Materials Section Envelope | yes | present | Current materials and outputs in the active process working set or a section-level error state |
 | currentRequest | Current Process Request | no | present when unresolved | Current unresolved attention-required request for the active process |
 | sideWork | Side Work Section Envelope | yes | present | Visible side-work items for the active process or a section-level error state |
 
@@ -643,8 +647,8 @@ failing section shows an error state without hiding the healthy sections.
 | Field | Type | Required | Validation | Description |
 |-------|------|----------|------------|-------------|
 | status | enum | yes | `ready`, `empty`, or `error` | Whether the materials section loaded with visible content, loaded empty, or failed independently |
-| currentArtifacts | array of Process Artifact Reference | yes | present | Current artifacts relevant to the active process; empty when `status` is `empty` or `error` |
-| currentOutputs | array of Process Output Reference | yes | present | Current process-owned outputs relevant to the active process, including outputs that may not yet be published as durable artifacts; empty when `status` is `empty` or `error` |
+| currentArtifacts | array of Process Artifact Reference | yes | present | Current project artifacts referenced in the active process working set; empty when `status` is `empty` or `error` |
+| currentOutputs | array of Process Output Reference | yes | present | Current process outputs relevant to the active process, including outputs that may not yet be published as durable artifacts; empty when `status` is `empty` or `error` |
 | currentSources | array of Process Source Reference | yes | present | Current source attachments relevant to the active process; empty when `status` is `empty` or `error` |
 | error | Process Surface Section Error | no | present when `status` is `error` | Section-scoped load error shown without failing the whole process surface |
 
@@ -676,6 +680,10 @@ is resolved or superseded, its visible history item remains in history and
 
 **Sort order:** Current artifacts are ordered by `updatedAt` descending.
 
+`currentArtifacts` is a process-scoped current-working-set projection. It may
+include project artifacts first created or last revised by another process when
+the active process currently references them.
+
 ### Process Output Reference
 
 | Field | Type | Required | Validation | Description |
@@ -694,6 +702,10 @@ artifact context and does not show a second unconnected duplicate entry in
 `currentOutputs`. `currentOutputs` is reserved for outputs still in progress,
 outputs not yet published as durable artifacts, or outputs that still need
 separate current-state visibility.
+
+Current-material visibility is driven by the process's current reference set
+and linked artifact/output context, not by any artifact-level primary-process
+field.
 
 ### Process Source Reference
 
@@ -915,7 +927,7 @@ Questions for the Tech Lead to address during design:
    process surface if full inspectable subthreads remain out of scope for this
    milestone?
 7. What exact persistence grain should Epic 2 use for visible process history
-   before Epic 5 delivers the full canonical archive and derived turn model?
+   before the later archive and derived-turn work lands?
 8. What exact error and retry model should the work surface use when the
    durable bootstrap succeeds but live transport is unavailable?
 

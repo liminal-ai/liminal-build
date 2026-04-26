@@ -1,3 +1,6 @@
+> Historical fix-batch note. Retained for audit trail only and superseded by
+> later verification / implementation-addendum artifacts.
+
 # Story 2 Fix Batch 01
 
 ## Context

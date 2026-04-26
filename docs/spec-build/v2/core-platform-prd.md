@@ -104,7 +104,7 @@ problems independently:
 - how process state is tracked
 - how artifacts are created and versioned
 - how a disposable working environment is hydrated and resumed
-- how repositories are attached to a process
+- how repositories are attached to project or process work
 - how controlled tools execute
 - how markdown artifacts are reviewed
 - how canonical state is persisted
@@ -127,9 +127,10 @@ engine.
 - **Crafted processes over dynamic schemas:** New process types are implemented
   in code with their own state models and persistence. The platform does not
   target user-defined process schemas.
-- **Artifacts are generic; meaning is process-owned:** The platform stores
-  generic artifacts and versions. A process type defines what those artifacts
-  mean and which ones matter at each phase.
+- **Artifacts are project-scoped; meaning is process-owned:** The platform
+  stores generic project artifacts and versions. Processes reference those
+  artifacts, create new versions with process provenance, and define what those
+  artifacts mean and which ones matter at each phase.
 - **Filesystem as working space only:** A sandbox filesystem is always a
   disposable working copy, never canonical truth.
 - **Canonical truth depends on domain:** Artifact and process truth lives in
@@ -255,11 +256,14 @@ Convex owns durable state for:
 
 Canonical code state remains in GitHub.
 
-Each process may attach zero or more repositories and zero or more relevant
-artifacts. Fastify hydrates those canonical sources into a disposable working
-environment. A TypeScript runtime and tool harness operate inside that
-environment. The process works against the filesystem, while the platform
-checkpoints durable outputs back into canonical stores.
+Projects and processes may attach zero or more repositories, and each process
+may reference zero or more relevant project artifacts. Artifact records remain
+durable project assets even when multiple processes revise or review them, and
+each artifact version carries producing-process provenance. Fastify hydrates
+those canonical sources into a disposable working environment. A TypeScript
+runtime and tool harness operate inside that environment. The process works
+against the filesystem, while the platform checkpoints durable outputs back
+into canonical stores.
 
 The browser experience uses Fastify-owned authenticated shell/pages and a
 bundled TypeScript client app built with Vite and served by Fastify in
@@ -290,7 +294,8 @@ The architectural standup assumes an initial provider set of:
 | M1 | Features 1+2 | Project shell and process control surface are usable for real process work | Yes - can a user manage a project and run a process coherently? |
 | M2 | Feature 3 | Sandboxed environment, tool harness, and minimal canonical checkpoint loop work locally end to end | Yes - can a process hydrate, execute, and checkpoint already-attached working state coherently? |
 | M3 | Feature 4 | Artifact review and packaging surface is usable for spec-oriented outputs | Yes - can markdown artifacts be reviewed and exported in-app? |
-| M4 | Feature 5 | Broader source-attachment and canonical-source workflows work across Convex-backed artifacts and GitHub-backed repos | Yes - can the platform manage source attachment lifecycle, provenance, freshness, and archive-facing source truth coherently? |
+| M4 | Feature 4 + interstitial alignment epic | Review and package behavior now rests on project-scoped artifacts, version provenance, and pinned package context | Yes - can shared project artifacts be revised, reviewed, and packaged coherently across processes? |
+| M5 | Feature 5 | Broader source-attachment and canonical-source workflows work across aligned Convex-backed artifacts and GitHub-backed repos | Yes - can the platform manage source attachment lifecycle, provenance, freshness, and archive-facing source truth coherently? |
 
 ---
 
@@ -355,10 +360,11 @@ process type.
 
 **AC-5:** The user can create a process from a supported `ProcessType`. The
 process is recorded inside the current project and has its own state, phases,
-artifacts, and optional environment.
+current artifact references, and optional environment.
 
 **AC-6:** Multiple processes can exist inside the same project without
-overwriting each other's state, artifacts, or source assignments.
+overwriting each other's state, current artifact references, version
+provenance, or source assignments.
 
 #### Scenario 4: Returning to Work Later
 
@@ -464,11 +470,11 @@ tool harness that operates inside that environment against hydrated project
 materials. This feature establishes the common execution substrate that later
 process-specific products inherit. The first environment slice also includes the
 minimal canonical checkpoint loop needed to make that environment useful for
-real work: durable artifact outputs persist back to canonical artifact state,
-and code work against already-attached writable repositories persists back to
-canonical code truth for those repositories. Full source-attachment management,
-provenance workflows, and broader GitHub review or publishing workflows remain
-in Feature 5.
+real work: durable artifact outputs persist back into project-scoped canonical
+artifact state as new versions with process provenance, and code work against
+already-attached writable repositories persists back to canonical code truth for
+those repositories. Full source-attachment management, provenance workflows,
+and broader GitHub review or publishing workflows remain in Feature 5.
 
 ### Scope
 
@@ -538,8 +544,9 @@ needs to continue work without losing durable progress.
 created environment filesystem for continued work.
 
 **AC-24:** The platform can checkpoint durable outputs back to canonical stores,
-including Convex-backed artifacts and GitHub-backed code for already-attached
-writable repositories, so that the process can continue after environment loss.
+including Convex-backed project artifacts and GitHub-backed code for
+already-attached writable repositories, so that the process can continue after
+environment loss.
 
 ---
 
@@ -547,21 +554,23 @@ writable repositories, so that the process can continue after environment loss.
 
 ### Feature Overview
 
-This feature makes process outputs durable and reviewable. After it ships, a
-process can produce artifact records and versions, and the user can inspect
-markdown artifacts, Mermaid diagrams, and packaged outputs inside the platform
-without leaving the working surface.
+This feature makes project-scoped artifacts durable and reviewable inside active
+process work. After it ships, a process can create or reference project-level
+artifact records, produce new artifact versions with process provenance, and
+the user can inspect markdown artifacts, Mermaid diagrams, and packaged outputs
+inside the platform without leaving the working surface.
 
 ### Scope
 
 #### In Scope
 
-- Generic artifact records
-- Artifact versions
-- Process attachment of artifacts and versions
+- Generic project-scoped artifact records
+- Artifact versions with producing-process provenance
+- Process reference to current artifacts and pinned review/package context
 - Markdown review
 - Mermaid rendering
-- Artifact package/export support for spec-oriented outputs
+- Artifact package/export support for spec-oriented outputs, including pinned
+  version sets
 
 #### Out of Scope
 
@@ -572,15 +581,17 @@ without leaving the working surface.
 
 #### Scenario 1: Reviewing a Draft Artifact While Work Is Active
 
-The user needs to inspect an artifact produced during active process work and
-understand which version they are looking at.
+The user needs to inspect a project artifact that is in scope for active
+process work and understand which version and provenance they are looking at.
 
-**AC-25:** When a process revises an existing artifact, the new revision appears
-as a new artifact version and the earlier version remains available for review.
+**AC-25:** When a process revises an existing project artifact, the new
+revision appears as a new artifact version of that project asset, carries
+producing-process provenance, and the earlier version remains available for
+review.
 
-**AC-26:** The review surface makes the current artifact identity and version
-clear enough that the user can review the right draft at the right process
-phase.
+**AC-26:** The review surface makes the current artifact identity, selected
+version, and current review context clear enough that the user can review the
+right draft at the right process phase.
 
 #### Scenario 2: Reading Markdown-Centric Outputs in Place
 
@@ -591,19 +602,23 @@ without exporting them first.
 structure needed for serious reading, including headings, tables, code blocks,
 and Mermaid diagrams.
 
-**AC-28:** The review surface keeps the artifact connected to the active process
-context so the user can move between work and review without losing orientation.
+**AC-28:** The review surface keeps the artifact connected to the active
+process or pinned package context so the user can move between work and review
+without losing orientation.
 
 #### Scenario 3: Working With Multi-Artifact Output Sets
 
-Some processes produce output sets that are meaningful as a collection rather
-than as one document. The user needs to inspect and package those sets cleanly.
+Some reviewable output sets are meaningful as a collection rather than as one
+document. The user needs to inspect and package those sets cleanly, including
+cases where the package combines pinned artifact versions produced or revised by
+different processes in the same project.
 
-**AC-29:** The user can open a process output set and see which artifacts and
-versions belong together as one reviewable package.
+**AC-29:** The user can open a process or package review set and see which
+pinned artifact versions belong together as one reviewable package.
 
-**AC-30:** The platform can package and export that output set when a process
-requires a bundled artifact package such as a spec-oriented pack.
+**AC-30:** The platform can package and export that pinned output set when a
+process requires a bundled artifact package such as a spec-oriented pack, even
+when the package members come from more than one process in the same project.
 
 ---
 
@@ -611,37 +626,50 @@ requires a bundled artifact package such as a spec-oriented pack.
 
 ### Feature Overview
 
-This feature establishes the canonical-source model and the source-attachment
-behaviors that processes rely on. After it ships, processes can persist
-artifacts durably, attach repositories with explicit purpose and access mode,
-and rehydrate working state from those canonical sources. Feature 3 already
-covers the minimal hydrate-and-checkpoint loop needed for a usable environment
-when the required sources are already attached. Feature 5 covers how sources are
-attached, classified, refreshed, explained, and managed across the broader
+This feature establishes the canonical-source model and the broader
+source-attachment behaviors that processes rely on after artifact-model and
+review-provenance alignment are in place. In the current implementation
+sequence, that scope is repository-first: projects and processes can attach
+GitHub-backed repositories with explicit purpose and access mode, rehydrate
+working state from those canonical sources, and preserve the source provenance
+and archive-facing records those flows depend on. Feature 3 already covers the
+minimal hydrate-and-checkpoint loop needed for a usable environment when the
+required sources are already attached. Feature 5 covers how repository sources
+are attached, classified, refreshed, explained, and managed across the broader
 process lifecycle, along with the archive-facing canonical-source model that
 depends on those durable records.
 
-Feature 5 is broad enough to land as more than one implementation epic. The
-first implementation epic may focus on repository attachment lifecycle,
-freshness, provenance, and canonical-source management. A later implementation
-epic may focus on the full-fidelity canonical archive and later derived
-turn/chunk views. Both are still part of Feature 5.
+Feature 5 is broad enough to land as more than one implementation epic. In the
+current plan, an interstitial epic first aligns artifact model and
+review/package provenance between Feature 4 and Feature 5 so later
+source-management work inherits project-scoped artifact semantics. After that
+alignment, the first Feature 5 implementation epic focuses on repository
+attachment lifecycle, freshness, provenance, and canonical-source management,
+and a later Feature 5 epic focuses on the full-fidelity canonical archive and
+later derived turn/chunk views. In downstream numbering, that means the
+artifact-model alignment work lands as Epic 5, source-management lands as
+Epic 6, and later archive/derived-view work follows within Feature 5.
+MCP-backed and other non-repository external-source attachment flows are
+explicitly deferred beyond the current Epic 5, Epic 6, and Epic 7 sequence as
+later source-integration work.
 
 ### Scope
 
 #### In Scope
 
-- Broader Convex-backed process and artifact persistence model
 - Broader GitHub-backed code source integration
-- Repository attachment to processes
+- Project- and process-scoped repository attachment
 - Repository purpose/access classification
 - Hydration and freshness tracking beyond the minimal environment loop in
   Feature 3
+- Source provenance and canonical-source management above the aligned artifact
+  model
 - Full-fidelity process archive and derived turn/chunk views
-- Integration boundary for MCP-backed and other external sources
 
 #### Out of Scope
 
+- Attachment of MCP-backed or other non-repository external sources in the
+  current Epic 5, Epic 6, and Epic 7 sequence
 - Full external integration catalog (future direction)
 
 ### Scenarios
@@ -658,17 +686,18 @@ environment is currently running.
 **AC-32:** The platform treats sandbox files for artifact work as working copies
 only. Canonical artifact truth remains outside the sandbox.
 
-#### Scenario 2: Bringing Existing Repositories into a Process
+#### Scenario 2: Bringing Existing Repositories into Project or Process Work
 
 The user starts a process that needs to inspect, review, or update one or more
 repositories as part of the work.
 
-**AC-33:** A process can attach zero or more repositories. Each attachment can
-record its purpose, access mode, target ref, and hydration state.
+**AC-33:** A project or process can attach zero or more repositories. Each
+attachment can record its purpose, access mode, target ref, and hydration
+state.
 
 **AC-34:** The platform can determine whether an attached repository is
-currently hydrated and whether it requires rehydration before the process relies
-on it.
+currently hydrated and whether it requires rehydration before project or
+process work relies on it.
 
 #### Scenario 3: Understanding Code Provenance and Durable Code Updates
 
@@ -681,19 +710,25 @@ source of truth for that code. The sandbox filesystem is a working copy only.
 **AC-36:** The platform records source provenance clearly enough that a user can
 tell which repositories and refs informed or received a process's code work.
 
-#### Scenario 4: Attaching External Sources Through a Controlled Boundary
+#### Deferred Follow-On: Attaching External Sources Through a Controlled Boundary
+
+This scenario is explicitly deferred beyond the current Epic 5, Epic 6, and
+Epic 7 sequence. It describes later source-integration work rather than the
+repository-focused source-management slice assigned to Epic 6 or the
+archive/derived-view slice assigned to Epic 7.
 
 The user starts or resumes a process that needs external context beyond project
 artifacts and repositories, including MCP-backed sources. The platform needs a
 controlled integration boundary for those sources rather than one-off hidden
 connections.
 
-**AC-37:** A process can attach external sources, including MCP-backed sources,
-through an explicit platform
-integration boundary rather than relying on ad hoc out-of-band access.
+**AC-37:** A project or process can attach external sources, including
+MCP-backed sources, through an explicit platform integration boundary rather
+than relying on ad hoc out-of-band access.
 
-**AC-38:** The user can tell which external sources were attached to a process
-and whether they were available during the work that followed.
+**AC-38:** The user can tell which external sources were attached to the
+relevant project or process and whether they were available during the work
+that followed.
 
 #### Scenario 5: Preserving Full-Fidelity History for Later Derived Views
 
@@ -726,9 +761,13 @@ the full-fidelity archive.
 - Platform capabilities are shared substrate. Detailed process behavior remains
   downstream in process-specific epics.
 - Process types are implemented in code and schema, not dynamically defined.
-- Generic artifact storage stays lightweight. Process-specific meaning stays in
-  process state and process phases.
-- Each process may attach zero or more repositories and zero or more artifacts.
+- Artifact records are project-scoped durable assets. Generic artifact storage
+  stays lightweight while process-specific meaning, current references, and
+  review/package context stay in process state and process phases.
+- Each process may reference zero or more project artifacts and attach zero or
+  more repositories.
+- Artifact versions carry producing-process provenance, and review/package
+  surfaces pin explicit versions rather than floating to later revisions.
 - Sandbox filesystems are always working copies, never canonical truth.
 - Canonical artifact truth is persisted in Convex. Canonical code truth is
   persisted in GitHub.
@@ -764,10 +803,16 @@ Feature 1: Project and Process Shell
     └──→ Feature 2: Process Work Surface
               |
               ├──→ Feature 3: Process Environment and Controlled Execution
-              |         |
-              |         └──→ Feature 5: Source Attachments and Canonical Persistence
               |
               └──→ Feature 4: Artifact Review and Package Surface
+                        |
+                        └──→ Epic 5: Artifact Model and Review Provenance Alignment
+                                  |
+                                  └──→ Epic 6: Source Attachments and Canonical Source Management
+                                            |
+                                            └──→ Epic 7: Archive and Derived Views
+                                                      |
+                                                      └──→ Later follow-on: External and MCP Source Integration
 ```
 
 **Sequencing rationale:**
@@ -776,14 +821,22 @@ Feature 1: Project and Process Shell
   be run coherently.
 - The process control surface needs to exist before environment execution or
   artifact review can be integrated into one working experience.
+- The artifact review surface can proceed alongside the environment layer once
+  the project and process shell are in place.
+- The review/package surface now needs an interstitial alignment step so
+  artifacts behave as project-scoped durable assets before later source work
+  depends on them.
 - The environment and tool harness must exist before broader repository
   lifecycle and canonical-source handling become meaningful. The first
   environment epic includes the minimal hydrate-and-checkpoint loop needed to
   make that slice real.
-- The artifact review surface can proceed alongside the environment layer once
-  the project and process shell are in place.
-- Broader canonical source integration depends on the environment model because
-  source hydration and checkpointing are part of that working pattern.
+- Source-management work follows once both the environment model and the
+  artifact-model alignment are in place.
+- Archive and derived-view work follow the source-management slice because they
+  depend on the durable canonical-source records established there.
+- External and MCP-backed source attachment is intentionally not assigned to
+  Epic 6 or Epic 7. It follows later as a separate source-integration slice
+  after the repository-focused source-management and archive work are in place.
 
 ---
 
@@ -792,10 +845,12 @@ Feature 1: Project and Process Shell
 This PRD is the upstream input for the core platform technical architecture and
 for downstream process-specific epic specifications.
 
-Each feature section in this PRD maps to one downstream enablement epic. Those
-epics should expand the user situations and rolled-up ACs here into line-level
-ACs, TCs, boundary contracts, and story breakdowns without inventing the
-platform's core intent or boundaries.
+Each feature section in this PRD maps to one or more downstream enablement
+epics, with interstitial alignment epics added when the platform model needs to
+be clarified before the next feature slice expands. Those epics should expand
+the user situations and rolled-up ACs here into line-level ACs, TCs, boundary
+contracts, and story breakdowns without inventing the platform's core intent or
+boundaries.
 
 Downstream process-specific epics will define the exact behavior of:
 
@@ -825,7 +880,8 @@ bibliography in this PRD.
 - [ ] Process types are treated as code-defined, not dynamic
 - [ ] The sandbox filesystem is described as working state only
 - [ ] Canonical artifact truth and canonical code truth are kept distinct
-- [ ] Artifact meaning remains process-owned rather than globally hard-coded
+- [ ] Artifacts are project-scoped durable assets while meaning remains
+      process-owned rather than globally hard-coded
 - [ ] Repository assignment, purpose, access mode, and hydration state are
       visible requirements
 - [ ] Environment/tool harness capabilities are treated as core enablement

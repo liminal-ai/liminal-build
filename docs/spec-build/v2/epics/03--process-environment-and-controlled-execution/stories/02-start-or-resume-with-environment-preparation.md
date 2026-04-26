@@ -22,7 +22,7 @@ Deliver the environment-preparation slice so the user can start or resume work, 
 In:
 
 - Start or resume enters visible environment preparation
-- Preparation hydrates current artifacts, current outputs, and current sources into the working copy
+- Preparation hydrates current artifact references, current outputs, and current sources into the working copy
 - Hydration progress and recoverable hydration failure appear without manual refresh
 - Running does not begin until preparation is ready or a recoverable failure state is shown
 - Source attachments show read-only versus writable access before code checkpointing matters
@@ -55,14 +55,14 @@ Out:
   - When: User resumes the process
   - Then: The surface enters a visible environment-preparation state in the same session
 
-**AC-2.2:** Environment preparation hydrates the process's current artifacts, current outputs, and already-attached current sources into the working copy before controlled work depends on them.
+**AC-2.2:** Environment preparation hydrates the process's current artifact references, current outputs, and already-attached current sources into the working copy before controlled work depends on them.
 
 - **TC-2.2a: Current materials hydrate into environment**
-  - Given: Process has current artifacts, outputs, and attached sources
+  - Given: Process has current artifact references, outputs, and attached sources
   - When: Environment preparation runs
   - Then: The working copy is prepared from those current materials rather than from unrelated project materials
 - **TC-2.2b: Process with partial working set still hydrates correctly**
-  - Given: Process has only some of artifacts, outputs, or attached sources
+  - Given: Process has only some of current artifact references, outputs, or attached sources
   - When: Environment preparation runs
   - Then: The environment hydrates the materials that exist without requiring a full working-set category to be present
 
@@ -150,7 +150,7 @@ Once one of these actions returns success, later preparation, hydration, executi
 | Status | Code | Description |
 |---|---|---|
 | `409` | `PROCESS_ACTION_NOT_AVAILABLE` | The requested process action is not valid in the current process or environment state |
-| `422` | `PROCESS_ENVIRONMENT_PREREQUISITE_MISSING` | Required canonical materials are missing or unavailable for preparation |
+| `422` | `PROCESS_ENVIRONMENT_PREREQUISITE_MISSING` | Required canonical materials referenced by the process are missing or unavailable for preparation |
 | `503` | `PROCESS_ENVIRONMENT_UNAVAILABLE` | Environment lifecycle work is unavailable for the requested process |
 
 See the tech design document for full architecture, implementation targets, and test mapping.
@@ -158,7 +158,7 @@ See the tech design document for full architecture, implementation targets, and 
 ### Definition of Done
 <!-- Jira: Definition of Done or Acceptance Criteria footer -->
 - Starting or resuming enters visible preparation in the same session
-- Preparation hydrates only the process's current artifacts, current outputs, and current sources
+- Preparation hydrates only the process's current artifact references, current outputs, and current sources
 - Hydration progress and recoverable failure appear without manual refresh
 - Active running does not begin until the working set is ready
 - Attached sources visibly distinguish `read_only` from `read_write`

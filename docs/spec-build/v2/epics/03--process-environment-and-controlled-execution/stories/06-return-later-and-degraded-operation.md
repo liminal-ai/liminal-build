@@ -48,14 +48,14 @@ Out:
 - **TC-6.1a: Reopen restores durable state**
   - Given: Process had prior environment work and durable checkpoint results
   - When: User later reopens the process route
-  - Then: The surface restores the latest durable process state, current materials, environment summary, and last visible checkpoint result
+  - Then: The surface restores the latest durable process state, current materials, environment summary, and last visible checkpoint result, including artifact version details when the checkpoint revised an existing project artifact
 
 **AC-6.2:** The absence of an active environment does not erase the durable results of prior checkpointed artifact or code work.
 
 - **TC-6.2a: Durable work remains after environment absence**
   - Given: Process no longer has an active environment
   - When: User reopens the process
-  - Then: Previously checkpointed durable artifact and code results remain visible from durable state
+  - Then: Previously checkpointed durable artifact versions and code results remain visible from durable state
 
 **AC-6.3:** A live environment update failure does not prevent the durable process surface from loading or remaining usable.
 
@@ -92,7 +92,7 @@ This story owns durable reopen behavior, latest-result checkpoint restoration, a
 | `project` | object | yes | Active project summary for the current process |
 | `process` | object | yes | Active process summary, including visible control states |
 | `history` | Process History Section Envelope | yes | Visible process history for the work surface |
-| `materials` | Process Materials Envelope | yes | Current artifacts, current outputs, and current sources for the process |
+| `materials` | Process Materials Envelope | yes | Current artifact references, current outputs, and current sources for the process |
 | `currentRequest` | Current Process Request or null | yes | Current unresolved process request when one exists |
 | `sideWork` | Side Work Section Envelope | yes | Current side-work summary state |
 | `environment` | Environment Summary | yes | Current environment state for the process, including latest checkpoint visibility |
@@ -103,7 +103,7 @@ This story owns durable reopen behavior, latest-result checkpoint restoration, a
 |---|---|---|---|---|
 | `state` | enum | yes | shared environment state vocabulary | Current environment state shown on reopen |
 | `lastCheckpointAt` | string | no | ISO 8601 UTC when present | Time the most recent checkpoint attempt settled |
-| `lastCheckpointResult` | Last Checkpoint Result or null | yes | present | Latest visible checkpoint outcome for this process environment |
+| `lastCheckpointResult` | Last Checkpoint Result or null | yes | present | Latest visible checkpoint outcome for this process environment, including artifact version details when the most recent checkpoint created or revised a project-level artifact |
 
 Checkpoint visibility in this epic is latest-result only. Reopen restores the current durable latest-result state rather than replaying an earlier checkpoint as if it were a new live event.
 
@@ -124,7 +124,7 @@ See the tech design document for full architecture, implementation targets, and 
 ### Definition of Done
 <!-- Jira: Definition of Done or Acceptance Criteria footer -->
 - Reopen restores the latest durable process state, current materials, environment summary, and checkpoint visibility
-- Previously checkpointed artifact and code results remain visible when no active environment exists
+- Previously checkpointed artifact versions and code results remain visible when no active environment exists
 - Live transport failure does not block durable surface usability
 - Finalized visible history does not duplicate on reopen
 - Prior checkpoint results are restored as existing durable state instead of replayed as new work

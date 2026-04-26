@@ -67,7 +67,7 @@ The shared vocabulary below is the baseline contract later stories implement and
 
 | Contract Element | Values |
 |---|---|
-| `environment.state` | `absent`, `preparing`, `ready`, `running`, `checkpointing`, `stale`, `failed`, `lost`, `rebuilding`, `unavailable` |
+| `environment.state` | `absent`, `preparing`, `rehydrating`, `ready`, `running`, `checkpointing`, `stale`, `failed`, `lost`, `rebuilding`, `unavailable` |
 | `process.controls.actionId` | `start`, `respond`, `resume`, `rehydrate`, `rebuild`, `review`, `restart` |
 | `process.availableActions` | `start`, `respond`, `resume`, `rehydrate`, `rebuild`, `review`, `restart` |
 | `source.accessMode` | `read_only`, `read_write` |
@@ -75,6 +75,10 @@ The shared vocabulary below is the baseline contract later stories implement and
 | `live.entityType` | `process`, `history`, `current_request`, `materials`, `side_work`, `environment` |
 | `checkpoint.checkpointKind` | `artifact`, `code`, `mixed` |
 | `checkpoint.outcome` | `succeeded`, `failed` |
+
+`preparing` is the accepted in-session state for `start` and `resume`;
+`rehydrating` is the accepted in-session state for `rehydrate`; `rebuilding` is
+the accepted in-session state for `rebuild`.
 
 #### Process Summary Additions
 
@@ -102,7 +106,7 @@ When process state and environment state conflict, the control remains visible, 
 | Field | Type | Required | Validation | Description |
 |---|---|---|---|---|
 | `environmentId` | string | no | non-empty when present | Stable environment identifier for the current working copy |
-| `state` | enum | yes | `absent`, `preparing`, `ready`, `running`, `checkpointing`, `stale`, `failed`, `lost`, `rebuilding`, or `unavailable` | Current environment state shown on the process surface |
+| `state` | enum | yes | `absent`, `preparing`, `rehydrating`, `ready`, `running`, `checkpointing`, `stale`, `failed`, `lost`, `rebuilding`, or `unavailable` | Current environment state shown on the process surface |
 | `statusLabel` | string | yes | non-empty | User-visible label for the current environment state |
 | `blockedReason` | string | no | non-empty when present | Current reason the environment cannot proceed to the next expected action |
 | `lastHydratedAt` | string | no | ISO 8601 UTC when present | Time the working set was last hydrated into the environment |
@@ -171,7 +175,7 @@ See the tech design document for full architecture, implementation targets, and 
 ### Definition of Done
 <!-- Jira: Definition of Done or Acceptance Criteria footer -->
 - Shared environment, control, checkpoint, and source-access vocabulary is defined once and referenced by later stories
-- Reusable fixtures cover absent, preparing, ready, stale, failed, lost, rebuilding, checkpointing, and unavailable environment states
+- Reusable fixtures cover absent, preparing, rehydrating, ready, stale, failed, lost, rebuilding, checkpointing, and unavailable environment states
 - Recovery and checkpoint error-code vocabulary on `AppError` exists for action rejection and later asynchronous failure reporting
 - Live-update fixtures include `environment` entity snapshots, upserts, completion markers, and transport errors
 - Story files and coverage artifact can reference Story 0 without redefining shared environment vocabulary

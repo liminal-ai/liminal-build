@@ -133,7 +133,7 @@ This story owns the dedicated route entry, durable bootstrap payload, and reques
 | `process.availableActions` | array of enum | yes | values from `start`, `respond`, `resume`, `review`, or `restart` | High-level actions currently available from the work surface |
 | `process.updatedAt` | string | yes | ISO 8601 UTC | Most recent durable process update time |
 | `history` | Process History Section Envelope | yes | present | Visible process history for the active process or a section-level error state |
-| `materials` | Process Materials Section Envelope | yes | present | Current materials and outputs relevant to the active process or a section-level error state |
+| `materials` | Process Materials Section Envelope | yes | present | Current materials and outputs in the active process working set or a section-level error state |
 | `currentRequest` | Current Process Request | no | present when unresolved | Current unresolved attention-required request for the active process |
 | `sideWork` | Side Work Section Envelope | yes | present | Visible side-work items for the active process or a section-level error state |
 
@@ -173,10 +173,14 @@ Section envelopes keep a stable top-level response shape across `ready`, `empty`
 | Field | Type | Required | Validation | Description |
 |---|---|---|---|---|
 | `status` | enum | yes | `ready`, `empty`, or `error` | Whether the materials section loaded with visible content, loaded empty, or failed independently |
-| `currentArtifacts` | array of Process Artifact Reference | yes | present | Current artifacts relevant to the active process; empty when `status` is `empty` or `error` |
-| `currentOutputs` | array of Process Output Reference | yes | present | Current process-owned outputs relevant to the active process; empty when `status` is `empty` or `error` |
+| `currentArtifacts` | array of Process Artifact Reference | yes | present | Current project artifacts referenced in the active process working set; empty when `status` is `empty` or `error` |
+| `currentOutputs` | array of Process Output Reference | yes | present | Current process outputs relevant to the active process; empty when `status` is `empty` or `error` |
 | `currentSources` | array of Process Source Reference | yes | present | Current source attachments relevant to the active process; empty when `status` is `empty` or `error` |
 | `error` | Process Surface Section Error | no | present when `status` is `error` | Section-scoped load error shown without failing the whole process surface |
+
+The materials section is a current working-set projection. `currentArtifacts`
+may point at project artifacts first created or last revised by another process
+when the active process currently references them.
 
 #### Process Artifact Reference
 

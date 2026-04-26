@@ -2,7 +2,7 @@
 
 ### Summary
 <!-- Jira: Summary field -->
-Keep the current artifacts, outputs, and source attachments visible so the user can follow what the process is working with right now.
+Keep current artifact references, outputs, and source attachments visible so the user can follow what the process is working with right now.
 
 ### Description
 <!-- Jira: Description field -->
@@ -15,13 +15,13 @@ Keep the current artifacts, outputs, and source attachments visible so the user 
 
 **Objective**
 
-Show the current materials and outputs relevant to the active phase, keep identity and revision context clear, and define how materials-state replacements update the visible workspace when current process focus changes.
+Show the current working-set materials and outputs relevant to the active phase, including project artifacts currently referenced by the process, keep identity and revision context clear, and define how materials-state replacements update the visible workspace when current process focus changes.
 
 **Scope**
 
 In:
 
-- Show current artifacts, current outputs, and current source attachments alongside process work
+- Show current artifact references, current outputs, and current source attachments alongside process work
 - Make current identity and revision context visible for artifacts and outputs
 - Replace visible materials state when phase, output revision, or focus changes
 - Show a deliberate empty state when no current materials apply
@@ -42,7 +42,7 @@ Out:
 
 ### Acceptance Criteria
 <!-- Jira: Acceptance Criteria field -->
-**AC-4.1:** The work surface keeps current phase-relevant artifacts, versions, source attachments, and current outputs visible alongside active process work.
+**AC-4.1:** The work surface keeps current phase-relevant artifact references, versions, source attachments, and current outputs visible alongside active process work.
 
 - **TC-4.1a: Materials visible alongside process history**
   - Given: Process has current materials and outputs relevant to the active phase
@@ -56,7 +56,7 @@ Out:
 **AC-4.2:** The visible materials make the current identity and revision context clear enough that the user can tell which artifact, version, source, or output the process is currently using or revising.
 
 - **TC-4.2a: Current revision context visible for artifact**
-  - Given: Process is using or revising an artifact with a current revision
+  - Given: Process is using or revising a referenced project artifact with a current revision
   - When: The artifact appears in the work surface
   - Then: Its current identity and revision context are visible
 - **TC-4.2b: Current output identity visible**
@@ -88,19 +88,19 @@ Out:
 
 ### Technical Design
 <!-- Jira: Technical Notes or sub-section of Description -->
-This story uses the shared materials envelope and its artifact, output, and source reference shapes to present the current working context. It also defines the materials-specific replacement semantics used when the current working context changes. The shared WebSocket subscription lifecycle remains owned by Story 6.
+This story uses the shared materials envelope and its artifact, output, and source reference shapes to present the current working context. Artifacts shown here are process-scoped references into the project's durable artifact set, not evidence that the current process owns the artifact row. It also defines the materials-specific replacement semantics used when the current working context changes. The shared WebSocket subscription lifecycle remains owned by Story 6.
 
 #### Process Materials Section Envelope
 
 | Field | Type | Required | Validation | Description |
 |---|---|---|---|---|
 | `status` | enum | yes | `ready`, `empty`, or `error` | Whether the materials section loaded with visible content, loaded empty, or failed independently |
-| `currentArtifacts` | array of Process Artifact Reference | yes | present | Current artifacts relevant to the active process; empty when `status` is `empty` or `error` |
-| `currentOutputs` | array of Process Output Reference | yes | present | Current process-owned outputs relevant to the active process, including outputs that may not yet be published as durable artifacts; empty when `status` is `empty` or `error` |
+| `currentArtifacts` | array of Process Artifact Reference | yes | present | Current project artifacts referenced in the active process working set; empty when `status` is `empty` or `error` |
+| `currentOutputs` | array of Process Output Reference | yes | present | Current process outputs relevant to the active process, including outputs that may not yet be published as durable artifacts; empty when `status` is `empty` or `error` |
 | `currentSources` | array of Process Source Reference | yes | present | Current source attachments relevant to the active process; empty when `status` is `empty` or `error` |
 | `error` | Process Surface Section Error | no | present when `status` is `error` | Section-scoped load error shown without failing the whole process surface |
 
-The materials envelope is the full current-state payload for the materials panel. When materials change, the client replaces the current panel state with the new envelope rather than patching individual rows in place.
+The materials envelope is the full current-state payload for the materials panel. This is a process-scoped working-set projection, not a claim that the current process owns the referenced artifact rows. When materials change, the client replaces the current panel state with the new envelope rather than patching individual rows in place.
 
 #### Process Artifact Reference
 
@@ -113,6 +113,10 @@ The materials envelope is the full current-state payload for the materials panel
 | `updatedAt` | string | yes | ISO 8601 UTC | Most recent durable artifact update time |
 
 **Sort order:** Current artifacts are ordered by `updatedAt` descending.
+
+`currentArtifacts` may include project artifacts first created or last revised
+by another process when they are part of the active process's current working
+set.
 
 #### Process Output Reference
 
@@ -127,6 +131,10 @@ The materials envelope is the full current-state payload for the materials panel
 **Sort order:** Current outputs are ordered by `updatedAt` descending.
 
 When a current output already corresponds to a current artifact or current artifact version shown in `currentArtifacts`, the work surface links to that artifact context and does not show a second unconnected duplicate entry in `currentOutputs`. `currentOutputs` is reserved for outputs still in progress, outputs not yet published as durable artifacts, or outputs that still need separate current-state visibility.
+
+Current-material visibility is determined by the process's current reference set
+and linked output/artifact context, not by any artifact-level primary-process
+field.
 
 #### Process Source Reference
 

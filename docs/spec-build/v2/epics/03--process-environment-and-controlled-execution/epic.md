@@ -17,7 +17,9 @@ files, controlled execution, and durable checkpointing rather than only shell-
 level summaries or process-surface visibility.
 **Mental Model:** "This process has a working environment. The environment can
 be prepared, hydrated, used, rebuilt, and discarded by the system when needed.
-The real source of truth for process outputs lives outside that working copy."
+The real source of truth for durable artifacts and code lives outside that
+working copy, and this process only references the project-level materials it
+needs."
 **Key Constraint:** The environment must be useful for real work, including
 artifact outputs and code work against already-attached writable sources,
 without turning the platform into a generic terminal host or requiring a
@@ -30,10 +32,13 @@ separate source-management product surface in the same epic.
 This feature gives a process a disposable working environment inside the shared
 process work surface. After it ships, the user can see the environment state
 for one process, use a stable set of visible controls to start or resume work,
-hydrate the process's assigned artifacts and already-attached sources into a
-working copy, follow controlled execution in that environment, and recover when
-the environment becomes stale, fails, or is lost. Durable artifact outputs
-checkpoint back to canonical artifact state. Durable code work against
+hydrate the process's assigned artifact references and already-attached sources
+into a working copy, follow controlled execution in that environment, and
+recover when the environment becomes stale, fails, or is lost. Durable artifact
+outputs checkpoint back to project-level canonical artifact state. When a
+process revises an existing project artifact in this epic, checkpointing creates
+a new artifact version with producing-process provenance instead of reassigning
+artifact ownership to the latest process. Durable code work against
 already-attached writable sources checkpoints back to canonical code truth for
 those sources. Full source-attachment management, provenance browsing, and
 broader GitHub review or publishing workflows remain outside this epic.
@@ -50,13 +55,14 @@ process work surface:
 - Process-surface environment summary and stable visible control area
 - Environment readiness visibility for a process before active work begins
 - Start and resume flows that prepare an environment when needed
-- Hydration of already-assigned current artifacts, current outputs, and
-  already-attached current sources into the process working copy
+- Hydration of already-assigned current artifact references, current outputs,
+  and already-attached current sources into the process working copy
 - Access-mode visibility for already-attached sources used by the process
 - Controlled execution in the environment through the shared process surface
 - Live visibility for environment preparation, active execution, checkpointing,
   and recoverable failures
-- Durable checkpointing of artifact outputs back to canonical artifact state
+- Durable checkpointing of artifact outputs back to project-level canonical
+  artifact state with version-level producing-process provenance
 - Durable checkpointing of code work back to canonical code truth for
   already-attached writable sources
 - Rehydrate and rebuild flows after staleness, failure, or environment loss
@@ -89,13 +95,14 @@ process work surface:
 |----|------------|--------|-------|-------|
 | A1 | Epic 1 project shell and Epic 2 process work surface are already in place | Validated | Platform | Epic 3 extends those surfaces rather than replacing them |
 | A2 | A process can exist and remain visible without an active environment | Validated | Platform | Durable process state is not coupled to sandbox existence |
-| A3 | A process may already have current artifacts, current outputs, and current sources before the first environment is prepared | Validated | Platform | Epic 2 already established current materials visibility |
+| A3 | A process may already have current artifact references, current outputs, and current sources before the first environment is prepared | Validated | Platform | Epic 2 already established current materials visibility |
 | A4 | Source attachments needed by this epic already exist before the user begins environment work | Validated | Platform | This epic consumes existing attached sources and does not define source-management flows |
 | A5 | Some attached sources are read-only and some are writable | Validated | Product + Platform | Writable sources support canonical code checkpointing; read-only sources do not |
 | A6 | The working filesystem is always disposable working state rather than canonical truth | Validated | Platform | Rebuild and recovery depend on this boundary |
 | A7 | Code work against attached writable sources must persist back to canonical code truth in this epic rather than stopping at an in-environment draft state | Validated | Product + Platform | This keeps the environment slice real for code-bearing processes |
 | A8 | The process surface keeps a stable visible control area even when some controls are disabled in the current state | Validated | Product | UX layout may evolve later; visible control availability must remain legible now |
 | A9 | Full source-management UX remains follow-on work even though this epic performs real hydration and checkpointing for already-attached sources | Validated | Platform | The epic boundary is environment/execution, not source management |
+| A10 | Current artifacts shown on a process are project-level durable assets referenced by that process, and revising one in this epic creates a new version rather than transferring ownership | Validated | Platform | Epic 3 needs the aligned artifact model but not Epic 5's broader review/package behavior |
 
 ---
 
@@ -124,7 +131,7 @@ controls or forcing the user to guess why an action cannot run yet.
 1. User opens a process work surface
 2. System loads the current process state, current materials, environment
    summary, and visible controls
-3. User sees whether the environment is absent, preparing, ready, stale,
+3. User sees whether the environment is absent, preparing, rehydrating, ready, stale,
    checkpointing, failed, lost, rebuilding, or unavailable
 4. User sees a stable set of visible controls with enabled or disabled state
 5. User understands the next meaningful action without inferring environment
@@ -133,8 +140,9 @@ controls or forcing the user to guess why an action cannot run yet.
 #### Acceptance Criteria
 
 **AC-1.1:** The process work surface shows the current environment state on
-first load, including whether an environment is absent, preparing, ready,
-running, checkpointing, stale, failed, lost, rebuilding, or unavailable.
+first load, including whether an environment is absent, preparing,
+rehydrating, ready, running, checkpointing, stale, failed, lost, rebuilding,
+or unavailable.
 
 - **TC-1.1a: Environment state visible on first load**
   - Given: User opens a process work surface
@@ -231,16 +239,16 @@ surface into a visible environment-preparation state in the same session.
   - When: User resumes the process
   - Then: The surface enters a visible environment-preparation state in the same session
 
-**AC-2.2:** Environment preparation hydrates the process's current artifacts,
-current outputs, and already-attached current sources into the working copy
-before controlled work depends on them.
+**AC-2.2:** Environment preparation hydrates the process's current artifact
+references, current outputs, and already-attached current sources into the
+working copy before controlled work depends on them.
 
 - **TC-2.2a: Current materials hydrate into environment**
-  - Given: Process has current artifacts, outputs, and attached sources
+  - Given: Process has current artifact references, outputs, and attached sources
   - When: Environment preparation runs
   - Then: The working copy is prepared from those current materials rather than from unrelated project materials
 - **TC-2.2b: Process with partial working set still hydrates correctly**
-  - Given: Process has only some of artifacts, outputs, or attached sources
+  - Given: Process has only some of current artifact references, outputs, or attached sources
   - When: Environment preparation runs
   - Then: The environment hydrates the materials that exist without requiring a full working-set category to be present
 
@@ -341,10 +349,13 @@ history that already exists.
 ### 4. Checkpointing Durable Artifact Outputs and Writable Source Changes
 
 The process can produce output inside the environment, but the environment is
-not canonical truth. Durable artifact work must persist back to canonical
-artifact state. Durable code work against already-attached writable sources must
-persist back to canonical code truth for those sources. Read-only sources do not
-offer code checkpointing as an available path.
+not canonical truth. Durable artifact work must persist back to project-level
+canonical artifact state. If the process revises an existing project artifact,
+checkpointing appends a new version with producing-process provenance instead of
+reassigning artifact ownership to the checkpointing process. Durable code work
+against already-attached writable sources must persist back to canonical code
+truth for those sources. Read-only sources do not offer code checkpointing as
+an available path.
 
 1. Process performs work in the environment
 2. Process produces artifact output, code changes, or both
@@ -355,16 +366,21 @@ offer code checkpointing as an available path.
 #### Acceptance Criteria
 
 **AC-4.1:** Artifact outputs produced during controlled environment work can
-checkpoint back to durable artifact state for the process.
+checkpoint back to project-level durable artifact state without reassigning
+artifact ownership to the checkpointing process.
 
 - **TC-4.1a: Durable artifact output persists**
   - Given: Process produces artifact output during environment work
   - When: Checkpointing succeeds
-  - Then: The resulting artifact output appears in durable process state and remains available after the environment is gone
+  - Then: The resulting artifact output appears as a new durable project
+    artifact or as a new version of an existing project artifact referenced by
+    the process, and remains available after the environment is gone
 - **TC-4.1b: Artifact output remains recoverable after reopen**
   - Given: Artifact output checkpointing succeeded earlier
   - When: User later reloads or reopens the process
-  - Then: The checkpointed artifact output remains visible from durable state
+  - Then: The checkpointed artifact output remains visible from durable state,
+    including the resulting artifact version when an existing artifact was
+    revised
 
 **AC-4.2:** Code work against an already-attached writable source can checkpoint
 back to canonical code truth for that source.
@@ -393,7 +409,8 @@ target received it.
 - **TC-4.4a: Artifact checkpoint result visible**
   - Given: Artifact checkpointing succeeds
   - When: The process surface updates
-  - Then: The surface shows that durable artifact work persisted
+  - Then: The surface shows that durable artifact work persisted to a
+    project-level artifact target and identifies the resulting version
 - **TC-4.4b: Code checkpoint result visible**
   - Given: Writable-source checkpointing succeeds
   - When: The process surface updates
@@ -415,13 +432,14 @@ process surface shows the failure and the next recovery path.
 
 The working copy is disposable. The user needs a visible path when the
 environment becomes stale, fails during preparation or execution, or is lost
-entirely. Rehydration refreshes a usable environment from current canonical
-materials. Rebuild reconstructs from canonical truth after the system discards
-an unusable working copy.
+entirely. Rehydration refreshes a usable environment from the current canonical
+materials referenced by the process, including the relevant project-level
+artifact versions. Rebuild reconstructs from the same canonical truth after the
+system discards an unusable working copy.
 
 1. Process surface shows environment as stale, failed, lost, or unavailable
 2. User chooses `rehydrate` or `rebuild` when that action is available
-3. System refreshes or reconstructs the working copy from canonical materials
+3. System refreshes or reconstructs the working copy from the referenced canonical materials
 4. System returns the surface to a ready or recoverable state
 5. User continues work without losing durable process truth
 
@@ -440,24 +458,25 @@ and unavailable environment states.
   - Then: The environment appears lost rather than merely absent
 
 **AC-5.2:** `rehydrate` refreshes the current working copy from the latest
-canonical materials when the environment is still recoverable.
+canonical materials referenced by the process when the environment is still
+recoverable.
 
 - **TC-5.2a: Rehydrate refreshes stale working copy**
   - Given: Environment is recoverable but stale
   - When: User triggers `rehydrate`
-  - Then: The working copy refreshes from the latest canonical materials
+  - Then: The working copy refreshes from the latest referenced canonical materials
 - **TC-5.2b: Rehydrate updates visible state**
   - Given: Rehydration succeeds
   - When: The process surface updates
-  - Then: The environment state changes from stale or preparing to a ready or running state in the same session
+  - Then: The environment state changes from `stale` to `rehydrating`, then to a ready or running state in the same session
 
 **AC-5.3:** `rebuild` discards an unusable working copy and reconstructs the
-environment from canonical materials.
+environment from the referenced canonical materials.
 
 - **TC-5.3a: Rebuild replaces lost environment**
   - Given: Environment is lost or unusable
   - When: User triggers `rebuild`
-  - Then: The system reconstructs a new working copy from canonical materials
+  - Then: The system reconstructs a new working copy from the referenced canonical materials
 - **TC-5.3b: Rebuild does not depend on prior working copy survival**
   - Given: The previous working copy no longer exists
   - When: Rebuild succeeds
@@ -469,7 +488,8 @@ artifact outputs, and any already-persisted durable code work.
 - **TC-5.4a: Durable artifact state survives rebuild**
   - Given: Artifact outputs were checkpointed before the rebuild
   - When: User rehydrates or rebuilds the environment
-  - Then: The durable artifact outputs remain part of process truth
+  - Then: The durable artifact outputs remain part of project-level artifact
+    truth and remain referenced from the process's materials
 - **TC-5.4b: Durable code persistence survives rebuild**
   - Given: Writable-source checkpointing succeeded before the rebuild
   - When: User rehydrates or rebuilds the environment
@@ -480,7 +500,7 @@ prerequisites are missing or unavailable, the process surface shows that blocked
 state and does not falsely present the environment as ready.
 
 - **TC-5.5a: Rebuild blocked by missing canonical prerequisite**
-  - Given: Required canonical materials are missing or unavailable
+  - Given: Required canonical materials referenced by the process are missing or unavailable
   - When: User triggers `rebuild`
   - Then: The surface shows that the rebuild is blocked and does not present a ready environment
 - **TC-5.5b: Rehydrate blocked when recovery requires rebuild**
@@ -514,7 +534,10 @@ checkpoint result for that process.
 - **TC-6.1a: Reopen restores durable state**
   - Given: Process had prior environment work and durable checkpoint results
   - When: User later reopens the process route
-  - Then: The surface restores the latest durable process state, current materials, environment summary, and last visible checkpoint result
+  - Then: The surface restores the latest durable process state, current
+    materials, environment summary, and last visible checkpoint result,
+    including artifact version details when the checkpoint revised an existing
+    project artifact
 
 **AC-6.2:** The absence of an active environment does not erase the durable
 results of prior checkpointed artifact or code work.
@@ -522,7 +545,8 @@ results of prior checkpointed artifact or code work.
 - **TC-6.2a: Durable work remains after environment absence**
   - Given: Process no longer has an active environment
   - When: User reopens the process
-  - Then: Previously checkpointed durable artifact and code results remain visible from durable state
+  - Then: Previously checkpointed durable artifact versions and code results
+    remain visible from durable state
 
 **AC-6.3:** A live environment update failure does not prevent the durable
 process surface from loading or remaining usable.
@@ -560,8 +584,8 @@ contracts in documentation tables rather than implementation syntax.
 | Get process work surface | GET | `/api/projects/{projectId}/processes/{processId}` | Returns the process work surface, including environment summary and stable control states |
 | Start process | POST | `/api/projects/{projectId}/processes/{processId}/start` | Starts a draft process and begins environment preparation when required |
 | Resume process | POST | `/api/projects/{projectId}/processes/{processId}/resume` | Resumes an eligible process and begins environment preparation when required |
-| Rehydrate environment | POST | `/api/projects/{projectId}/processes/{processId}/rehydrate` | Refreshes a recoverable working copy from canonical materials |
-| Rebuild environment | POST | `/api/projects/{projectId}/processes/{processId}/rebuild` | Reconstructs an environment from canonical materials after loss or unrecoverable failure |
+| Rehydrate environment | POST | `/api/projects/{projectId}/processes/{processId}/rehydrate` | Refreshes a recoverable working copy from the canonical materials currently referenced by the process |
+| Rebuild environment | POST | `/api/projects/{projectId}/processes/{processId}/rebuild` | Reconstructs an environment from the canonical materials currently referenced by the process after loss or unrecoverable failure |
 | Live process updates | WebSocket | `/ws/projects/{projectId}/processes/{processId}` | Streams process, materials, side-work, current-request, and environment updates for one process |
 
 ### Process Work Surface Response
@@ -571,7 +595,7 @@ contracts in documentation tables rather than implementation syntax.
 | project | object | yes | Active project summary for the current process |
 | process | object | yes | Active process summary, including visible control states |
 | history | Process History Section Envelope | yes | Visible process history for the work surface |
-| materials | Process Materials Envelope | yes | Current artifacts, current outputs, and current sources for the process |
+| materials | Process Materials Envelope | yes | Current artifact references, current outputs, and current sources for the process |
 | currentRequest | Current Process Request or null | yes | Current unresolved process request when one exists |
 | sideWork | Side Work Section Envelope | yes | Current side-work summary state |
 | environment | Environment Summary | yes | Current environment state for the process |
@@ -586,13 +610,17 @@ contracts in documentation tables rather than implementation syntax.
 | blockedReason | string | no | non-empty when present | Current reason the environment cannot proceed to the next expected action |
 | lastHydratedAt | string | no | ISO 8601 UTC when present | Time the working set was last hydrated into the environment |
 | lastCheckpointAt | string | no | ISO 8601 UTC when present | Time the most recent checkpoint attempt settled |
-| lastCheckpointResult | Last Checkpoint Result or null | yes | present | Latest visible checkpoint outcome for this process environment; `null` when no checkpoint has settled yet |
+| lastCheckpointResult | Last Checkpoint Result or null | yes | present | Latest visible checkpoint outcome for this process environment; artifact checkpoints point at a project-level artifact target and the version created by this process when present; `null` when no checkpoint has settled yet |
 
 Checkpoint visibility in this epic is latest-result only. When a new checkpoint
 settles, `lastCheckpointResult` replaces the prior visible checkpoint result in
 the environment summary. Historical checkpoint moments may also appear in
 visible history, but this epic does not define a separate ordered checkpoint-
 results list.
+
+Artifact entries in `materials` remain process references to project-level
+durable assets. Epic 3 does not redefine project artifact ownership or add
+Epic 5's broader review/package behavior.
 
 ### Process Control State
 
@@ -659,8 +687,9 @@ the same session and later environment progress continues through live updates.
 | environment | Environment Summary | yes | present | Updated environment summary after rehydrate was accepted |
 
 After a successful rehydrate request, later environment state changes continue
-through live updates. If live updates are unavailable, the surface reloads the
-current durable process work-surface state automatically.
+through live updates. The accepted response should already reflect
+`environment.state = rehydrating`. If live updates are unavailable, the surface
+reloads the current durable process work-surface state automatically.
 
 ### Rebuild Environment Response
 
@@ -671,17 +700,22 @@ current durable process work-surface state automatically.
 | environment | Environment Summary | yes | present | Updated environment summary after rebuild was accepted |
 
 After a successful rebuild request, later environment state changes continue
-through live updates. If live updates are unavailable, the surface reloads the
-current durable process work-surface state automatically.
+through live updates. The accepted response should already reflect
+`environment.state = rebuilding`. If live updates are unavailable, the surface
+reloads the current durable process work-surface state automatically.
 
 ### Action Acceptance and Failure Boundary
 
 `start`, `resume`, `rehydrate`, and `rebuild` return immediate HTTP errors only
 when the server can reject the request before environment lifecycle work begins.
 This includes cases where the action is not available in the current state, a
-required canonical prerequisite is already known to be missing, the requested
-source is not writable, or environment lifecycle work is unavailable before the
-request is accepted.
+required canonical prerequisite is already known to be missing, or environment
+lifecycle work is unavailable before the request is accepted.
+
+Read-only or otherwise non-writable sources are resolved later by checkpoint
+planning and surface through `lastCheckpointResult` plus visible process history
+rather than as direct `start` / `resume` / `rehydrate` / `rebuild` request
+rejections.
 
 Once one of these actions returns success, later preparation, hydration,
 execution, recovery, or checkpoint failures surface as visible environment or
@@ -697,9 +731,19 @@ response with an HTTP error.
 | checkpointKind | enum | yes | `artifact`, `code`, or `mixed` | Type of durable work that persisted |
 | outcome | enum | yes | `succeeded` or `failed` | Result of the checkpoint attempt |
 | targetLabel | string | yes | non-empty | Canonical target that received or failed to receive the durable work |
+| artifactId | string | no | non-empty when present | Project-level artifact target when the checkpoint applies to artifact output |
+| artifactVersionId | string | no | non-empty when present | Exact artifact version created by the checkpoint when artifact persistence succeeds |
+| artifactVersionLabel | string | no | non-empty when present | Human-readable label for the artifact version created by the checkpoint |
+| versionProvenanceProcessId | string | no | non-empty when present | Process recorded as provenance for `artifactVersionId` when artifact output persists; this is the same producing-process identity Epic 5 names `producedByProcessId` on artifact versions |
 | targetRef | string | no | non-empty when present | Canonical target ref when the checkpoint applies to code |
 | completedAt | string | yes | ISO 8601 UTC | Time the checkpoint attempt settled |
 | failureReason | string | no | non-empty when present | Current visible reason for checkpoint failure |
+
+Epic 3 keeps `versionProvenanceProcessId` as the process-surface checkpoint
+field name to preserve this pack's existing contract. Epic 5 uses
+`producedByProcessId` for the same underlying artifact-version provenance
+identity. This is a naming cross-walk only; review, package, and broader
+artifact-model behavior remain outside Epic 3 scope.
 
 ### Live Process Update Message
 
@@ -739,7 +783,7 @@ checkpoint entity type.
 | 404 | `PROCESS_NOT_FOUND` | Requested process does not exist inside the requested project |
 | 409 | `PROCESS_ACTION_NOT_AVAILABLE` | The requested process action is not valid in the current process or environment state |
 | 409 | `PROCESS_ENVIRONMENT_NOT_RECOVERABLE` | The current environment cannot be rehydrated and requires rebuild or other recovery |
-| 422 | `PROCESS_ENVIRONMENT_PREREQUISITE_MISSING` | Required canonical materials are missing or unavailable for preparation, rehydrate, or rebuild |
+| 422 | `PROCESS_ENVIRONMENT_PREREQUISITE_MISSING` | Required canonical materials referenced by the process are missing or unavailable for preparation, rehydrate, or rebuild |
 | 503 | `PROCESS_ENVIRONMENT_UNAVAILABLE` | Environment lifecycle work is unavailable for the requested process |
 
 ### Live Transport Status Codes
@@ -825,8 +869,8 @@ Process dependencies:
 
 - Environment prepare, hydrate, execute, checkpoint, rehydrate, rebuild, and
   failure events are logged with request context, project ID, and process ID
-- Durable artifact checkpoint outcomes are traceable by process ID and
-  checkpoint target
+- Durable artifact checkpoint outcomes are traceable by process ID, artifact ID,
+  and artifact version ID when a checkpoint settles
 - Durable code checkpoint outcomes are traceable by process ID, source
   attachment ID, and target ref
 - Environment loss, rebuild requests, and recovery failures are traceable by

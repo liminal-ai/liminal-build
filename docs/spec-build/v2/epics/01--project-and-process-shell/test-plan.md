@@ -80,7 +80,8 @@ have the script hook even if the suite initially contains only explicit
 
 - current version fixture
 - no-current-version fixture
-- process-scoped artifact fixture
+- artifact with current process reference fixture
+- artifact with producing-process context fixture
 
 `tests/fixtures/sources.ts`
 
@@ -280,7 +281,7 @@ have the script hook even if the suite initially contains only explicit
 | TC-3.3b | `TC-3.3b shows no-current-version state` | Artifact without current version | Mount section | No-current-version label shown |
 | TC-3.3c | `TC-3.3c renders multiple artifact rows` | Multiple artifact fixtures | Mount section | Separate summary rows visible |
 | TC-3.3d | `TC-3.3d orders artifacts by updatedAt descending` | Different timestamps | Mount section | Newest first |
-| TC-3.3e | `TC-3.3e shows process association context for process-scoped artifact` | Process-scoped artifact fixture | Mount section | Process label/context visible |
+| TC-3.3e | `TC-3.3e shows explicit process context for artifact summary` | Artifact fixtures with `currentProcessReference` and/or `producingProcess` | Mount section | Process label/context visible with the correct relationship semantics and without implying process ownership |
 
 ### `tests/service/client/source-attachment-section.test.ts`
 
@@ -397,8 +398,10 @@ summary visibility.
 4. Create a project and verify the shell opens immediately.
 5. Create at least two processes, including two of the same type.
 6. Confirm process labels are distinct and newest-first ordering holds.
-7. Seed one artifact and one source attachment as project-scoped and one each as
-   process-scoped; verify summary context is visible.
+7. Seed one artifact with no process context, one with
+   `currentProcessReference`, one with `producingProcess`, and one each of
+   project-scoped and process-scoped source attachments; verify summary context
+   is visible and semantically distinct.
 8. Force one section reader into an error state and confirm the other sections
    still render.
 9. Reload `/projects/:projectId?processId=...` and confirm the shell restores.

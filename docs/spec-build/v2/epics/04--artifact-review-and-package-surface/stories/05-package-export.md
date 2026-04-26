@@ -15,7 +15,7 @@ Export the currently reviewed package as a bounded `.mpkz` archive with an `_nav
 
 **Objective**
 
-Deliver the package-export pipeline for reviewed package snapshots so the user can request a bounded archive from the same workspace. Until a downstream process-module epic publishes package snapshots in normal product flow, this story is exercised through tests and manual Convex seeding.
+Deliver the package-export pipeline for reviewed package snapshots so the user can request a bounded archive from the same workspace. Export remains a two-phase flow in this story: POST returns signed metadata, then GET streams the archive. Until a downstream process-module epic publishes package snapshots in normal product flow, this story is exercised through tests and manual Convex seeding.
 
 **Scope**
 
@@ -25,6 +25,7 @@ In:
 - Validate exportability before issuing download metadata
 - Return a bounded `.mpkz` archive for the currently reviewed package snapshot
 - Include an `_nav.md` manifest that identifies the package and included artifact version identities
+- Preserve the exact pinned package composition even when that package includes members produced by multiple processes in the same project
 - Keep the review workspace open when export preparation fails or an earlier download URL has expired
 
 Out:
@@ -37,7 +38,7 @@ Out:
 **Dependencies**
 
 - Story 4 package review workspace
-- Story 4 package snapshot publication handoff through `publishPackageSnapshot`
+- Story 4 package snapshot publication handoff through `publishPackageSnapshot` from one process review context, with pinned members allowed from multiple processes in the same project
 - Liminal Build markdown package library for `.mpk` and `.mpkz` archive handling
 - [tech-design.md](../tech-design.md), [tech-design-client.md](../tech-design-client.md), [tech-design-server.md](../tech-design-server.md)
 - [test-plan.md](../test-plan.md)
@@ -96,8 +97,8 @@ Note: The canonical shared contract definitions are established in Story 0 (Foun
 
 | `available` | Other fields | Semantics |
 |---|---|---|
-| `true` | *(no other fields)* | Every package member is `status: ready`; the export action is offered |
-| `false` | `reason: string` (required, non-empty) | At least one package member is `unsupported` or `unavailable`; the export action is hidden and the reason may be surfaced |
+| `true` | *(no other fields)* | The snapshot has at least one durable member and no package member is `unavailable`; `unsupported` members do not by themselves block export |
+| `false` | `reason: string` (required, non-empty) | The snapshot has zero durable members or at least one package member is `unavailable`; the export action is hidden and the reason may be surfaced |
 
 #### Export Package Response
 
@@ -137,9 +138,10 @@ See the tech design document for full architecture, implementation targets, and 
 
 ### Definition of Done
 <!-- Jira: Definition of Done or Acceptance Criteria footer -->
-- Export is offered only for exportable reviewed packages
+- Export is offered only for reviewed packages that retain at least one durable member and no unavailable members
 - Export preflight returns bounded signed-download metadata and the resulting archive name ends in `.mpkz`
-- The exported archive matches the reviewed package snapshot and includes an `_nav.md` manifest with package and artifact version identities
+- The exported archive matches the reviewed package snapshot and includes an `_nav.md` manifest with package and artifact version identities, even when the snapshot spans multiple producing processes
+- Unsupported-but-durable package members remain exportable; only unavailable members or zero-durable-member snapshots suppress export
 - Export preparation failure leaves the review workspace open with the current review state intact
 - Expired download URLs require a fresh export request without erasing review context
 - Export preparation begins within 2 seconds under normal conditions, and the export action remains keyboard reachable

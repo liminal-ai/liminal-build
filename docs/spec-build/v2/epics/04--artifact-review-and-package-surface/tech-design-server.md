@@ -8,6 +8,29 @@ The server remains one Fastify 5 monolith. Epic 4 does not introduce a second se
 
 Epic 4 adds three new server concerns beneath the existing surface set: a dedicated review route family, a server-side markdown render pipeline, and a streaming export path that composes Convex File Storage content into a `.mpkz` archive. None of these are public products of their own — they are deeper implementation layers inside the existing authenticated application boundary.
 
+## Alignment Backfill
+
+Epic 5 later settled the artifact-model alignment that some early Epic 4 server
+design sections still described with pre-alignment language. The normative
+reading for this document is:
+
+- artifacts are project-scoped durable identities, not rows owned by one
+  primary process
+- process provenance lives on `artifactVersions.createdByProcessId`
+- reviewability starts from process refs / pinned review context and then
+  checks durable versions; it is not derived from artifact-row ownership or
+  version provenance alone
+- package snapshots opened from one process review context may pin artifact
+  versions produced by multiple processes in the same project
+- zero-version artifacts remain excluded from `availableTargets` and review
+  enablement, but a valid direct target can still render `status: empty`
+- on review-workspace bootstrap, once project and process context resolves,
+  missing or no-longer-eligible targets degrade inside the `200` workspace
+  envelope as `target.status: unavailable` with `REVIEW_TARGET_NOT_FOUND`;
+  request-level `404 REVIEW_TARGET_NOT_FOUND` remains for target-specific
+  endpoints that cannot return a workspace envelope and for expired/tampered
+  export-download URLs
+
 ### Entry Point: `apps/platform/server/index.ts`
 
 Responsibilities remain the same — load environment configuration, construct the Fastify app, start the HTTP server. Epic 4 adds one startup responsibility: ensure the Convex client used by `PlatformStore` is configured with File Storage access credentials that can mint signed URLs via `ctx.storage.getUrl()`. Those credentials already exist in the repo (Epic 3's closure chunks introduced `contentStorageId` writes), so Epic 4's work here is validation, not new configuration.
@@ -36,9 +59,9 @@ Assembly order matters:
 | Surface | Epic 4 Server Nesting |
 |---------|-----------------------|
 | Processes | Existing `routes/processes.ts` and process services remain authoritative for the process work surface. Epic 4 extends the `controls[review].enabled` computation inside `process-work-surface.service.ts` (primary seam — gates the user's click) and the `availableActions` shell projection inside `platform-store.ts` (secondary seam — keeps shell descriptive state consistent). Both consult reviewability; no new contract field |
-| Artifacts | **Schema migration**: `artifacts` table trims to identity-and-attachment (`projectId`, `processId`, `displayName`, new `createdAt`). Removed: `contentStorageId`, `currentVersionLabel`, `updatedAt` — all three relocate to or are derived from `artifactVersions`. Epic 3's checkpoint writer is rewritten to insert a new `artifactVersions` row rather than overwrite in place |
-| Review | **New surface** — `routes/review.ts` and `services/review/*`. Entirely server-owned, no process-surface responsibility bleeds in |
-| Packages | **New surface** — `services/review/package-review.service.ts` plus new Convex tables. Epic 4 ships the typed `publishPackageSnapshot` internal mutation that downstream process-module epics call when they decide to publish; Epic 4 itself contains no production caller of that mutation |
+| Artifacts | **Schema migration**: `artifacts` table trims to project-scoped identity (`projectId`, `displayName`, new `createdAt`). Removed: `processId`, `contentStorageId`, `currentVersionLabel`, `updatedAt` — version-specific state relocates to or is derived from `artifactVersions`, and process linkage moves to process-reference / provenance surfaces. Epic 3's checkpoint writer is rewritten to insert a new `artifactVersions` row rather than overwrite in place |
+| Review | **New surface** — `routes/review.ts` and `services/review/*`. Entirely server-owned, no process-surface responsibility bleeds in. Reviewability is computed from process review context, not artifact ownership |
+| Packages | **New surface** — `services/review/package-review.service.ts` plus new Convex tables. Epic 4 ships the typed `publishPackageSnapshot` internal mutation that downstream process-module epics call when they decide to publish from a given process review context; package members may pin versions from multiple processes in the same project |
 | Rendering | **New shared substrate** — `services/rendering/*`. Not a route surface on its own; consumed by review services only in Epic 4 |
 
 The key nesting rule: review work belongs under a new route family at the same altitude as `projects` and `processes`. It is not a sub-route of process. The URL structure reflects process-aware context (`/projects/.../processes/.../review`) but the server route handler owns the review semantics end-to-end and does not delegate to the process work surface service.
@@ -121,20 +144,20 @@ convex/
 | `routes/review.ts` | NEW | Review HTML route + review APIs (bootstrap, artifact, package, export POST, export download GET) | auth, review services, request/response contracts | AC-1 through AC-6 |
 | `review-workspace.service.ts` | NEW | Assemble review workspace bootstrap: project + process context + available target summaries + optional selected target; delegates populated-target rendering to the appropriate target-specific service | process-access service, target-resolution, reviewability, `PlatformStore`, **artifact-review.service**, **package-review.service** | AC-1, AC-6 |
 | `artifact-review.service.ts` | NEW | Resolve one artifact's versions, select version by query state, fetch content from Convex File Storage, render via `MarkdownRendererService`, return `ArtifactReviewTarget` | `PlatformStore`, renderer service | AC-2, AC-3, AC-6 |
-| `package-review.service.ts` | NEW | Resolve one package snapshot + members, apply first-reviewable-member default, compute `exportability`, select member by query state, return `PackageReviewTarget` with selected-member `PackageMemberReview` envelope (status/error/artifact?) | `PlatformStore`, **artifact-review.service** (reused for selected member render) | AC-4, AC-5.1b, AC-6 |
+| `package-review.service.ts` | NEW | Resolve one package snapshot + members, apply first-ready-member preference plus durable-member fallback, compute `exportability`, select member by query state, return `PackageReviewTarget` with selected-member `PackageMemberReview` envelope (status/error/artifact?) | `PlatformStore`, **artifact-review.service** (reused for selected member render) | AC-4, AC-5.1b, AC-6 |
 | `export.service.ts` | NEW | Two-phase export: POST returns `ExportPackageResponse` JSON with a signed download URL; GET at that URL (handled by the same `routes/review.ts` module) streams the `.mpkz` archive through `createPackageFromEntries` into the Fastify reply body | `PlatformStore`, `@liminal-build/markdown-package`, `export-url-signing` | AC-5 |
 | `export-url-signing.ts` | NEW | Mint and verify signed download URL tokens with embedded expiresAt; verification failures return 404 `REVIEW_TARGET_NOT_FOUND` for expired or invalid tokens | Node `crypto` | AC-5.3b |
-| `reviewability.ts` | NEW (pure) | Pure function: given (artifact-version counts per artifact, package snapshot existence for process), produce `{ available: ReviewTargetSummary[], hasReviewable: boolean }` | none | AC-1 |
+| `reviewability.ts` | NEW (pure) | Pure function: given (process-referenced artifacts plus durable-version existence, package snapshots plus durable-member availability for the process review context), produce `{ available: ReviewTargetSummary[], hasReviewable: boolean }` | none | AC-1 |
 | `target-resolution.ts` | NEW (pure) | Parse query state, enforce target-selection rules (single-target auto-open, multi-target selection state, zero-target empty state) | none | AC-1 |
 | `markdown-renderer.service.ts` | NEW | Server-side markdown → sanitized HTML + Mermaid sidecar. Pipeline: markdown-it (`html: false`) + `@shikijs/markdown-it` + vendored `markdown-it-anchor` + vendored `github-slugger` + purpose-built task-list renderer + `mermaid-sanitize` fence interception → placeholder replacement → isomorphic-dompurify | markdown-it, shiki, isomorphic-dompurify (direct deps) | AC-3 |
 | `github-slugger.ts` | NEW (vendored) | Stable heading slug generator, deterministic across renders | none | AC-3 |
 | `markdown-it-anchor.ts` | NEW (vendored) | Register heading anchors on markdown-it instances using the vendored slugger | vendored slugger | AC-3 |
 | `markdown-task-lists.ts` | NEW (our own) | Scan tokenized list items for `[ ]` / `[x]` / `[X]` prefixes, replace with disabled checkbox inside label, tag parent list as task-list | none | AC-3 |
 | `mermaid-sanitize.ts` | NEW | Strip `%%{init}%%`, `%%{config}%%`, `%%{wrap}%%` directives from mermaid fence sources; extract source + synthetic blockId for sidecar; replace fence in HTML with placeholder div | none | AC-3 |
-| `platform-store.ts` | MODIFIED | Add durable reads for `artifactVersions`, `packageSnapshots`, `packageSnapshotMembers`; add `getArtifactVersionContentUrl` + `getLatestArtifactVersion` helpers; add `insertArtifactVersion` and `publishPackageSnapshot` typed write wrappers; **rewrite any existing call site that reads `artifacts.contentStorageId`** to use `getLatestArtifactVersion`; extend shell `availableActions` projections (multiple sites) to consult reviewability when including `'review'` | Convex functions, reviewability check | AC-1 through AC-6 |
+| `platform-store.ts` | MODIFIED | Add durable reads for `artifactVersions`, `packageSnapshots`, `packageSnapshotMembers`; add `getArtifactVersionContentUrl` + `getLatestArtifactVersion` helpers; add `insertArtifactVersion` and `publishPackageSnapshot` typed write wrappers; **rewrite any existing call site that reads `artifacts.contentStorageId` or artifact-row process ownership** to use `getLatestArtifactVersion` plus process-reference state; extend shell `availableActions` projections (multiple sites) to consult reviewability when including `'review'` | Convex functions, reviewability check | AC-1 through AC-6 |
 | `materials-section.reader.ts` | MODIFIED | Artifact summary read-path rewrite — derive `currentVersionLabel` and `updatedAt` from `artifactVersions[latest]` via `getLatestArtifactVersion`. `ArtifactSummary` schema unchanged; derivation logic is the change | `PlatformStore` | AC-2 |
-| `process-work-surface.service.ts` | **MODIFIED (primary review-enablement seam)** | Current `case 'review':` branch (`~line 278`) computes `{ enabled, disabledReason }` from process status only. Epic 4 extends this branch to also consult reviewability via `PlatformStore.hasReviewableTargets(processId)`. `enabled = true` iff the lifecycle status permits review AND at least one reviewable target exists. This is the seam that gates the user's actual click on the process-surface `review` control | `PlatformStore`, reviewability check | AC-1.1 |
-| `platform-store.ts` shell `availableActions` projections | MODIFIED (secondary seam) | The shell-level process-list projections (multiple `availableActions` sites in `platform-store.ts`) include `'review'` in the action list based on lifecycle status. Epic 4 extends the same reviewability check so the shell's descriptive action list matches what the process surface actually enables. Nothing renders shell-level controls as clickable today, but keeping the two projections in sync prevents a drift bug when a future epic wires shell controls as interactive | Convex reads, reviewability check | AC-1.1 |
+| `process-work-surface.service.ts` | **MODIFIED (primary review-enablement seam)** | Current `case 'review':` branch (`~line 278`) computes `{ enabled, disabledReason }` from process status only. Epic 4 extends this branch to also consult reviewability via `PlatformStore.hasReviewableTargets(processId)`. `enabled = true` iff the lifecycle status permits review AND at least one reviewable target exists in that process review context, including package snapshots only when they retain at least one durable member. This is the seam that gates the user's actual click on the process-surface `review` control | `PlatformStore`, reviewability check | AC-1.1 |
+| `platform-store.ts` shell `availableActions` projections | MODIFIED (secondary seam) | The shell-level process-list projections (multiple `availableActions` sites in `platform-store.ts`) include `'review'` in the action list based on lifecycle status. Epic 4 extends the same reviewability check so the shell's descriptive action list matches what the process surface actually enables, including the "package snapshot must have at least one durable member" rule. Nothing renders shell-level controls as clickable today, but keeping the two projections in sync prevents a drift bug when a future epic wires shell controls as interactive | Convex reads, reviewability check | AC-1.1 |
 | `process-section.reader.ts` | UNCHANGED | Previously drafted as the modification site; corrected to the `process-work-surface.service.ts` + `platform-store.ts` pair above. `process-section.reader.ts` is the shell section reader for the processes list envelope; it does not compute the per-process `controls` array or `availableActions` and therefore does not need Epic 4 changes | — | — |
 | `codes.ts` | MODIFIED | Add `REVIEW_TARGET_NOT_FOUND`, `REVIEW_EXPORT_NOT_AVAILABLE`, `REVIEW_EXPORT_FAILED` to the error-code enum | — | AC-1, AC-5, AC-6 |
 | `review-workspace.ts` (contract) | NEW | Zod schemas for every review request/response type; `PackageMemberReview` with own status/error; `PackageReviewTarget.exportability` signal; review target error shape; review error codes | Zod | AC-1 through AC-6 |
@@ -142,7 +165,7 @@ convex/
 | `convex/artifactVersions.ts` | NEW | Durable per-artifact version rows (content pointer lives here after the storage model change); typed `internalMutation insertArtifactVersion`; `internalQuery` list / get / content-URL | Convex schema + typed functions | AC-2, AC-6 |
 | `convex/packageSnapshots.ts` | NEW | Durable package snapshot headers; typed `internalMutation publishPackageSnapshot` (transactional insert of snapshot + all member rows); no update API (immutable after write) | Convex schema | AC-4 |
 | `convex/packageSnapshotMembers.ts` | NEW | Durable snapshot member rows: snapshotId, position, artifactId, artifactVersionId (the pin); written transactionally inside `publishPackageSnapshot` | Convex schema | AC-4 |
-| `convex/artifacts.ts` | **MODIFIED (storage model change)** | Table shape trims to four fields: `projectId` (kept), `processId` (kept), `displayName` (kept), `createdAt` (new). **Removed: `contentStorageId`, `currentVersionLabel`, `updatedAt`.** Rewrite Epic 3's checkpoint writer path to call `insertArtifactVersion` instead of overwriting the artifact row. Update every caller of the three removed fields to use `getLatestArtifactVersion`. See §Artifact Storage Model Change for the field-by-field delta and read-path implications for callers like `materials-section.reader.ts`. | AC-2 |
+| `convex/artifacts.ts` | **MODIFIED (storage model change)** | Table shape trims to three fields: `projectId` (kept), `displayName` (kept), `createdAt` (new). **Removed: `processId`, `contentStorageId`, `currentVersionLabel`, `updatedAt`.** Rewrite Epic 3's checkpoint writer path to call `insertArtifactVersion` instead of overwriting the artifact row. Update every caller of the removed fields to use `getLatestArtifactVersion` plus process-reference state where needed. See §Artifact Storage Model Change for the field-by-field delta and read-path implications for callers like `materials-section.reader.ts`. | AC-2 |
 
 ### Component Interaction Diagram
 
@@ -210,14 +233,13 @@ Epic 4 defines the typed `publishPackageSnapshot` internal mutation but does not
 
 This is a **storage-model rewrite**, not a data-preserving migration of live user content. Epic 4 assumes the repo's pre-customer stance (stated in Epic 3's implementation addendum): dev-DB artifacts are throwaway, schema breaking changes land as direct edits, no migration dance. If Epic 4 were to ship post-customer, this section would need a real widen-migrate-narrow procedure instead; that is explicitly out of scope for the current slice.
 
-Epic 4 trims the `artifacts` table to identity-and-attachment only, relocates all version-specific state to the new `artifactVersions` table, and rewrites Epic 3's checkpoint writer path. The work lands in Chunk 0 (schema change) + Chunk 2 (write-path rewrite and read-path rewrite).
+Epic 4 trims the `artifacts` table to project-scoped identity only, relocates all version-specific state to the new `artifactVersions` table, and rewrites Epic 3's checkpoint writer path. The work lands in Chunk 0 (schema change) + Chunk 2 (write-path rewrite and read-path rewrite).
 
 #### Retained `artifacts` Fields After the Change
 
-The post-change `artifacts` row carries exactly four fields — no version-specific state, no denormalized latest pointer:
+The post-change `artifacts` row carries exactly three fields — no version-specific state, no denormalized latest pointer, and no artifact-level process owner:
 
 - `projectId` *(kept)* — project attachment; required for shell-level artifact scoping
-- `processId` *(kept, nullable)* — process attachment; nullable for project-scoped artifacts; attachment scope is artifact-identity-level, not version-level
 - `displayName` *(kept)* — human-readable identity
 - `createdAt` *(new)* — timestamp when the artifact identity was first inserted; serves as the fallback source for `ArtifactSummary.updatedAt` when no versions exist yet
 
@@ -225,12 +247,12 @@ Everything else about an artifact — what version is current, where content liv
 
 #### `artifacts` Table: Field-by-Field Delta
 
-The current Epic 3 `artifacts` table (`convex/artifacts.ts:19`) has six fields. After the change it has four. The precise delta:
+The current Epic 3 `artifacts` table (`convex/artifacts.ts:19`) has six fields. After the change it has three. The precise delta:
 
 | Field | Current (Epic 3) | After Change (Epic 4) | Notes |
 |-------|------------------|------------------------|-------|
 | `projectId` | `v.string()` | `v.string()` — **kept** | Project attachment; required for shell-level artifact scoping |
-| `processId` | `v.union(v.string(), v.null())` | `v.union(v.string(), v.null())` — **kept** | Process attachment (nullable for project-scoped artifacts); attachment scope is artifact-identity-level, not version-level |
+| `processId` | `v.union(v.string(), v.null())` | **REMOVED** | Early Epic 4 drafts treated this as artifact attachment. Epic 5 supersedes that model; process linkage now comes from process refs and version provenance instead of an artifact-row owner/attachment |
 | `displayName` | `v.string()` | `v.string()` — **kept** | Human-readable identity |
 | `currentVersionLabel` | `v.union(v.string(), v.null())` | **REMOVED** | Derived at read time from `artifactVersions[latest].versionLabel`; `null` when no versions exist |
 | `contentStorageId` | `v.id('_storage')` | **REMOVED** | Moved to `artifactVersions.contentStorageId`; one row per revision |
@@ -242,13 +264,12 @@ Post-change `artifacts` row shape:
 ```ts
 export const artifactsTableFields = {
   projectId: v.string(),
-  processId: v.union(v.string(), v.null()),
   displayName: v.string(),
   createdAt: v.string(),
 };
 ```
 
-Four fields, all identity-and-attachment. No version-specific state. Existing indexes on `artifacts` (notably `by_projectId_updatedAt`) need attention: `updatedAt` is no longer on the row, so queries that previously sorted artifacts by `updatedAt` must either sort by `artifacts.createdAt` (identity-level recency) or join against `artifactVersions` for true latest-activity ordering. Both options are acceptable for the first cut; the read-path rewrite documents which choice each call site makes.
+Three fields, all project-scoped identity. No version-specific state. Existing indexes on `artifacts` (notably `by_projectId_updatedAt`) need attention: `updatedAt` is no longer on the row, so queries that previously sorted artifacts by `updatedAt` must either sort by `artifacts.createdAt` (identity-level recency) or join against `artifactVersions` for true latest-activity ordering. Both options are acceptable for the first cut; the read-path rewrite documents which choice each call site makes.
 
 #### Write-Path and Read-Path Delta
 
@@ -268,7 +289,8 @@ Pre-customer stance in Epic 3's implementation addendum permits direct schema ed
 
 | Summary field | Before (Epic 3) | After (Epic 4) |
 |---------------|------------------|-----------------|
-| `artifactId`, `displayName`, `attachmentScope`, `processId`, `processDisplayLabel` | Read directly from `artifacts` row (or join against `processes` for `processDisplayLabel`) | **Unchanged** — `artifactId`, `displayName`, `processId` still come from `artifacts`; `attachmentScope` is still derived from `processId === null`; `processDisplayLabel` still joins against `processes` |
+| `artifactId`, `displayName` | Read directly from `artifacts` row | **Unchanged** — project-scoped identity still comes from `artifacts` |
+| `attachmentScope`, `processId`, `processDisplayLabel` | Historically projected from `artifacts.processId` | **Superseded by Epic 5 alignment** — any process label shown in summaries must now come from process refs or latest-version provenance, not from an artifact-row owner/attachment |
 | `currentVersionLabel` | From `artifacts.currentVersionLabel` | Derived from `artifactVersions[latest].versionLabel` for the artifact; `null` when no versions exist |
 | `updatedAt` | From `artifacts.updatedAt` | Derived from `artifactVersions[latest].createdAt` for the artifact; falls back to the new `artifacts.createdAt` field when no versions exist |
 
@@ -283,9 +305,9 @@ No denormalized latest-version cache stays on `artifacts`. Single source of trut
 
 | Table | Status | Purpose | Notes |
 |-------|--------|---------|-------|
-| `artifacts` | **MODIFIED (storage model change)** | Generic artifact identity-and-attachment row after Epic 4: `projectId`, `processId`, `displayName`, `createdAt` | `contentStorageId`, `currentVersionLabel`, `updatedAt` are removed; all version-specific state moves to or is derived from `artifactVersions`; new `createdAt` field added for identity-level recency |
+| `artifacts` | **MODIFIED (storage model change)** | Generic project-scoped artifact identity row after Epic 4: `projectId`, `displayName`, `createdAt` | `processId`, `contentStorageId`, `currentVersionLabel`, `updatedAt` are removed; all version-specific state moves to or is derived from `artifactVersions`; new `createdAt` field added for identity-level recency |
 | `artifactVersions` | NEW | One row per durable version of one artifact; content via File Storage | Indexed by `artifactId` + `createdAt` |
-| `packageSnapshots` | NEW | One row per durable published package; immutable after publication | Indexed by `processId` + `publishedAt` |
+| `packageSnapshots` | NEW | One row per durable published package in one process review context; immutable after publication | Indexed by `processId` + `publishedAt`; members may pin versions from other processes in the same project |
 | `packageSnapshotMembers` | NEW | Many rows per snapshot; pins (artifactId, artifactVersionId, position) | Indexed by `packageSnapshotId` + `position` |
 
 ### Convex Field Outline
@@ -316,10 +338,12 @@ Index plan:
 ```ts
 defineTable(artifactVersionsTableFields)
   .index('by_artifactId_createdAt', ['artifactId', 'createdAt'])
-  .index('by_createdByProcessId_createdAt', ['createdByProcessId', 'createdAt'])
 ```
 
-The first index powers the per-artifact version list (AC-2). The second powers the process-scoped reviewability count (AC-1) without a collection scan.
+The index powers the per-artifact version list (AC-2) and latest-version
+lookup. Reviewability is **not** derived from `createdByProcessId`; under the
+Epic 5 alignment it starts from process refs / pinned review context and then
+checks whether the referenced artifact has at least one version.
 
 #### `packageSnapshots`
 
@@ -426,6 +450,10 @@ export const publishPackageSnapshot = internalMutation({
 
 All writes happen inside one Convex mutation transaction. No update path exists for `packageSnapshots` or `packageSnapshotMembers`; once a snapshot is published it is immutable. Epic 4 does not call this mutation from any production code — it exists for downstream process-module epics to invoke when their publish decision fires.
 
+`processId` here names the process review context that published the snapshot.
+It does **not** constrain package members to artifacts last produced by that
+same process.
+
 ### Query Discipline
 
 New and modified Convex modules:
@@ -473,6 +501,14 @@ export interface ReviewTargetSummary {
 ### Review Target Union
 
 `ReviewTarget` is a tagged union over artifact and package kinds. When `targetKind === 'artifact'` the `artifact` field is populated; when `'package'` the `package` field is populated. The `status` field on every target carries the top-level state; `error` is populated only when status is `error | unsupported | unavailable`.
+
+`target` is omitted entirely when the workspace is in a zero-target or
+multi-target selection state. `status: 'empty'` is reserved for one case only:
+an explicitly selected artifact target whose identity resolves in the current
+process review context but whose version list is empty. The raw
+`ArtifactReviewTarget` contract does not carry a `status` field; the
+review-workspace wrapper is what maps that zero-version condition to
+`ReviewTarget.status: 'empty'`.
 
 ```ts
 export interface ReviewTarget {
@@ -555,6 +591,18 @@ export interface ReviewTargetError {
   message: string;
 }
 ```
+
+`PackageMember.status` is renderability-aware, not just durability-aware:
+`ready` means the member is durable and renderable in the first-cut workspace,
+`unsupported` means the pinned version still resolves durably but can only open
+through the bounded unsupported fallback, and `unavailable` means the pinned
+version no longer resolves durably.
+
+`PackageExportability.available` is narrower than "package reviewable" but
+broader than "every member ready": export is allowed when the snapshot has at
+least one durable member and no member is `unavailable`. `unsupported` members
+stay exportable because the archive packages pinned bytes, not the rendered
+workspace view.
 
 Review-target-scoped error codes:
 
@@ -641,7 +689,7 @@ export interface PlatformStore {
   }): Promise<string>;  // returns the new artifactVersionId
 
   publishPackageSnapshot(args: {
-    processId: string;
+    processId: string;  // publication / review-context process, not package-member ownership
     displayName: string;
     packageType: string;
     members: Array<{
@@ -660,12 +708,12 @@ export interface ArtifactVersionRecord {
   contentKind: 'markdown' | 'unsupported';
   bytes: number;
   createdAt: string;
-  createdByProcessId: string;
+  createdByProcessId: string;  // provenance only; not a reviewability or ownership check
 }
 
 export interface PackageSnapshotRecord {
   packageSnapshotId: string;
-  processId: string;
+  processId: string;  // publication / review-context process; members may come from other processes in the project
   displayName: string;
   packageType: string;
   publishedAt: string;
@@ -780,8 +828,10 @@ sequenceDiagram
     Route->>Access: assertProcessAccess(actor, projectId, processId)
     Access-->>Route: project + process access
     Route->>Workspace: getWorkspace({actor, projectId, processId, query})
-    Workspace->>Store: listArtifactVersions per-artifact + listPackageSnapshotsForProcess
-    Store-->>Workspace: targets + versions + snapshots
+    Workspace->>Store: list current artifact refs for process + listPackageSnapshotsForProcess
+    Store-->>Workspace: referenced artifacts + snapshots
+    Workspace->>Store: listArtifactVersions for referenced artifacts
+    Store-->>Workspace: version existence + latest versions
     Workspace->>TargetRes: resolveTarget(query, availableTargets)
     TargetRes-->>Workspace: selected target kind/id/version/member or empty
     alt selected target is artifact
@@ -802,8 +852,8 @@ sequenceDiagram
 | Review route module | `apps/platform/server/routes/review.ts` | `export async function registerReviewRoutes(app: FastifyInstance, deps: ReviewRouteDeps): Promise<void>` |
 | Review workspace service | `apps/platform/server/services/review/review-workspace.service.ts` | `export class ReviewWorkspaceService { async getWorkspace(args): Promise<ReviewWorkspaceResponse> { throw new NotImplementedError('ReviewWorkspaceService.getWorkspace'); } }` |
 | Target resolution pure module | `apps/platform/server/services/review/target-resolution.ts` | `export function resolveTarget(query, available): TargetResolution { throw new NotImplementedError('resolveTarget'); }` |
-| Reviewability pure module | `apps/platform/server/services/review/reviewability.ts` | `export function computeReviewability(versions, snapshots): { available: ReviewTargetSummary[]; hasReviewable: boolean } { throw new NotImplementedError('computeReviewability'); }` |
-| PlatformStore methods | `apps/platform/server/services/projects/platform-store.ts` | `listArtifactVersions`, `getArtifactVersion`, `getLatestArtifactVersion`, `listPackageSnapshotsForProcess`, `hasReviewableTargets`, `insertArtifactVersion`, `publishPackageSnapshot` |
+| Reviewability pure module | `apps/platform/server/services/review/reviewability.ts` | `export function computeReviewability(processRefs, versionExistence, snapshots): { available: ReviewTargetSummary[]; hasReviewable: boolean } { throw new NotImplementedError('computeReviewability'); }` |
+| PlatformStore methods | `apps/platform/server/services/projects/platform-store.ts` | `listCurrentArtifactRefsForProcess`, `listArtifactVersions`, `getArtifactVersion`, `getLatestArtifactVersion`, `listPackageSnapshotsForProcess`, `hasReviewableTargets`, `insertArtifactVersion`, `publishPackageSnapshot` |
 | Convex state modules | `convex/artifactVersions.ts`, `convex/packageSnapshots.ts`, `convex/packageSnapshotMembers.ts` | Public/internal typed queries + the two typed write mutations (`insertArtifactVersion`, `publishPackageSnapshot`) |
 
 ### TC Mapping for this Flow
@@ -813,7 +863,7 @@ Full TC→test mapping lives in `test-plan.md`; this table lists the TCs this fl
 | TC | Tests | Module | Setup | Assert |
 |----|-------|--------|-------|--------|
 | TC-1.1a | bootstrap opens from process surface | `tests/service/server/review-workspace-api.test.ts` | process with one reviewable artifact | response includes that artifact as selected target |
-| TC-1.1b | review not falsely offered without reviewable output | `tests/service/server/processes-api.test.ts` | process with zero versions + zero snapshots | process summary `controls[review].enabled === false`; `controls[review].disabledReason` populated |
+| TC-1.1b | review not falsely offered without reviewable output | `tests/service/server/processes-api.test.ts` | process whose referenced artifacts all have zero versions and which has zero snapshots | process summary `controls[review].enabled === false`; `controls[review].disabledReason` populated |
 | TC-1.1c | single target opens directly | `tests/service/server/review-workspace-api.test.ts` | process with one target, no query state | response populates that target |
 | TC-1.1d | multiple targets open in selection state | `tests/service/server/review-workspace-api.test.ts` | process with two targets, no query state | response returns availableTargets only; `target` omitted |
 | TC-1.1e | zero-target direct route opens empty | `tests/service/server/review-workspace-api.test.ts` | process with zero targets, direct review URL | response returns empty availableTargets |
@@ -830,7 +880,7 @@ Full TC→test mapping lives in `test-plan.md`; this table lists the TCs this fl
 
 **Covers:** AC-2.1, AC-2.2, AC-2.3, AC-2.4, AC-6.3 (body-render degradation)
 
-Artifact review resolves the full version history for one artifact, selects either the query-state version or the current version as default, fetches the selected version's content from Convex File Storage, and renders it through the markdown pipeline. When an artifact exists but has no reviewable version yet, the surface returns `status: empty` with the artifact identity but no selected version.
+Artifact review resolves the full version history for one artifact, selects either the query-state version or the current version as default, fetches the selected version's content from Convex File Storage, and renders it through the markdown pipeline. When an artifact exists in the current process review context but has no reviewable version yet, the artifact-specific endpoint still returns the artifact identity with an empty version list; the review-workspace wrapper later maps that condition to `target.status: empty`.
 
 ```mermaid
 sequenceDiagram
@@ -847,7 +897,7 @@ sequenceDiagram
     Artifact->>Store: listArtifactVersions(artifactId)
     Store-->>Artifact: versions (newest-first)
     alt versions.length === 0
-        Artifact-->>Route: status: empty
+        Artifact-->>Route: ArtifactReviewTarget { versions: [], selectedVersion: undefined }
     else versions.length > 0
         Artifact->>Store: getArtifactVersion(selectedVersionId)
         Store-->>Artifact: version record
@@ -865,10 +915,11 @@ sequenceDiagram
 ### Design Notes
 
 - the version list is always returned in `createdAt` descending order; `isCurrent` is computed as `versions[0]` when present
-- if query state specifies a `versionId` that does not exist, the response returns `status: unavailable` with the artifact identity still visible
+- if query state specifies a `versionId` that does not exist, the target-specific endpoint returns `404 REVIEW_TARGET_NOT_FOUND`; the **bootstrap** route is different and may still return a bounded `target.status: unavailable` workspace envelope when project/process context resolves
 - `getArtifactVersionContentUrl` returns a Convex-issued stable URL (via `ctx.storage.getUrl()` wrapped in an `internalQuery`); Fastify fetches content over HTTP in the same request and does not cache the URL across requests. Access control lives at the route boundary
 - content fetches time out at **`ARTIFACT_CONTENT_FETCH_TIMEOUT_MS = 10_000`** (exported as a constant from `artifact-review.service.ts` so tests can patch it); if the fetch times out or otherwise fails, the response returns `bodyStatus: 'error'` with `bodyError: { code: 'REVIEW_RENDER_FAILED', message: ... }` while keeping the version list visible
 - `contentKind: unsupported` versions are returned with only identity fields; no content fetch is attempted
+- zero-version direct-target access is valid only when the artifact identity is already reachable through the current process review context; zero-version artifacts remain excluded from `availableTargets` and do not make a process reviewable
 
 ### TC Mapping for this Flow
 
@@ -880,7 +931,7 @@ sequenceDiagram
 | TC-2.2b | version identity visible | `tests/service/server/artifact-review-api.test.ts` | any version | versionLabel on selectedVersion |
 | TC-2.3a | prior version opens distinctly | `tests/service/server/artifact-review-api.test.ts` | two versions; query prior | selectedVersionId ≠ currentVersionId |
 | TC-2.3b | versions ordered newest to oldest | `tests/service/server/artifact-review-api.test.ts` | three versions | versions[].createdAt descending |
-| TC-2.4a | no-version state shown | `tests/service/server/artifact-review-api.test.ts` | artifact with zero versions | status: empty, identity present |
+| TC-2.4a | no-version state shown | `tests/service/server/artifact-review-api.test.ts` | artifact with zero versions | identity present; `versions: []`; no selectedVersion |
 | TC-6.3a | body render failure does not hide identity | `tests/service/server/artifact-review-api.test.ts` | content fetch fails (mocked) | selectedVersion has bodyStatus: error; version list still returned |
 
 ## Flow 3: Markdown and Mermaid Render Pipeline
@@ -1001,7 +1052,7 @@ Additional non-TC tests for this flow: mermaid directive stripping rejects `%%{i
 
 **Covers:** AC-4.1, AC-4.2, AC-4.3, AC-4.4
 
-Package review resolves one published snapshot, returns the ordered member list, and fetches the selected member's artifact version detail through the same markdown render pipeline as Flow 2. A package member's `artifactVersionId` is the immutable pin — selecting a member always loads that specific version, never the artifact's current version.
+Package review resolves one published snapshot, returns the ordered member list, and fetches the selected member's artifact version detail through the same markdown render pipeline as Flow 2. A package member's `artifactVersionId` is the immutable pin — selecting a member always loads that specific version, never the artifact's current version. The snapshot is opened from one process review context, but its pinned members may come from multiple processes in the same project.
 
 ```mermaid
 sequenceDiagram
@@ -1018,7 +1069,8 @@ sequenceDiagram
     Store-->>Package: snapshot record
     Package->>Store: listPackageSnapshotMembers(packageId)
     Store-->>Package: members (ordered by position)
-    Package->>Package: default-select = first reviewable member (or members[0] fallback)
+    Package->>Package: durableMembers = members.filter(m => m.status !== unavailable)
+    Package->>Package: default-select = first ready member (or first durable member fallback)
     alt memberId provided AND matching member is ready
         Package->>Store: getArtifactVersion(members[matchingMemberId].artifactVersionId)
         Store-->>Package: version record
@@ -1026,17 +1078,19 @@ sequenceDiagram
         Renderer-->>Package: body + mermaidBlocks
         Package->>Package: selectedMember = { memberId, status: ready, artifact: ArtifactReviewTarget }
     else memberId provided but matching member not ready
-        Package->>Package: selectedMember = { memberId, status: unavailable, error: { code, message } }
-    else memberId not provided, first reviewable exists
-        Package->>Store: getArtifactVersion(firstReviewable.artifactVersionId)
+        Package->>Package: selectedMember = { memberId, status: matchingMember.status, error: { code, message } }
+    else memberId not provided, first ready member exists
+        Package->>Store: getArtifactVersion(firstReady.artifactVersionId)
         Store-->>Package: version record
         Package->>Renderer: render({markdown, themeId})
         Renderer-->>Package: body + mermaidBlocks
-        Package->>Package: selectedMember = { memberId: firstReviewable.memberId, status: ready, artifact }
-    else no reviewable member exists
-        Package->>Package: selectedMember = { memberId: members[0].memberId, status: members[0].status, error }
+        Package->>Package: selectedMember = { memberId: firstReady.memberId, status: ready, artifact }
+    else first durable member exists
+        Package->>Package: selectedMember = { memberId: firstDurable.memberId, status: firstDurable.status, error }
+    else no durable member exists
+        Package-->>Route: 404 REVIEW_TARGET_NOT_FOUND (target-specific) / unavailable target (bootstrap)
     end
-    Package->>Package: compute exportability = { available: members.every(m => m.status === 'ready') }
+    Package->>Package: compute exportability = { available: durableMembers.length > 0 && members.every(m => m.status !== 'unavailable') }
     Package-->>Route: PackageReviewTarget with selectedMember + exportability
     Route-->>Browser: 200 with PackageReviewTarget
 ```
@@ -1044,19 +1098,21 @@ sequenceDiagram
 ### Design Notes
 
 - members are always returned in `position` ascending order (published order)
-- **default selected member when no `memberId` is provided is the first *reviewable* member** — `members.find(m => m.status === 'ready') ?? members[0]`. Falls through to `members[0]` only when no member is ready (at which point the whole package is degraded and identity still renders). This matches AC-4.3c ("the first reviewable member in package order")
+- **default selected member when no `memberId` is provided prefers the first `ready` member** — `members.find(m => m.status === 'ready') ?? members.find(m => m.status !== 'unavailable')`. This keeps the first paint on directly renderable content when possible, while still allowing the package to open on an unsupported-but-durable member when no member is `ready`
+- `snapshot.processId` identifies the process review context that published or exposes the package. It is **not** a claim that every member artifact belongs to that process
+- package reviewability requires at least one durable member. `publishPackageSnapshot` rejects zero-member input on the happy path; if a pathologically memberless or zero-durable snapshot is encountered on read, it is treated as unavailable rather than as an empty package state
 
 **Empty-state naming — two distinct cases.** The review workspace distinguishes two "nothing to show here" states that a casual reader can conflate:
 
 | State | Response shape | Where it occurs |
 |-------|----------------|------------------|
-| **No targets exist for the process** | `availableTargets: []`, `target` omitted entirely | Bootstrap response for a process with no artifact versions and no package snapshots. Drives the zero-target direct-route rendering per TC-1.1e |
-| **A target is selected but has no reviewable inner content** | `target` is present with `target.status: 'empty'` | Artifact identity resolved but the artifact has zero `artifactVersions` rows, per AC-2.4 |
+| **No targets exist for the process** | `availableTargets: []`, `target` omitted entirely | Bootstrap response for a process with no referenced artifacts that have versions and no package snapshots with durable members in its review context. Drives the zero-target direct-route rendering per TC-1.1e |
+| **A target is selected but has no reviewable inner content** | `target` is present with `target.status: 'empty'` | Artifact identity resolved but the artifact has zero `artifactVersions` rows; the artifact endpoint returns an empty version list and the workspace wrapper maps that to `target.status: 'empty'`, per AC-2.4 |
 
 These are separate conditions with separate test setups — "empty workspace" (outer) vs. "empty target" (inner). The `target.status: 'empty'` string is a tagged value of the `ReviewTarget.status` enum and is not aliased with `availableTargets: []` anywhere in the type system
-- a `members[].status` of `unsupported` or `unavailable` is computed per-member at read time: if the pinned `artifactVersionId` is missing (deleted in pathological cases or content is unreadable), that member reports the appropriate status while siblings continue to work
+- a `members[].status` of `unsupported` or `unavailable` is computed per-member at read time: `unsupported` members still resolve durably and can open/export through the bounded fallback path, while `unavailable` means the pinned `artifactVersionId` no longer resolves durably
 - when the selected member is unavailable, `selectedMember` is populated with `status: 'unavailable'` and a populated `error` field, but `selectedMember.artifact` is **omitted** (it's optional on the envelope). The package identity + members array remain populated
-- `exportability.available` is computed as `members.every(m => m.status === 'ready')`; `exportability.reason` carries a human-readable reason when `available` is false (e.g., "One or more members are unavailable"). The client reads this field to decide whether to render the export trigger (AC-5.1b)
+- `exportability.available` is computed as `members.length > 0 && members.every(m => m.status !== 'unavailable')`; `exportability.reason` carries a human-readable reason when `available` is false (e.g., "One or more members are unavailable" or "Package has no durable members"). The client reads this field to decide whether to render the export trigger (AC-5.1b)
 
 ### TC Mapping for this Flow
 
@@ -1068,7 +1124,7 @@ These are separate conditions with separate test setups — "empty workspace" (o
 | TC-4.2b | member order visible | `tests/service/server/package-review-api.test.ts` | members with non-zero positions | returned members sorted ascending by position |
 | TC-4.3a | package context preserved on member review | `tests/service/server/package-review-api.test.ts` | package, query ?memberId=... | packageId + members still populated alongside selectedMember |
 | TC-4.3b | selecting a different member updates detail | `tests/service/server/package-review-api.test.ts` | two member queries with different ids | selectedMember.memberId matches query |
-| TC-4.3c | package opens first reviewable member when no explicit member | `tests/service/server/package-review-api.test.ts` | package with members[0] status=unavailable, members[1] status=ready, no memberId in query | selectedMember.memberId === members[1].memberId (first with status: ready) |
+| TC-4.3c | package opens first ready member when no explicit member | `tests/service/server/package-review-api.test.ts` | package with members[0] status=unavailable, members[1] status=ready, no memberId in query | selectedMember.memberId === members[1].memberId (first with status: ready) |
 | TC-4.4a | package remains open when one member fails | `tests/service/server/package-review-api.test.ts` | package with one unavailable member | package returned; that member has status: unavailable; others ready |
 
 ## Flow 5: Export Pipeline (Two-Phase)
@@ -1092,10 +1148,10 @@ sequenceDiagram
     Route->>Export: requestExport({packageSnapshotId, actorId})
     Export->>Store: getPackageSnapshot + listPackageSnapshotMembers
     Store-->>Export: snapshot + ordered members + per-member status
-    alt any member has status ≠ ready
+    alt zero durable members or any member is unavailable
         Export-->>Route: 409 REVIEW_EXPORT_NOT_AVAILABLE
         Route-->>Browser: immediate rejection
-    else all members ready
+    else all members durable enough to export
         Export->>Signing: mint({exportId, packageSnapshotId, actorId, expiresAt})
         Signing-->>Export: signed token
         Export-->>Route: ExportPackageResponse { downloadUrl, expiresAt, ... }
@@ -1125,7 +1181,7 @@ sequenceDiagram
         Signing-->>Route: payload { packageSnapshotId, actorId, expiresAt }
         Route->>Export: downloadExport({exportId, token, actorId})
         Export->>Store: re-check package snapshot + members still available
-        alt any member now unavailable
+        alt zero durable members or any member now unavailable
             Export-->>Route: 503 REVIEW_EXPORT_FAILED
             Route-->>Browser: 503 (with JSON error body)
         else still exportable
@@ -1147,7 +1203,7 @@ sequenceDiagram
 
 - **Two-phase separation.** Phase 1 is a fast preflight + metadata return; phase 2 is the actual byte stream. They are separate HTTP requests on the same route module. This matches the `ExportPackageResponse` contract exactly and makes expired-URL behavior a natural token-verification failure (AC-5.3b).
 - **Manifest first.** The `_nav.md` manifest is the first entry emitted into the tar by `createPackageFromEntries`. `@liminal-build/markdown-package`'s `scaffoldManifest` helper generates it from the snapshot metadata + member list before any content entries are written.
-- **Member filenames.** Each member's archive filename is derived from its `displayName` with extension appended based on `contentKind` (`.md` for markdown; currently the only supported content kind). Collisions are resolved by appending `-{position}` to later duplicates.
+- **Member filenames.** Each member's archive filename is derived from its `displayName`. Markdown members use `.md`; unsupported-but-durable members still export their pinned bytes under a stable fallback filename rather than being filtered out. Collisions are resolved by appending `-{position}` to later duplicates.
 - **Download URL expiry.** 15 minutes. Embedded in the token payload and also surfaced as `expiresAt` on the response.
 - **Download URL reuse semantics.** The signed URL is **reusable within the expiry window** — the same URL can be GET'd multiple times until `expiresAt`, each GET re-validates the token, re-checks access + exportability, and streams a fresh archive. No single-use enforcement. This lets users copy the download link, re-download after an interrupted transfer, or share within the expiry if they choose. After `expiresAt`, every GET returns 404 `REVIEW_TARGET_NOT_FOUND` regardless of how many prior downloads succeeded.
 - **Token verification is cheap.** HMAC verify is microseconds; no database round-trip for verification. The GET handler still re-reads package membership before streaming because the package could have become non-exportable between phase 1 and phase 2 (concurrent deletion, access revocation). That second check uses `PlatformStore` cached reads.
@@ -1158,7 +1214,7 @@ sequenceDiagram
 
 | Error source | HTTP status | Error code |
 |---|---|---|
-| Preflight: any member has `status` ≠ `ready` | 409 | `REVIEW_EXPORT_NOT_AVAILABLE` |
+| Preflight: zero durable members or any member is `unavailable` | 409 | `REVIEW_EXPORT_NOT_AVAILABLE` |
 | Phase 2: signed token invalid or expired | 404 | `REVIEW_TARGET_NOT_FOUND` |
 | Phase 2: package snapshot deleted between phases | 404 | `REVIEW_TARGET_NOT_FOUND` |
 | Phase 2: member unavailable between phases | 503 | `REVIEW_EXPORT_FAILED` |
@@ -1175,7 +1231,7 @@ sequenceDiagram
 |----|-------|--------|-------|--------|
 | TC-5.1a | export accepted and returns signed URL | `tests/service/server/review-export-api.test.ts` | exportable package | POST 200; response body is valid `ExportPackageResponse` with `downloadUrl`, `expiresAt`, `contentType: application/gzip`, `packageFormat: mpkz` |
 | TC-5.1a (phase 2) | export download streams valid tar.gz | `tests/service/server/review-export-api.test.ts` | POST result's downloadUrl | GET returns 200 `application/gzip`; stream extracts to valid archive with expected members |
-| TC-5.1b | export not offered for non-exportable | `tests/service/server/package-review-api.test.ts` | package with unavailable member | package review response has `exportability.available: false` with reason; client uses this to hide trigger |
+| TC-5.1b | export not offered for non-exportable | `tests/service/server/package-review-api.test.ts` | package with unavailable member or zero durable members | package review response has `exportability.available: false` with reason; client uses this to hide trigger |
 | TC-5.1b (server-side) | preflight rejects when any member unavailable | `tests/service/server/review-export-api.test.ts` | package with unavailable member | POST returns 409 `REVIEW_EXPORT_NOT_AVAILABLE` |
 | TC-5.2a | export matches reviewed versions | `tests/service/server/review-export-api.test.ts` | package pinned at V1; V2 also exists | extracted archive contains V1 bytes (not V2) |
 | TC-5.2b | export manifest | `tests/service/server/review-export-api.test.ts` | exported archive | extracted `_nav.md` contains package identity + member identities in package order |
@@ -1501,7 +1557,7 @@ These tests appear in the test plan even though they are not 1:1 epic TCs — th
 - Mermaid directive strip rejects `%%{init:security=loose}%%` inputs
 - Mermaid directive strip rejects `%%{config: {flowchart: {htmlLabels: "false"}}}%%` string-bypass attempts
 - Render error path returns structured error result rather than throwing
-- Artifact review returns `status: empty` for zero-version artifacts without attempting a content fetch
+- Artifact review returns artifact identity plus `versions: []` for zero-version artifacts without attempting a content fetch; the workspace wrapper is what maps that condition to `target.status: empty`
 - Export preflight rejects before any byte streams when a member is unavailable
 - Export manifest is the first entry in the tar stream
 - Tar hardening: gzip bomb caps enforce at `maxOutputLength`

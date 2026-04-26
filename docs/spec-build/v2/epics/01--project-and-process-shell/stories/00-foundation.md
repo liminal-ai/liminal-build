@@ -120,8 +120,13 @@ Story 0 should establish the contract-authoring pattern, not leave it implicit:
 | Project Shell Section Envelope | `status`, `items`, `error` |
 | Section Error | `code`, `message` |
 | Process Summary | `processId`, `displayLabel`, `processType`, `status`, `phaseLabel`, `nextActionLabel`, `availableActions`, `hasEnvironment`, `updatedAt` |
-| Artifact Summary | `artifactId`, `displayName`, `currentVersionLabel`, `attachmentScope`, `processId`, `processDisplayLabel`, `updatedAt` |
+| Artifact Summary | `artifactId`, `displayName`, `currentVersionLabel`, `processContext`, `updatedAt` |
 | Source Attachment Summary | `sourceAttachmentId`, `displayName`, `purpose`, `targetRef`, `hydrationState`, `attachmentScope`, `processId`, `processDisplayLabel`, `updatedAt` |
+
+For `Artifact Summary`, `processContext` is an explicit shell-only contract that
+can separately surface `currentProcessReference` and `producingProcess`
+subfields. That context is project-first and does not make the artifact
+process-owned.
 
 #### Shared Error Responses
 

@@ -52,7 +52,7 @@ Story 0 is a foundation story and does not own end-user ACs or TCs from the deta
 | Path 2.3 | Receive and keep a specific outstanding request visible in context | Story 3 | TC-3.2a, TC-5.2a |
 | Path 2.4 | Submit a valid response and see it appear in visible history in the same session | Story 3 | TC-3.6a |
 | Path 2.5 | Distinguish routine progress from attention-required moments while the request remains unresolved | Story 3 | TC-5.1a, TC-5.1b |
-| Path 3.1 | Review current artifacts, outputs, and attached sources relevant to the active phase | Story 4 | TC-4.1a, TC-4.1b |
+| Path 3.1 | See current artifact references, outputs, and attached sources relevant to the active phase | Story 4 | TC-4.1a, TC-4.1b |
 | Path 3.2 | Follow distinct side work and its returned result or failure | Story 5 | TC-5.3a, TC-5.4a, TC-5.4b |
 | Path 3.3 | Observe live running, phase-change, and readable progress updates while the process remains open | Story 6 | TC-2.2a, TC-2.2b, TC-2.3a |
 | Path 3.4 | Keep visible state on screen through disconnect, reconnect, reload, and durable fallback | Story 6 | TC-6.2a, TC-6.3a, TC-6.5a |

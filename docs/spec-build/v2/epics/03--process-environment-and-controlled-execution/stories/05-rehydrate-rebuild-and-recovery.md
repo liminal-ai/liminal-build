@@ -22,8 +22,8 @@ Deliver the recovery slice so the user can tell when a working copy is stale, fa
 In:
 
 - Distinguish stale, failed, lost, rebuilding, and unavailable environment states
-- Rehydrate a recoverable working copy from canonical materials
-- Rebuild a lost or unusable environment from canonical truth
+- Rehydrate a recoverable working copy from the canonical materials currently referenced by the process
+- Rebuild a lost or unusable environment from the same canonical truth
 - Preserve durable artifact outputs and already-persisted code work through recovery
 - Show blocked recovery states when prerequisites are missing
 
@@ -47,7 +47,7 @@ Out:
 **AC-5.1:** The process surface distinguishes stale, failed, lost, rebuilding, and unavailable environment states.
 
 - **TC-5.1a: Stale environment is distinct**
-  - Given: The working copy no longer matches the required current materials
+  - Given: The working copy no longer matches the required current materials referenced by the process
   - When: The surface renders
   - Then: The environment appears stale rather than generically failed
 - **TC-5.1b: Lost environment is distinct**
@@ -57,23 +57,23 @@ Out:
 
 Story 1 owns first-load rendering and disabled-control interpretation for seeded or durable recovery states. This story owns the production paths and recovery actions that make those states reachable and recoverable in the product flow.
 
-**AC-5.2:** `rehydrate` refreshes the current working copy from the latest canonical materials when the environment is still recoverable.
+**AC-5.2:** `rehydrate` refreshes the current working copy from the latest canonical materials referenced by the process when the environment is still recoverable.
 
 - **TC-5.2a: Rehydrate refreshes stale working copy**
   - Given: Environment is recoverable but stale
   - When: User triggers `rehydrate`
-  - Then: The working copy refreshes from the latest canonical materials
+  - Then: The working copy refreshes from the latest referenced canonical materials
 - **TC-5.2b: Rehydrate updates visible state**
   - Given: Rehydration succeeds
   - When: The process surface updates
-  - Then: The environment state changes from stale or preparing to a ready or running state in the same session
+  - Then: The environment state changes from `stale` to `rehydrating`, then to a ready or running state in the same session
 
-**AC-5.3:** `rebuild` discards an unusable working copy and reconstructs the environment from canonical materials.
+**AC-5.3:** `rebuild` discards an unusable working copy and reconstructs the environment from the referenced canonical materials.
 
 - **TC-5.3a: Rebuild replaces lost environment**
   - Given: Environment is lost or unusable
   - When: User triggers `rebuild`
-  - Then: The system reconstructs a new working copy from canonical materials
+  - Then: The system reconstructs a new working copy from the referenced canonical materials
 - **TC-5.3b: Rebuild does not depend on prior working copy survival**
   - Given: The previous working copy no longer exists
   - When: Rebuild succeeds
@@ -84,7 +84,7 @@ Story 1 owns first-load rendering and disabled-control interpretation for seeded
 - **TC-5.4a: Durable artifact state survives rebuild**
   - Given: Artifact outputs were checkpointed before the rebuild
   - When: User rehydrates or rebuilds the environment
-  - Then: The durable artifact outputs remain part of process truth
+  - Then: The durable artifact outputs remain part of project-level artifact truth and remain referenced from the process's materials
 - **TC-5.4b: Durable code persistence survives rebuild**
   - Given: Writable-source checkpointing succeeded before the rebuild
   - When: User rehydrates or rebuilds the environment
@@ -93,7 +93,7 @@ Story 1 owns first-load rendering and disabled-control interpretation for seeded
 **AC-5.5:** If rehydrate or rebuild cannot proceed because canonical prerequisites are missing or unavailable, the process surface shows that blocked state and does not falsely present the environment as ready.
 
 - **TC-5.5a: Rebuild blocked by missing canonical prerequisite**
-  - Given: Required canonical materials are missing or unavailable
+  - Given: Required canonical materials referenced by the process are missing or unavailable
   - When: User triggers `rebuild`
   - Then: The surface shows that the rebuild is blocked and does not present a ready environment
 - **TC-5.5b: Rehydrate blocked when recovery requires rebuild**
@@ -109,8 +109,8 @@ This story owns recovery mutations, recovery-specific rejection reasons, and dur
 
 | Operation | Method | Path | Description |
 |---|---|---|---|
-| Rehydrate environment | `POST` | `/api/projects/{projectId}/processes/{processId}/rehydrate` | Refreshes a recoverable working copy from canonical materials |
-| Rebuild environment | `POST` | `/api/projects/{projectId}/processes/{processId}/rebuild` | Reconstructs an environment from canonical materials after loss or unrecoverable failure |
+| Rehydrate environment | `POST` | `/api/projects/{projectId}/processes/{processId}/rehydrate` | Refreshes a recoverable working copy from the canonical materials currently referenced by the process |
+| Rebuild environment | `POST` | `/api/projects/{projectId}/processes/{processId}/rebuild` | Reconstructs an environment from the canonical materials currently referenced by the process after loss or unrecoverable failure |
 
 #### Rehydrate Environment Response
 
@@ -120,7 +120,10 @@ This story owns recovery mutations, recovery-specific rejection reasons, and dur
 | `process` | object | yes | present | Updated process state after rehydrate was accepted |
 | `environment` | Environment Summary | yes | present | Updated environment summary after rehydrate was accepted |
 
-After a successful rehydrate request, later environment state changes continue through live updates. If live updates are unavailable, the surface reloads the current durable process work-surface state automatically.
+After a successful rehydrate request, the accepted response should already
+reflect `environment.state = rehydrating`. Later environment state changes
+continue through live updates. If live updates are unavailable, the surface
+reloads the current durable process work-surface state automatically.
 
 #### Rebuild Environment Response
 
@@ -130,7 +133,10 @@ After a successful rehydrate request, later environment state changes continue t
 | `process` | object | yes | present | Updated process state after rebuild was accepted |
 | `environment` | Environment Summary | yes | present | Updated environment summary after rebuild was accepted |
 
-After a successful rebuild request, later environment state changes continue through live updates. If live updates are unavailable, the surface reloads the current durable process work-surface state automatically.
+After a successful rebuild request, the accepted response should already reflect
+`environment.state = rebuilding`. Later environment state changes continue
+through live updates. If live updates are unavailable, the surface reloads the
+current durable process work-surface state automatically.
 
 #### Action Acceptance and Failure Boundary
 
@@ -144,14 +150,14 @@ Once one of these actions returns success, later preparation, hydration, recover
 |---|---|---|
 | `409` | `PROCESS_ACTION_NOT_AVAILABLE` | The requested process action is not valid in the current process or environment state |
 | `409` | `PROCESS_ENVIRONMENT_NOT_RECOVERABLE` | The current environment cannot be rehydrated and requires rebuild or other recovery |
-| `422` | `PROCESS_ENVIRONMENT_PREREQUISITE_MISSING` | Required canonical materials are missing or unavailable for rehydrate or rebuild |
+| `422` | `PROCESS_ENVIRONMENT_PREREQUISITE_MISSING` | Required canonical materials referenced by the process are missing or unavailable for rehydrate or rebuild |
 | `503` | `PROCESS_ENVIRONMENT_UNAVAILABLE` | Environment lifecycle work is unavailable for the requested process |
 
 #### Environment Summary Recovery Fields
 
 | Field | Type | Required | Validation | Description |
 |---|---|---|---|---|
-| `state` | enum | yes | `stale`, `failed`, `lost`, `rebuilding`, `unavailable`, or other shared values as applicable | Current recovery-relevant environment state |
+| `state` | enum | yes | `stale`, `rehydrating`, `failed`, `lost`, `rebuilding`, `unavailable`, or other shared values as applicable | Current recovery-relevant environment state |
 | `blockedReason` | string | no | non-empty when present | Current reason the environment cannot proceed to the next expected action |
 
 See the tech design document for full architecture, implementation targets, and test mapping.
@@ -159,7 +165,7 @@ See the tech design document for full architecture, implementation targets, and 
 ### Definition of Done
 <!-- Jira: Definition of Done or Acceptance Criteria footer -->
 - The surface distinguishes stale, failed, lost, rebuilding, and unavailable states clearly
-- `rehydrate` refreshes recoverable environments from canonical materials
+- `rehydrate` refreshes recoverable environments from the canonical materials referenced by the process
 - `rebuild` reconstructs usable environments without depending on the prior working copy
 - Durable artifact outputs and already-persisted code work survive recovery
 - Missing prerequisites and non-recoverable states show blocked recovery rather than false readiness

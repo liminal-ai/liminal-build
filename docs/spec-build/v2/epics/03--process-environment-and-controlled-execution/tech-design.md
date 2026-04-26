@@ -37,8 +37,9 @@ distinct from process lifecycle state, and how to make checkpointing real
 without collapsing Feature 3 into the broader source-management scope that
 belongs to Feature 5.
 
-One contract clarification matters to the implementation shape. The epic still
-lists `PROCESS_SOURCE_WRITE_NOT_ALLOWED`, but the current browser-facing actions
+One contract clarification matters to the implementation shape. Earlier Epic 3
+contract language listed `PROCESS_SOURCE_WRITE_NOT_ALLOWED`, but the current
+browser-facing actions
 do not submit a direct checkpoint target. This design resolves that by treating
 source writability as a server-side checkpoint-planning guard, not as a new
 browser-triggered action family. The browser still sees the outcome through the
@@ -239,7 +240,9 @@ The browser-facing additions are:
 - `process.availableActions`: the enabled subset, preserved for backward
   compatibility with the current action model
 - `environment`: current environment summary
-- `environment.lastCheckpointResult`: latest visible settled checkpoint outcome
+- `environment.lastCheckpointResult`: latest visible settled checkpoint outcome,
+  including project artifact/version details when a checkpoint creates or
+  revises an artifact
 - new action endpoints for `rehydrate` and `rebuild`
 - live `environment` upserts over the existing WebSocket channel
 
@@ -260,14 +263,18 @@ This table is keyed by `processId` and stores:
 - `blockedReason`
 - `lastHydratedAt`
 - `lastCheckpointAt`
-- `lastCheckpointResult`
+- `lastCheckpointResult`, including project artifact target/version identifiers
+  and version-level producing-process provenance when artifact persistence
+  settles (`versionProvenanceProcessId` in Epic 3's process-surface contract;
+  the same underlying identity Epic 5 names `producedByProcessId` on artifact
+  versions)
 - a durable working-set fingerprint used to decide `stale` versus `ready`
 
 `processes` remains the source of truth for process lifecycle (`draft`,
 `running`, `waiting`, `failed`, and so on). `processEnvironmentStates` becomes
-the source of truth for environment lifecycle (`preparing`, `ready`,
-`checkpointing`, `stale`, `lost`, and so on). The process-surface projection
-combines both without collapsing them into one status field.
+the source of truth for environment lifecycle (`preparing`, `rehydrating`,
+`ready`, `checkpointing`, `stale`, `lost`, and so on). The process-surface
+projection combines both without collapsing them into one status field.
 
 ### Q4. What exact persistence unit should represent canonical code updates for already-attached writable sources in this epic?
 
@@ -314,7 +321,8 @@ UI guesses.
 
 The fingerprint should include:
 
-- current artifact ids and current version labels
+- current artifact ids and current version ids or labels from the process's
+  referenced project-level materials
 - current output ids and current revision labels
 - current source attachment ids
 - source `targetRef`
@@ -383,7 +391,7 @@ Rules:
 | Processes | Inherited from platform tech arch + current process route | Primary route, action, and live-orchestration surface that owns user entry into environment work |
 | Environments | Inherited from platform tech arch, not yet implemented in repo | New platform-owned lifecycle domain introduced under the existing process work-surface seam |
 | Tool Runtime | Inherited from platform tech arch, not yet implemented in repo | One-shot in-sandbox execution target reached through the environment adapter, not directly from the browser |
-| Artifacts | Inherited from platform tech arch + current materials surface | Hydration input and artifact checkpoint target |
+| Artifacts | Inherited from platform tech arch + current materials surface | Project-level artifact versions are hydration inputs and artifact checkpoint targets |
 | Sources | Inherited from platform tech arch + current source summaries | Hydration input, writability guard, and canonical code checkpoint target |
 | Shared contracts and live state | Inherited from current technical baseline | Contract extension point for environment summary, controls, and environment live upserts |
 
@@ -523,8 +531,8 @@ convex/processEnvironmentStates.ts                                         # NEW
 | `environment/process-environment.service.ts` | NEW | Server-owned orchestration facade for prepare, execute, checkpoint, rehydrate, rebuild, and teardown | orchestrator, provider registry, planners, `PlatformStore`, live hub | AC-2, AC-3, AC-4, AC-5 |
 | `environment/environment-orchestrator.ts` | NEW | Coordinate lifecycle sequencing and acceptance-boundary behavior for start/resume/rehydrate/rebuild | provider adapter, planners, live publisher | AC-2, AC-5, AC-6 |
 | `environment/provider-adapter*.ts` | NEW | Abstract hosted Daytona first and local fast-follow provider implementations behind one lifecycle contract | Daytona SDK/API, local runtime strategy | AC-2, AC-3, AC-5 |
-| `environment/hydration-planner.ts` | NEW | Build working-set hydration plans from current artifacts, outputs, and attached sources | `PlatformStore`, current material refs | AC-2, AC-5 |
-| `environment/checkpoint-planner.ts` | NEW | Decide artifact/code checkpoint targets, writability, and latest visible result projection | `PlatformStore`, source summaries, GitHub boundary | AC-4, AC-6 |
+| `environment/hydration-planner.ts` | NEW | Build working-set hydration plans from current artifact references and versions, outputs, and attached sources | `PlatformStore`, current material refs | AC-2, AC-5 |
+| `environment/checkpoint-planner.ts` | NEW | Decide artifact/code checkpoint targets, append-version behavior for existing artifacts, writability, and latest visible result projection | `PlatformStore`, source summaries, GitHub boundary | AC-4, AC-6 |
 | `environment/script-execution.service.ts` | NEW | Send one-shot script payloads into the sandbox executor and normalize results for the outer controller | provider adapter, executor boundary | AC-3, AC-4 |
 | `apps/platform/client/browser-api/process-work-surface-api.ts` | MODIFIED | Add `rehydrate` and `rebuild` browser API calls and extend bootstrap parsing | shared contracts, `fetch` | AC-1, AC-2, AC-5, AC-6 |
 | `apps/platform/client/app/store.ts` | MODIFIED | Extend process-surface state with environment summary, controls, and latest checkpoint visibility | shared state contracts | AC-1, AC-4, AC-6 |

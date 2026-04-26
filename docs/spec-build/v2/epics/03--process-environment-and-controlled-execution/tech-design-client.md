@@ -152,6 +152,12 @@ The store must now support:
   `rehydrate`, and `rebuild`
 - preserving durable state while live transport fails or reconnects
 
+Accepted-action state mapping should stay explicit:
+
+- `start` / `resume` -> `environment.state = preparing`
+- `rehydrate` -> `environment.state = rehydrating`
+- `rebuild` -> `environment.state = rebuilding`
+
 ## Browser API Layer
 
 Epic 3 modifies one existing HTTP API client and continues to use the existing
@@ -232,7 +238,7 @@ because it is not a separate surface from the user's point of view.
 | `process-work-surface-page.ts` | MODIFIED | Route-driven bootstrap, action orchestration, layout composition, and degraded-state rendering | store, browser API, child components | AC-1 through AC-6 |
 | `process-environment-panel.ts` | NEW | Render environment summary, status label, blocked reason, last hydrated/checkpoint timestamps, and latest checkpoint result | shared contracts | AC-1, AC-4, AC-5, AC-6 |
 | `process-controls.ts` | NEW | Render the stable visible control area using `controls`, not only `availableActions` | shared contracts, page callbacks | AC-1.2, AC-1.3, AC-5.x |
-| `process-checkpoint-result.ts` | NEW | Render latest visible checkpoint outcome consistently | environment summary | AC-4.4, AC-4.5, AC-6.1, AC-6.4 |
+| `process-checkpoint-result.ts` | NEW | Render latest visible checkpoint outcome consistently, including artifact version metadata when present | environment summary | AC-4.4, AC-4.5, AC-6.1, AC-6.4 |
 | `process-materials-section.ts` | MODIFIED | Render source `accessMode` and keep current-material projection semantics intact | shared contracts | AC-2.5, AC-4.3 |
 | `process-live-status.ts` | EXISTS | Continue to show connection/disconnect/retry state for the whole process surface | live state | AC-6.3 |
 
@@ -324,11 +330,11 @@ sequenceDiagram
 
 | TC | Tests | Module | Setup | Assert |
 |----|-------|--------|-------|--------|
-| TC-1.2a | stable control set remains visible | `tests/service/client/process-work-surface-page.test.ts` | bootstrap with mixed enabled/disabled controls | all standard controls render in stable order |
-| TC-1.2b | disabled controls remain visible | `tests/service/client/process-work-surface-page.test.ts` | controls include disabled items | disabled buttons remain rendered |
+| TC-1.2a | stable control set remains visible | `tests/service/client/process-controls.test.ts` | bootstrap with mixed enabled/disabled controls | all standard controls render in stable order |
+| TC-1.2b | disabled controls remain visible | `tests/service/client/process-controls.test.ts` | controls include disabled items | disabled buttons remain rendered |
 | TC-1.3a | disabled reason shown for blocked environment action | `tests/service/client/process-work-surface-page.test.ts` or dedicated control test | disabled `rehydrate` / `rebuild` | readable blocked reason visible |
 | TC-1.3b | disabled reason shown for blocked process action | `tests/service/client/process-work-surface-page.test.ts` or dedicated control test | disabled `start` / `resume` / `respond` | readable blocked reason visible |
-| TC-1.1c-k | environment state and control matrix | `tests/service/client/process-work-surface-page.test.ts` | bootstrap fixtures for each matrix state | control enable/disable behavior matches matrix |
+| TC-1.1c through TC-1.1k, including TC-1.1c.1 | environment state and control matrix | `tests/service/client/process-controls.test.ts` | bootstrap fixtures for each matrix state | control enable/disable behavior matches matrix |
 
 ## Flow 3: Start, Resume, Rehydrate, and Rebuild With Same-Session Updates
 
@@ -383,9 +389,9 @@ sequenceDiagram
 | TC-2.3b | hydration failure becomes visible | `tests/service/client/process-live.test.ts` | later environment failure update | page shows failed/unavailable state without request error rewrite |
 | TC-2.4a | running begins after readiness | `tests/service/client/process-live.test.ts` | accepted start then ready/running updates | process/environment transition shown in sequence |
 | TC-2.4b | running does not begin after failed preparation | `tests/service/client/process-live.test.ts` | failure after accepted action | running state never shown falsely |
-| TC-5.2a | rehydrate refreshes stale environment | `tests/service/client/process-work-surface-page.test.ts` | stale env + accepted rehydrate | environment state moves out of stale in same session |
-| TC-5.2b | rehydrate updates visible state | `tests/service/client/process-live.test.ts` | later success update | environment panel transitions to ready/running |
-| TC-5.3a | rebuild replaces lost environment | `tests/service/client/process-work-surface-page.test.ts` | lost env + accepted rebuild | environment state becomes rebuilding/preparing |
+| TC-5.2a | rehydrate refreshes stale environment | `tests/service/client/process-work-surface-page.test.ts` | stale env + accepted rehydrate | environment state moves from stale to rehydrating in the same session |
+| TC-5.2b | rehydrate updates visible state | `tests/service/client/process-live.test.ts` | later success update | environment panel transitions from rehydrating to ready/running |
+| TC-5.3a | rebuild replaces lost environment | `tests/service/client/process-work-surface-page.test.ts` | lost env + accepted rebuild | environment state becomes rebuilding |
 | TC-5.3b | rebuild does not depend on prior survival | `tests/service/client/process-live.test.ts` | rebuild success with new environment id | page remains coherent and updates environment summary |
 | TC-5.5a | rebuild blocked by missing prerequisite | `tests/service/client/process-work-surface-page.test.ts` | rebuild request rejected | `actionError` shows immediate rejection |
 | TC-5.5b | rehydrate blocked when rebuild required | `tests/service/client/process-work-surface-page.test.ts` | rehydrate request rejected with recoverability error | immediate readable rejection shown |
@@ -424,8 +430,9 @@ sequenceDiagram
 ### Design Notes
 
 - source access mode should be visible as text, not only iconography
-- latest checkpoint result should show target label, target ref when present, and
-  outcome
+- latest checkpoint result should show target label, outcome, target ref when
+  present, and artifact version details when the checkpoint created or revised a
+  project-level artifact
 - failed checkpoint results should remain readable after reopen
 - checkpoint results should not be rendered as a scrolling list in Epic 3
 
@@ -435,11 +442,11 @@ sequenceDiagram
 |----|-------|--------|-------|--------|
 | TC-2.5a | writable source identifiable | `tests/service/client/process-work-surface-page.test.ts` | materials with read_write source | writable label visible |
 | TC-2.5b | read-only source identifiable | `tests/service/client/process-work-surface-page.test.ts` | materials with read_only source | read-only label visible |
-| TC-4.1a | durable artifact output persists visibly | `tests/service/client/process-live.test.ts` + integration | successful artifact checkpoint update | materials/checkpoint UI reflect success |
+| TC-4.1a | durable artifact output persists visibly | `tests/service/client/process-live.test.ts` + integration | successful artifact checkpoint update | materials/checkpoint UI reflect success and resulting artifact version metadata |
 | TC-4.1b | artifact output recoverable after reopen | `tests/integration/process-work-surface.test.ts` | reopen after artifact checkpoint | latest result and current artifact context visible |
 | TC-4.2b | code checkpoint result process-visible | `tests/service/client/process-live.test.ts` | latest result with source target ref | source identity and ref visible |
 | TC-4.3a | read-only source never offers code checkpointing as outcome | `tests/service/client/process-work-surface-page.test.ts` | read-only source + result set | UI does not imply writable checkpoint path for that source |
-| TC-4.4a | artifact checkpoint result visible | `tests/service/client/process-work-surface-page.test.ts` | bootstrap/live env with artifact checkpoint success | latest result shows artifact success |
+| TC-4.4a | artifact checkpoint result visible | `tests/service/client/process-work-surface-page.test.ts` | bootstrap/live env with artifact checkpoint success | latest result shows artifact success and version details |
 | TC-4.4b | code checkpoint result visible | `tests/service/client/process-work-surface-page.test.ts` | bootstrap/live env with code checkpoint success | latest result shows source + ref |
 | TC-4.5a | artifact checkpoint failure shown | `tests/service/client/process-live.test.ts` | failed latest result | failure visible in environment panel |
 | TC-4.5b | code checkpoint failure shown | `tests/service/client/process-live.test.ts` | failed code checkpoint | failure visible with target details |
@@ -598,6 +605,7 @@ Do not mock these:
 - control order remains stable when enabled states change
 - disabled reasons remain visible across rerenders
 - environment panel handles `null` and `absent` distinctly
-- latest checkpoint result render handles `code`, `artifact`, and `mixed` kinds
+- latest checkpoint result render handles `code`, `artifact`, and `mixed` kinds,
+  including artifact version metadata
 - environment live updates do not wipe unrelated history/materials/side-work
   state

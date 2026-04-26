@@ -114,13 +114,20 @@ The review workspace stays process-aware. Route parameters or query state may se
 
 The existing process-surface `review` action is the canonical entry point into Epic 4. The process surface enables that action when the current process has at least one reviewable target under the reviewability rules defined in Flow 1. Opening the review route from that action carries the current process context forward and either opens the selected target directly or enters target-selection state.
 
+Epic 5 alignment backfill: "reviewable target under the current process" means
+a target reachable through that process's current artifact refs or explicitly
+pinned review context. It does not mean the artifact row is owned by that
+process.
+
 Return from the review workspace uses the same process route context that opened review. Epic 4 may provide a direct back-to-process control and should also support normal browser back navigation. It does not define a separate return endpoint.
 
 #### Reviewability Rules
 
-- An artifact is reviewable when it has at least one durable version, including artifacts that may open through the unsupported-format fallback.
-- A package is reviewable when the process has published a durable package snapshot with at least one durable member.
-- An artifact with no durable version and a package that does not exist durably are not reviewable targets. Direct-URL access to a zero-version artifact identity is handled by Story 2 AC-2.4 as a no-version target state, not as target-list discovery.
+- An artifact is reviewable when it is in the current process review context and has at least one durable version, including artifacts that may open through the unsupported-format fallback.
+- A package is reviewable when a durable package snapshot is available in the current process review context with at least one durable member.
+- For package reviewability, a durable member is a pinned artifact version that still resolves durably. `unsupported` members still count; `unavailable` members do not.
+- Artifact-row ownership is not a reviewability rule; process reference or explicit pinned target context is.
+- An artifact with no durable version and a package with no durable members are not reviewable targets. Direct-URL access to a zero-version artifact identity inside an otherwise valid process review context is handled by Story 2 AC-2.4 as a no-version target state, not as target-list discovery. A pathologically zero-member package snapshot is treated as unavailable, not as an empty target state.
 
 #### Review Route Query Parameters
 
@@ -164,7 +171,7 @@ Note: The canonical shared contract definitions are established in Story 0 (Foun
 
 | Field | Type | Required | Validation | Description |
 |---|---|---|---|---|
-| `position` | integer | yes | `>= 0` | Review-target order within the current process review context, as published by the process; when no explicit order is published, targets fall back to newest-first durable publication order |
+| `position` | integer | yes | `>= 0` | Review-target order within the current process review context, as published or otherwise pinned for that process; when no explicit order is published, targets fall back to newest-first durable publication order |
 | `targetKind` | enum | yes | `artifact` or `package` | Review target kind |
 | `targetId` | string | yes | non-empty | Stable review target identifier |
 | `displayName` | string | yes | non-empty | Human-readable target label |
@@ -177,7 +184,7 @@ Note: The canonical shared contract definitions are established in Story 0 (Foun
 |---|---|---|---|---|
 | `targetKind` | enum | yes | `artifact` or `package` | What the current review target is |
 | `displayName` | string | yes | non-empty | Human-readable target label |
-| `status` | enum | yes | `ready`, `empty`, `error`, `unsupported`, or `unavailable` | Current review target state; `empty` means no target is currently selected in target-selection state or no reviewable targets currently exist |
+| `status` | enum | yes | `ready`, `empty`, `error`, `unsupported`, or `unavailable` | Current review target state; `empty` is used only when an explicitly selected artifact target resolves in the current review context but has zero durable versions. Target-selection and zero-target workspace states omit `target` entirely |
 | `artifact` | Artifact Review Target | no | present when `targetKind` is `artifact` | Artifact review data |
 | `package` | Package Review Target | no | present when `targetKind` is `package` | Package review data |
 | `error` | Review Target Error | no | present when `status` is `error`, `unsupported`, or `unavailable` | Review-target-scoped failure shown without failing the whole review workspace |
@@ -210,7 +217,7 @@ See the tech design document for full architecture, implementation targets, and 
 ### Definition of Done
 <!-- Jira: Definition of Done or Acceptance Criteria footer -->
 - The process surface offers review only when the current process has at least one reviewable target
-- Artifact and package reviewability rules are applied directly in review entry logic rather than inferred from client-only heuristics
+- Artifact and package reviewability rules are applied directly in review entry logic from process review context rather than inferred from client-only heuristics or artifact-row ownership
 - Review bootstrap resolves single-target, multi-target, and zero-target states without showing stale target content
 - Project, process, and current review-target identity remain visible together across direct-open and target-selection states
 - The workspace identifies whether the current target is one artifact or one package

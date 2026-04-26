@@ -62,9 +62,15 @@ The shared vocabulary below is the baseline contract later stories implement and
 | Get process review workspace | `GET` | `/api/projects/{projectId}/processes/{processId}/review` | Returns the current review workspace bootstrap for one process |
 | Get artifact review target | `GET` | `/api/projects/{projectId}/processes/{processId}/review/artifacts/{artifactId}` | Returns review data for one artifact and its versions |
 | Get package review target | `GET` | `/api/projects/{projectId}/processes/{processId}/review/packages/{packageId}` | Returns review data for one output package and its members |
-| Publish package snapshot | `Internal mutation` | `publishPackageSnapshot` | Persists one durable ordered package snapshot for downstream process-module publication flows |
+| Publish package snapshot | `Internal mutation` | `publishPackageSnapshot` | Persists one durable ordered package snapshot for downstream process-module publication flows from one process review context; pinned members may come from multiple processes in the same project |
 | Request package export | `POST` | `/api/projects/{projectId}/processes/{processId}/review/packages/{packageId}/export` | Validates exportability and returns signed download metadata for one reviewed package |
 | Download package export | `GET` | `/api/projects/{projectId}/processes/{processId}/review/exports/{exportId}` | Streams the `.mpkz` export for one previously requested package export |
+
+Epic 5 alignment backfill: artifacts are project-scoped identities, not
+single-process-owned rows. Reviewability in Story 0 vocabulary is therefore
+process-context / pinned-target based, and any package snapshot published from
+one process context may still pin artifact versions produced by other processes
+in the same project.
 
 #### Shared Review Vocabulary
 
@@ -82,7 +88,7 @@ The shared vocabulary below is the baseline contract later stories implement and
 
 | Field | Type | Required | Validation | Description |
 |---|---|---|---|---|
-| `position` | integer | yes | `>= 0` | Review-target order within the current process review context |
+| `position` | integer | yes | `>= 0` | Review-target order within the current process review context, as published or otherwise pinned for that process |
 | `targetKind` | enum | yes | `artifact` or `package` | Review target kind |
 | `targetId` | string | yes | non-empty | Stable review target identifier |
 | `displayName` | string | yes | non-empty | Human-readable target label |
@@ -116,8 +122,8 @@ The shared vocabulary below is the baseline contract later stories implement and
 
 | `available` | Other fields | Semantics |
 |---|---|---|
-| `true` | *(no other fields)* | Every package member is `status: ready`; the export action is offered |
-| `false` | `reason: string` (required, non-empty) | At least one package member is `unsupported` or `unavailable`; the export action is hidden and the reason may be surfaced |
+| `true` | *(no other fields)* | The snapshot has at least one durable member and no package member is `unavailable`; `unsupported` members do not by themselves block export |
+| `false` | `reason: string` (required, non-empty) | The snapshot has zero durable members or at least one package member is `unavailable`; the export action is hidden and the reason may be surfaced |
 
 #### Review Target Error
 
@@ -134,6 +140,14 @@ The shared vocabulary below is the baseline contract later stories implement and
 | `REVIEW_TARGET_UNSUPPORTED` | The current target or selected member cannot be rendered in the first-cut review workspace, but its identity remains visible |
 | `REVIEW_RENDER_FAILED` | The current target identity loaded, but bounded body or diagram rendering failed |
 | `REVIEW_MEMBER_UNAVAILABLE` | One package member is unavailable in the current package review context |
+
+`REVIEW_TARGET_NOT_FOUND` is valid in two places:
+
+- as a request-level `404` when a target-specific endpoint or download URL
+  cannot be resolved
+- as a bounded `ReviewTargetError.code` value when review-workspace bootstrap
+  can still return project/process context but the selected target is no longer
+  available in that context
 
 #### Shared Error Responses
 
@@ -155,5 +169,5 @@ See the tech design document for full architecture, implementation targets, and 
 - Shared package-publication handoff vocabulary includes `publishPackageSnapshot` for downstream process-module publishers
 - Reusable fixtures cover ready, empty, unsupported, unavailable, and bounded-error review states
 - Package snapshot fixtures cover ordered members, stable member version identities, and mixed healthy versus degraded member states
-- Export fixtures cover available and unavailable packages plus signed-download metadata
+- Export fixtures cover available packages (including unsupported-but-durable members), unavailable packages, and signed-download metadata
 - Story files and the coverage artifact can reference Story 0 without redefining shared review vocabulary

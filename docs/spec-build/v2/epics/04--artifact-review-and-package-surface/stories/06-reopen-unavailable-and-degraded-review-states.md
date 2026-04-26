@@ -99,7 +99,7 @@ Note: The canonical shared contract definitions are established in Story 0 (Foun
 |---|---|---|---|---|
 | `targetKind` | enum | yes | `artifact` or `package` | What the current review target is |
 | `displayName` | string | yes | non-empty | Human-readable target label |
-| `status` | enum | yes | `ready`, `empty`, `error`, `unsupported`, or `unavailable` | Current review target state |
+| `status` | enum | yes | `ready`, `empty`, `error`, `unsupported`, or `unavailable` | Current review target state; `empty` is reserved for an explicitly selected zero-version artifact target. Zero-target workspace states omit `target` entirely |
 | `artifact` | Artifact Review Target | no | present when `targetKind` is `artifact` | Artifact review data |
 | `package` | Package Review Target | no | present when `targetKind` is `package` | Package review data |
 | `error` | Review Target Error | no | present when `status` is `error`, `unsupported`, or `unavailable` | Review-target-scoped failure shown without failing the whole review workspace |
@@ -125,6 +125,14 @@ Note: The canonical shared contract definitions are established in Story 0 (Foun
 Request-level review errors apply only when the platform cannot resolve or authorize the requested project, process, artifact, artifact version, or package, or when export preparation cannot be started or completed as a request.
 
 Once project identity, process identity, and review-target identity load successfully, later unsupported-format states, artifact-body render failures, Mermaid render failures, and individual package-member failures remain inside the open review workspace as bounded degraded states. Those later failures do not replace the whole review workspace with a request-level error response.
+
+Bootstrap-specific backfill: when review-workspace bootstrap can still resolve
+project and process context but the selected target no longer resolves in that
+context, the bootstrap stays `200` and returns `target.status: unavailable`
+with `error.code: REVIEW_TARGET_NOT_FOUND`. Request-level `404
+REVIEW_TARGET_NOT_FOUND` remains valid for target-specific endpoints and
+expired/tampered export-download URLs. Package snapshots with zero durable
+members are treated the same way: unavailable, not empty.
 
 #### Non-Functional Requirements
 

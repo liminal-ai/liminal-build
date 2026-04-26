@@ -47,8 +47,35 @@ pipeline — but it does not itself include a production publisher. Snapshot
 creation lands in downstream process-module epics that call this epic's
 `publishPackageSnapshot` internal mutation when their publication decision
 fires. Artifact review (distinct from package review) is unconditionally
-user-deliverable in this epic: any durable artifact with at least one
-`artifactVersions` row is reviewable end-to-end after ship.
+user-deliverable in this epic: any durable artifact that is reachable in the
+current process review context, or by an explicitly pinned target path in that
+context, and has at least one `artifactVersions` row is reviewable end-to-end
+after ship.
+
+### Epic 5 Alignment Backfill
+
+Epic 5 later settles one platform-model issue that early Epic 4 drafts had not
+fully resolved: artifacts are durable project assets with version-level process
+provenance, not rows owned by one primary process.
+
+For this Epic 4 pack, that means:
+
+- any older wording that implies an artifact row belongs to one primary process
+  is superseded by Epic 5 and should be read as historical residue, not as the
+  current plan
+- review eligibility is based on the current process review context
+  (process-referenced artifacts plus explicitly pinned review targets), not on
+  artifact-row ownership
+- package snapshots opened from one process review context may pin artifact
+  versions produced by multiple processes in the same project
+- zero-version artifacts still do not become discoverable review targets or
+  enable the `review` action; they only open as a no-version state when reached
+  through an otherwise valid direct target path inside the current process
+  review context
+- for review-workspace bootstrap specifically, once project and process context
+  resolves, target disappearance or review-context mismatch degrades inside the
+  workspace (`target.status: unavailable` with `REVIEW_TARGET_NOT_FOUND`)
+  instead of forcing the whole bootstrap to become a request-level 404
 
 ---
 
@@ -114,9 +141,9 @@ are exercisable via tests and manual Convex seeding:
 | A2 | Earlier platform work establishes durable artifact and output truth before Epic 4 deepens that truth into review | Validated | Platform | Epic 4 consumes durable process outputs rather than redefining process-work checkpoint behavior |
 | A3 | Review must not require an active environment to remain usable | Validated | Platform | Durable artifact truth remains reviewable after environment loss |
 | A4 | The first high-value review target is markdown-centric artifact output | Validated | Product + Platform | Markdown and Mermaid are first-class in this slice |
-| A5 | Epic 4 introduces a durable review package as a process-published snapshot of a fixed ordered set of artifact versions | Validated | Platform | Epic 4 defines what the user can review and export as one package, but it does not define a separate package-authoring workflow |
+| A5 | Epic 4 introduces a durable review package as a process-context-published snapshot of a fixed ordered set of artifact versions | Validated | Platform | The opening process context anchors review entry and reopen behavior, but pinned package members may come from multiple processes in the same project |
 | A6 | The review surface stays process-aware rather than becoming a global cross-process document browser | Validated | Product | Review entry and return flow stay tied to one process context |
-| A7 | Artifact meaning remains process-owned even though artifact records and versions are generic | Validated | Platform | Epic 4 reviews what exists; it does not hard-code one ontology for all artifact types |
+| A7 | Artifact meaning remains process-owned even though artifact records are project-level and versions carry process provenance | Validated | Platform | Epic 4 reviews what exists; it does not hard-code one ontology for all artifact types |
 | A8 | Some artifacts may not be renderable in the first-cut markdown workspace | Validated | Product + Platform | Epic 4 still needs a bounded unsupported-format fallback rather than pretending those artifacts do not exist |
 | A9 | Epic 4 does not depend on live-update subscription in the first cut; reopen and refresh come from durable review state | Validated | Platform | Review remains usable without introducing a second live transport surface |
 
@@ -143,12 +170,18 @@ target.
 
 Reviewability rules:
 
-- an artifact is reviewable when it has at least one durable version, including
-  artifacts that may open through the unsupported-format fallback
-- a package is reviewable when the process has published a durable package
-  snapshot with at least one durable member
-- an artifact with no durable version and a package that does not exist durably
-  are not reviewable targets
+- an artifact is reviewable when it is in the current process review context
+  and has at least one durable version, including artifacts that may open
+  through the unsupported-format fallback
+- a package is reviewable when a durable package snapshot is available in the
+  current process review context with at least one durable member
+- for package reviewability, a durable member is a pinned artifact version that
+  still resolves durably; `unsupported` members still count, `unavailable`
+  members do not
+- artifact-row ownership is not a reviewability rule; process reference or
+  explicit pinned target context is
+- an artifact with no durable version and a package with no durable members are
+  not reviewable targets
 
 Target-selection rules:
 
@@ -279,9 +312,10 @@ the workspace shows a clear no-version state instead of implying a reviewable
 draft exists.
 
 This case covers direct artifact-review access, such as a bookmarked or
-manually entered URL that names an artifact identity with zero durable versions.
-It does not make zero-version artifacts discoverable review targets; the target
-list continues to exclude them under the Flow 1 reviewability rules.
+manually entered URL that names an artifact identity with zero durable versions
+inside an otherwise valid process review context. It does not make zero-version
+artifacts discoverable review targets or review-entry enablers; the target list
+continues to exclude them under the Flow 1 reviewability rules.
 
 - **TC-2.4a: No durable version state shown**
   - Given: Artifact record exists but no reviewable version has been published
@@ -341,15 +375,15 @@ artifact does not exist.
 
 ### 4. Reviewing a Multi-Artifact Output Set as One Package
 
-**Prerequisite:** This flow presumes a process has published a durable package
-snapshot. Epic 4 provides the storage, read, render, and navigation surfaces
-for reviewing such a snapshot; it does not itself publish one. Snapshot
-creation happens when a downstream process-module epic calls Epic 4's
-`publishPackageSnapshot` internal mutation from its production publication
-flow. Until that downstream epic lands, this flow is exercisable through
-tests and manual Convex seeding.
+**Prerequisite:** This flow presumes a durable package snapshot is available in
+the current process review context. Epic 4 provides the storage, read, render,
+and navigation surfaces for reviewing such a snapshot; it does not itself
+publish one. Snapshot creation happens when a downstream process-module epic
+calls Epic 4's `publishPackageSnapshot` internal mutation from its production
+publication flow. Until that downstream epic lands, this flow is exercisable
+through tests and manual Convex seeding.
 
-Some process outputs are meaningful as a set rather than as one standalone
+Some outputs are meaningful as a pinned set rather than as one standalone
 document. The user needs to open that set as one reviewable package, see which
 artifacts and versions belong together, and move within the set without losing
 package context.
@@ -360,10 +394,12 @@ package context.
 4. User moves between package members
 5. User understands which artifacts and versions belong to that package
 
-In Epic 4, a package is a durable process-published snapshot of a fixed ordered
-set of artifact versions. It is not a floating "latest artifacts" grouping.
-When a process later publishes a new revision or a new package, the earlier
-package remains reviewable as its own package snapshot.
+In Epic 4, a package is a durable snapshot opened from one process review
+context and pinned to a fixed ordered set of artifact versions. It is not a
+floating "latest artifacts" grouping. The package may include members produced
+by multiple processes in the same project. When a later revision or a later
+package publication occurs, the earlier package remains reviewable as its own
+package snapshot.
 
 Package-member review stays pinned to `member.versionId` while the user remains
 inside package context. Epic 4 does not switch a package member into the
@@ -408,7 +444,7 @@ workspace keeps the package context visible and updates the reviewed member.
 - **TC-4.3c: Package opens first member when no explicit member is selected**
   - Given: User opens one package without an explicit selected member
   - When: The package workspace loads
-  - Then: The workspace opens the first reviewable member in package order
+  - Then: The workspace opens the first `ready` member in package order, falling back to the first durable `unsupported` member only when no member is `ready`
 
 **AC-4.4:** If one package member is unavailable or unreadable, the package
 workspace remains open and shows that member failure without hiding the healthy
@@ -435,14 +471,17 @@ and should not require leaving the review workspace first.
 1. User opens one reviewable package
 2. User chooses to export that package
 3. System prepares an export from the currently included artifact versions
-4. User receives the export
-5. User keeps the same review workspace context
+4. System returns export metadata for the reviewed package
+5. Browser follows the signed download URL to retrieve the archive bytes
+6. User keeps the same review workspace context
 
-In Epic 4, a package is exportable when the package exists durably and every
-package member has durable content available for inclusion in the export.
-Unsupported in-workspace rendering does not by itself block export. An
-unavailable package member blocks export for that package until the package is
-made fully available again.
+In Epic 4, a package is exportable when the package exists durably, has at
+least one durable member, and no package member is unavailable for archive
+inclusion. Unsupported in-workspace rendering does not by itself block export:
+unsupported-but-durable members stay exportable and are included in the
+archive. An unavailable package member, or a snapshot with zero durable
+members, blocks export for that package until the package becomes durably
+readable again.
 
 #### Acceptance Criteria
 
@@ -566,6 +605,11 @@ Opening the review route from that action carries the current process context
 forward and either opens the selected target directly or enters target-selection
 state.
 
+Under the Epic 5 alignment backfill, "reviewable target under the current
+process" means a target reachable through that process's current artifact
+references or a pinned package/target selection in that process review context.
+It does not mean the artifact row is owned by that process.
+
 Return from the review workspace uses the same process route context that opened
 review. Epic 4 may provide a direct back-to-process control and should also
 support normal browser back navigation. It does not define a separate return
@@ -605,7 +649,7 @@ Export is a two-phase flow. The POST endpoint returns export metadata including 
 |-------|------|----------|------------|-------------|
 | project | Review Workspace Project Context | yes | present | Parent project identity |
 | process | Process Review Context | yes | present | Active process identity and current review context |
-| availableTargets | array of Review Target Summary | yes | present | Reviewable targets available in the current process review context |
+| availableTargets | array of Review Target Summary | yes | present | Reviewable targets available in the current process review context; artifact targets come from process reference or pinned target context rather than artifact-row ownership |
 | target | Review Target | no | present when one target is selected | Current reviewed artifact or package target |
 
 ### Review Workspace Project Context
@@ -630,7 +674,7 @@ Export is a two-phase flow. The POST endpoint returns export metadata including 
 
 | Field | Type | Required | Validation | Description |
 |-------|------|----------|------------|-------------|
-| position | integer | yes | `>= 0` | Review-target order within the current process review context, as published by the process; when no explicit order is published, targets fall back to newest-first durable publication order |
+| position | integer | yes | `>= 0` | Review-target order within the current process review context, as published or otherwise pinned for that process; when no explicit order is published, targets fall back to newest-first durable publication order |
 | targetKind | enum | yes | `artifact` or `package` | Review target kind |
 | targetId | string | yes | non-empty | Stable review target identifier |
 | displayName | string | yes | non-empty | Human-readable target label |
@@ -643,7 +687,7 @@ Export is a two-phase flow. The POST endpoint returns export metadata including 
 |-------|------|----------|------------|-------------|
 | targetKind | enum | yes | `artifact` or `package` | What the current review target is |
 | displayName | string | yes | non-empty | Human-readable target label |
-| status | enum | yes | `ready`, `empty`, `error`, `unsupported`, or `unavailable` | Current review target state; `empty` means no target is currently selected in target-selection state or no reviewable targets currently exist |
+| status | enum | yes | `ready`, `empty`, `error`, `unsupported`, or `unavailable` | Current review target state; `empty` is used only when an explicitly selected artifact target resolves in the current review context but has zero durable versions. Target-selection and zero-target workspace states omit `target` entirely |
 | artifact | Artifact Review Target | no | present when `targetKind` is `artifact` | Artifact review data |
 | package | Package Review Target | no | present when `targetKind` is `package` | Package review data |
 | error | Review Target Error | no | present when `status` is `error`, `unsupported`, or `unavailable` | Review-target-scoped failure shown without failing the whole review workspace |
@@ -698,7 +742,7 @@ Export is a two-phase flow. The POST endpoint returns export metadata including 
 | packageId | string | yes | non-empty | Stable package identifier |
 | displayName | string | yes | non-empty | Package display name |
 | packageType | string | yes | non-empty | User-visible process-supplied package kind label |
-| members | array of Package Member | yes | present | Artifacts and versions that belong to this package |
+| members | array of Package Member | yes | present | Artifacts and versions that belong to this package; reviewable package snapshots always have at least one durable member |
 | selectedMemberId | string | no | non-empty when present | Currently selected package member |
 | selectedMember | Package Member Review | no | present when one member is selected | Currently reviewed package member envelope within package context |
 | exportability | Package Exportability | yes | present | Whether the package is currently exportable and, when not, why. Drives client-side rendering of the export action |
@@ -720,7 +764,7 @@ first member only when no member is in `ready` state.
 | displayName | string | yes | non-empty | Artifact display name in the package |
 | versionId | string | yes | non-empty | Durable artifact version identifier for this package snapshot member |
 | versionLabel | string | yes | non-empty | Durable artifact version label for this package snapshot member |
-| status | enum | yes | `ready`, `unsupported`, or `unavailable` | Reviewability state for this member |
+| status | enum | yes | `ready`, `unsupported`, or `unavailable` | Reviewability state for this member: `ready` means renderable in the current workspace, `unsupported` means durable but not renderable in the current workspace, and `unavailable` means the pinned version no longer resolves durably |
 
 ### Package Member Review
 
@@ -744,8 +788,8 @@ suitable for display.
 
 | `available` | Other fields | Semantics |
 |-------------|--------------|-----------|
-| `true` | *(no other fields)* | Every package member is `status: ready`; the export action is offered |
-| `false` | `reason: string` (required, non-empty) | At least one package member is `unsupported` or `unavailable`; the export action is hidden and the reason may be surfaced |
+| `true` | *(no other fields)* | The snapshot has at least one durable member and no package member is `unavailable`; `unsupported` members do not by themselves block export, so the export action is offered |
+| `false` | `reason: string` (required, non-empty) | The snapshot has zero durable members or at least one package member is `unavailable`; the export action is hidden and the reason may be surfaced |
 
 ### Export Package Response
 
@@ -793,6 +837,14 @@ successfully, later unsupported-format states, artifact-body render failures,
 Mermaid render failures, and individual package-member failures remain inside
 the open review workspace as bounded degraded states. Those later failures do
 not replace the whole review workspace with a request-level error response.
+
+Bootstrap-specific backfill: when the review-workspace bootstrap can still
+resolve project and process context but the selected artifact or package no
+longer resolves in that process review context, the bootstrap stays `200` and
+returns `target.status: unavailable` with `error.code:
+\`REVIEW_TARGET_NOT_FOUND\``. Request-level `404 REVIEW_TARGET_NOT_FOUND`
+remains valid for target-specific endpoints that cannot return a workspace
+envelope, and for expired/tampered export-download URLs.
 
 ### Error Responses
 

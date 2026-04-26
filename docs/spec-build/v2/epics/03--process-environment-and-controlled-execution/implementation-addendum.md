@@ -6,13 +6,18 @@ batch). It is the source of truth for the work done to satisfy Epic 3's
 acceptance criteria on the production code path, plus the architectural
 decisions made during gap analysis that bind subsequent dispatches.
 
+For current Epic 3 status inside this folder, this addendum supersedes
+`pre-verification-cleanup.md`, which remains only as historical pre-round-2
+triage context.
+
 Companion documents:
 
 - `epic.md` — original epic specification (acceptance criteria, scope)
 - `tech-design.md`, `tech-design-server.md`, `tech-design-client.md` — original design
 - `test-plan.md` — original TC mapping and verification tiers
+- `pre-verification-cleanup.md` — historical only; superseded for current status by this addendum
 - `codex-impl-log.md` — running implementation log; this addendum is referenced from it
-- `story-verification/epic-verification/` — full verification artifacts (4 reviews + 3 meta-reports + synthesis)
+- `story-verification/epic-verification/` and `story-verification/epic-verification-r2/` — historical verification artifacts retained for audit trail; this addendum is the current status source
 
 ---
 
@@ -168,15 +173,20 @@ infrastructure constraints.
 
 ### Storage strategy for artifacts
 
-Artifact content lives in **Convex File Storage**, not inline in the
-artifact row. Schema field is `contentStorageId: v.id('_storage')` (required,
-not nullable — every checkpointed artifact has content somewhere).
+Artifact content for checkpointed non-code documents lives in **Convex File
+Storage**, not inline in the artifact metadata row. In the aligned artifact
+model, the project-level artifact identity stays stable while each persisted
+artifact version points at its own stored content object. Schema field is
+`contentStorageId: v.id('_storage')` (required, not nullable — every
+checkpointed artifact version has content somewhere).
 
 Rationale:
 - Convex documents have a 1MB cap, which artifacts will eventually exceed
 - File storage avoids read amplification (metadata queries don't pay the content bandwidth)
 - The 100GB included on the Pro plan + 50GB egress/month easily covers the projected usage shape (~10-50KB markdown documents, generated artifacts)
-- Single canonical store for non-code documents matches the data model: GitHub canonical for code, Convex File Storage canonical for non-code documents, sandbox volume transient/disposable
+- Single canonical store for non-code documents matches the data model: GitHub
+  canonical for code, Convex File Storage canonical for project-level non-code
+  artifact versions, sandbox volume transient/disposable
 
 ### Convex runtime
 
@@ -192,8 +202,10 @@ server which already runs Node 24.
 
 `persistCheckpointArtifacts` becomes an **`internalAction`** (not mutation)
 that calls `ctx.storage.store(new Blob([content]))` then runs an
-**`internalMutation`** to write the artifact row with the resulting
-`contentStorageId`.
+**`internalMutation`** to write the resulting artifact version row and any
+required project-level artifact metadata with the resulting `contentStorageId`.
+When a checkpoint revises an existing artifact, that mutation appends a new
+version instead of reassigning artifact ownership to the current process.
 
 Rationale: mutations cannot call `ctx.storage.store` (mutations are pure DB
 transactions; storage operations are side effects). The action+internal-mutation
@@ -231,7 +243,7 @@ Single point of comparison; no fan-out coupling into every canonical mutation.
 ### Fingerprint inputs and algorithm
 
 Inputs (per spec at `tech-design.md:312-329`):
-- current artifact ids and current version labels
+- current artifact ids and current version ids or labels from the process's referenced project materials
 - current output ids and current revision labels
 - current source attachment ids
 - source `targetRef`

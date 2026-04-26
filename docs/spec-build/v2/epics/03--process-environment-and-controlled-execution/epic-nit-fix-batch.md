@@ -1,3 +1,6 @@
+> Historical fix-batch note. Retained for audit trail only and superseded by
+> later verification / implementation-addendum artifacts.
+
 # Epic 3 Nit Fix Batch
 
 17 items. No design-complex work — items 15 (stale fingerprint) and 16

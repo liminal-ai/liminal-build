@@ -4,8 +4,8 @@
 - State: EPIC_VERIFY_ACTIVE
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/04--artifact-review-and-package-surface
 - Current Story: (all stories accepted)
-- Current Phase: cleanup-compile
-- Last Completed Checkpoint: Story 6 accepted + committed as `dba05bb`
+- Current Phase: epic-verify
+- Last Completed Checkpoint: Cleanup committed as `f14c88e`
 
 ## Orchestrator failure mode — Story 2 "verify-round churn from under-configured fixer + unchecked fix spillover" (2026-04-23 ~16:50Z)
 

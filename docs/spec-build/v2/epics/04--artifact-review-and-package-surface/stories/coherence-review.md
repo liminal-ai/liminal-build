@@ -71,10 +71,19 @@ The detailed epic's key scope distinction is preserved in the shard set:
 
 ### 5. Implementation-Time Clarifications
 
-Two implementation discoveries are now reflected consistently across the pack:
+Three implementation discoveries are now reflected consistently across the
+pack:
 
-- **AC-2.4 zero-version reachability:** zero-version artifacts are not reviewable targets and are excluded from available target lists by Story 1. Story 2 AC-2.4 / TC-2.4a covers only the direct artifact URL case where an artifact identity is reached despite having no durable versions. This resolves the apparent tension without changing reviewability rules.
-- **`REVIEW_TARGET_NOT_FOUND` target-scope use:** request-level 404 responses still use `REVIEW_TARGET_NOT_FOUND` when a route cannot resolve a requested artifact, artifact version, package, or export token. The same code is also valid inside `ReviewTargetError` for bounded workspace states when the review target identity is no longer available in the review context after the workspace envelope can still render.
+- **Epic 5 artifact-model alignment:** any earlier Epic 4 wording that implied a single primary process owner on an artifact is superseded. Story 1 reviewability is now process-reference / pinned-context based, and Story 2 version review is explicitly project-artifact + version-provenance based.
+- **AC-2.4 zero-version reachability:** zero-version artifacts are not reviewable targets and are excluded from available target lists by Story 1. Story 2 AC-2.4 / TC-2.4a covers only the direct artifact URL case where an artifact identity is reached through an otherwise valid process review context despite having no durable versions. This resolves the apparent tension without changing reviewability rules.
+- **`REVIEW_TARGET_NOT_FOUND` target-scope use:** request-level 404 responses still use `REVIEW_TARGET_NOT_FOUND` when a target-specific route cannot resolve a requested artifact, artifact version, package, or export token. The same code is also valid inside `ReviewTargetError` for bounded bootstrap workspace states when project/process context still resolves but the review target identity is no longer available in that context.
+
+Package-snapshot semantics are also clarified consistently across the shard set:
+
+- Story 4 and Story 5 now explicitly state that a package snapshot opened from
+  one process review context may pin members from multiple processes in the
+  same project. The snapshot's process context anchors review entry and reopen
+  behavior; it does not imply package-member ownership.
 
 ### 6. Non-Functional Ownership
 
@@ -94,7 +103,7 @@ The story files themselves carry those NFRs in Technical Design and Definition o
 `coverage.md` includes an integration trace covering the main end-to-end paths:
 
 - opening artifact review from a process, reviewing versions, reading markdown and Mermaid, and reopening later
-- reaching a zero-version artifact by direct URL only, while target discovery continues to exclude it
+- reaching a zero-version artifact by direct URL only within a valid process review context, while target discovery continues to exclude it
 - opening package review as one durable snapshot, moving between members, and reopening later
 - exporting the currently reviewed package and handling export failure or expired download URLs
 - guarding review entry and direct review routes when no reviewable target or no valid access exists

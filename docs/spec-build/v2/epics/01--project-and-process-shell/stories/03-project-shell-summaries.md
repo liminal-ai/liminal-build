@@ -17,7 +17,10 @@ The user can understand the current project from process, artifact, and source s
 
 **Objective**
 
-Render the project shell as a usable summary workspace with process, artifact, and source sections; show section state cleanly when a section is empty or fails independently; and include the summary context needed to keep process-associated artifacts and sources legible.
+Render the project shell as a usable summary workspace with process, artifact,
+and source sections; show section state cleanly when a section is empty or
+fails independently; and include the summary context needed to keep
+project-level artifacts and process-scoped sources legible.
 
 **Scope**
 
@@ -26,7 +29,8 @@ Render the project shell as a usable summary workspace with process, artifact, a
 - Project shell sections for processes, artifacts, and source attachments
 - Empty, ready, and error states per section
 - Process summary identity, status, phase, next-step, and available-actions visibility
-- Artifact summary identity, revision, sorting, and process-association context
+- Artifact summary identity, revision, sorting, and optional explicit
+  process-context visibility
 - Source summary identity, purpose, target ref, hydration/freshness state, sorting, and process-association context
 - Partial section-failure handling that preserves the rest of the shell
 
@@ -80,7 +84,12 @@ Render the project shell as a usable summary workspace with process, artifact, a
 | TC-3.2g | `failed` | Summary identifies the process as failed |
 | TC-3.2h | `interrupted` | Summary identifies the process as interrupted and not currently progressing |
 
-**AC-3.3:** Each artifact summary shows the artifact's identity, current version context, and when needed whether the artifact is project-scoped or tied to a specific process, without requiring the user to open a separate review surface.
+**AC-3.3:** Each artifact summary shows the artifact's identity, current
+version context, and when needed explicit process context that explains why the
+artifact is visible in the shell, without requiring the user to open a separate
+review surface. That context may include a current process reference, a
+producing-process note, or both. The artifact itself remains a project-level
+durable asset.
 
 - **TC-3.3a: Current artifact revision shown**
   - Given: A project artifact has one or more versions
@@ -98,10 +107,12 @@ Render the project shell as a usable summary workspace with process, artifact, a
   - Given: The project contains multiple artifacts with different update times
   - When: The artifact list renders
   - Then: Artifacts are ordered by most recently updated first
-- **TC-3.3e: Process-associated artifact context shown**
-  - Given: An artifact is associated with a specific process rather than only the project
+- **TC-3.3e: Process artifact context shown**
+  - Given: The shell is surfacing an artifact with current process reference
+    context, producing-process context, or both
   - When: The artifact appears in the shell
-  - Then: The summary shows enough association context to tell which process it is tied to
+  - Then: The summary shows which kind of process relationship is being
+    surfaced without implying that the artifact belongs only to that process
 
 **AC-3.4:** Each source attachment summary shows repository identity and high-level source state, including purpose, target ref when available, hydration or freshness status, and when needed whether the source is attached at project level or for a specific process.
 
@@ -203,15 +214,41 @@ At Story 3 boundary, this is the first story that returns populated shell-sectio
 
 #### Artifact Summary
 
+Supersession note: earlier Epic 1 drafts modeled artifact shell context with
+source-style `attachmentScope`, `processId`, and `processDisplayLabel` fields.
+That draft contract is superseded here. Artifact summaries use explicit
+`processContext` semantics instead because artifacts remain project-level
+assets, not attachments, and the shell may need to surface current process
+reference and producing-process context separately.
+
+In Story 3, artifact summaries are still summaries of project-level durable
+artifacts. `processContext` is summary-only shell context. It explains why the
+artifact is visible in the shell, but it does not make the artifact owned by
+one process row or imply a full lineage/review surface.
+
 | Field | Type | Required | Validation | Description |
 |-------|------|----------|------------|-------------|
 | artifactId | string | yes | non-empty | Stable artifact identifier |
 | displayName | string | yes | non-empty | Artifact display name |
 | currentVersionLabel | string | no | non-empty when present | Current revision or version label |
-| attachmentScope | enum | yes | `project` or `process` | Whether the artifact is attached at project level or tied to a specific process |
-| processId | string | no | non-empty when present | Process identifier when the artifact is tied to a specific process |
-| processDisplayLabel | string | no | non-empty when present | Process display label when the artifact is tied to a specific process |
+| processContext | Artifact Process Context | no | present when the shell needs to explain artifact/process context | Explicit shell-only process context for the artifact summary |
 | updatedAt | string | yes | ISO 8601 UTC | Most recent durable artifact update time |
+
+When `processContext` is present, at least one of its subfields is present.
+
+#### Artifact Process Context
+
+| Field | Type | Required | Validation | Description |
+|-------|------|----------|------------|-------------|
+| currentProcessReference | Artifact Process Reference | no | present when the shell is surfacing current process material/reference context | Process that currently references the artifact in the shell's durable summary context |
+| producingProcess | Artifact Process Reference | no | present when the shell is surfacing historical producing-process context | Process historically associated with producing the artifact when that summary context is known |
+
+#### Artifact Process Reference
+
+| Field | Type | Required | Validation | Description |
+|-------|------|----------|------------|-------------|
+| processId | string | yes | non-empty | Stable process identifier for the referenced process |
+| processDisplayLabel | string | yes | non-empty | Human-readable process label for the referenced process |
 
 **Sort order:** Artifact list is sorted by `updatedAt` descending.
 

@@ -43,7 +43,7 @@ Out:
 
 ### Acceptance Criteria
 <!-- Jira: Acceptance Criteria field -->
-**AC-1.1:** The process work surface shows the current environment state on first load, including whether an environment is absent, preparing, ready, running, checkpointing, stale, failed, lost, rebuilding, or unavailable.
+**AC-1.1:** The process work surface shows the current environment state on first load, including whether an environment is absent, preparing, rehydrating, ready, running, checkpointing, stale, failed, lost, rebuilding, or unavailable.
 
 - **TC-1.1a: Environment state visible on first load**
   - Given: User opens a process work surface
@@ -61,6 +61,7 @@ The rows for `stale`, `lost`, `failed`, `rebuilding`, and `unavailable` are firs
 | TC | Environment state | Expected surface behavior | Expected control behavior |
 |---|---|---|---|
 | TC-1.1c | `preparing` | Surface identifies the environment as being prepared and not yet ready for active work | `start`, `resume`, `rehydrate`, `rebuild`, and `restart` are disabled while preparation is in progress; `respond` and `review` continue to follow process state |
+| TC-1.1c.1 | `rehydrating` | Surface identifies the environment as being refreshed from canonical truth and not yet ready for active work | `start`, `resume`, `rehydrate`, `rebuild`, and `restart` are disabled while rehydrate is in progress; `respond` and `review` continue to follow process state |
 | TC-1.1d | `ready` | Surface identifies the environment as prepared and ready for process work | `rehydrate` and `rebuild` are disabled; `start` or `resume` may be enabled if the process state allows them; `respond`, `review`, and `restart` continue to follow process state |
 | TC-1.1e | `running` | Surface identifies the environment as actively executing process work | Recovery controls remain disabled during active execution; other visible controls continue to follow process state |
 | TC-1.1f | `checkpointing` | Surface identifies the environment as persisting durable work rather than preparing or actively executing | `start`, `resume`, `rehydrate`, `rebuild`, and `restart` are disabled until checkpointing settles; `respond` and `review` continue to follow process state when relevant |
@@ -133,7 +134,7 @@ This story extends the Epic 2 process bootstrap so environment truth and visible
 | Field | Type | Required | Validation | Description |
 |---|---|---|---|---|
 | `environmentId` | string | no | non-empty when present | Stable environment identifier for the current working copy |
-| `state` | enum | yes | `absent`, `preparing`, `ready`, `running`, `checkpointing`, `stale`, `failed`, `lost`, `rebuilding`, or `unavailable` | Current environment state shown on the process surface |
+| `state` | enum | yes | `absent`, `preparing`, `rehydrating`, `ready`, `running`, `checkpointing`, `stale`, `failed`, `lost`, `rebuilding`, or `unavailable` | Current environment state shown on the process surface |
 | `statusLabel` | string | yes | non-empty | User-visible label for the current environment state |
 | `blockedReason` | string | no | non-empty when present | Current reason the environment cannot proceed to the next expected action |
 | `lastHydratedAt` | string | no | ISO 8601 UTC when present | Time the working set was last hydrated into the environment |
@@ -180,4 +181,4 @@ See the tech design document for full architecture, implementation targets, and 
 - Reload restores environment truth from durable state without reverting to client defaults
 - Process identity, materials, and durable process state remain visible when the environment is absent, lost, failed, or unavailable
 - Seeded or durable fixture states cover recovery-state rendering and disabled-control interpretation without requiring Story 5 recovery mutations to exist yet
-- Story tests cover TC-1.1a through TC-1.1k, TC-1.2a through TC-1.2b, TC-1.3a through TC-1.3b, TC-1.4a, and TC-1.5a as visibility and control-state cases
+- Story tests cover TC-1.1a through TC-1.1k, explicitly including TC-1.1c.1, TC-1.2a through TC-1.2b, TC-1.3a through TC-1.3b, TC-1.4a, and TC-1.5a as visibility and control-state cases

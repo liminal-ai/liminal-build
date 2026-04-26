@@ -1,3 +1,6 @@
+> Historical verification artifact. Superseded as current-state guidance by
+> `implementation-addendum.md`. Retained for audit trail only.
+
 VERDICT: REVISE
 
 **CROSS_STORY_FINDINGS**

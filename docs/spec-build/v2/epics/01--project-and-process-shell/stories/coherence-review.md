@@ -49,7 +49,7 @@ No story pulls in scope from later platform epics:
 - no active process work-surface behavior from Epic 2
 - no environment hydration or execution behavior from Epic 3
 - no artifact review workflows from Epic 4
-- no source hydration resolution or archive behavior from Epic 5
+- no source hydration resolution or archive behavior from Epic 6
 
 ### 4. Contract Coherence
 
@@ -69,7 +69,7 @@ The updated epic changes were preserved in the shard set:
 - Story 4 now carries the stronger rule that Epic 1 display labels are derived from process type plus a durable distinguisher
 - `availableActions` lives in process summaries where summary rendering needs it
 - section envelopes and section-scoped errors live in Story 3
-- process/project association context for artifacts and sources lives in Story 3
+- process/project association context for artifacts and sources lives in Story 3, with artifact process context treated as explicit current-reference and/or producing-process summary context rather than ownership
 - Story 5 now carries section-envelope, section-error, artifact-summary, and source-summary contracts so restored shell state is self-contained for implementation
 
 ### 5. Integration Path Coherence
