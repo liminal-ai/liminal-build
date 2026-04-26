@@ -97,7 +97,9 @@ describe('artifact review panel', () => {
     });
 
     expect(panel.textContent).toContain(emptyArtifactReviewTargetFixture.displayName);
-    expect(panel.textContent).toContain('No reviewable version is currently available');
+    expect(panel.textContent).toContain(
+      'This artifact exists in the current process context but has no durable version yet.',
+    );
     expect(panel.querySelector('[data-artifact-version-switcher="true"]')).toBeNull();
   });
 

@@ -700,12 +700,6 @@ const getLatestArtifactVersionQuery = makeFunctionReference<
   ArtifactVersionRecord | null
 >('artifactVersions:getLatestArtifactVersion');
 
-const listArtifactsByProducingProcessQuery = makeFunctionReference<
-  'query',
-  { processId: string },
-  string[]
->('artifactVersions:listArtifactsByProducingProcess');
-
 const listArtifactVersionsQuery = makeFunctionReference<
   'query',
   { artifactId: string; limit?: number },
@@ -1727,19 +1721,28 @@ export class ConvexPlatformStore implements PlatformStore {
     projectId: string;
     processId: string;
   }): Promise<ReviewTargetSummary[]> {
-    const [currentMaterialRefs, producedArtifactIds, packageSnapshots] = await Promise.all([
+    const [currentMaterialRefs, currentPackageContext, packageSnapshots] = await Promise.all([
       this.getCurrentProcessMaterialRefs({
         processId: args.processId,
       }),
-      this.client.query(listArtifactsByProducingProcessQuery, {
+      this.getCurrentProcessPackageContext({
         processId: args.processId,
       }),
-      this.client.query(listPackageSnapshotsForProcessQuery, {
+      this.listPackageSnapshotsForProcess({
         processId: args.processId,
       }),
     ]);
+    const packageContextMembers =
+      currentPackageContext === null
+        ? []
+        : await this.listProcessPackageContextMembers({
+            packageContextId: currentPackageContext.packageContextId,
+          });
     const reviewableArtifactIds = [
-      ...new Set([...currentMaterialRefs.artifactIds, ...producedArtifactIds]),
+      ...new Set([
+        ...currentMaterialRefs.artifactIds,
+        ...packageContextMembers.map((member) => member.artifactId),
+      ]),
     ];
     const artifactCandidates =
       reviewableArtifactIds.length === 0
@@ -3194,9 +3197,12 @@ export class InMemoryPlatformStore implements PlatformStore {
   }): Promise<ReviewTargetSummary[]> {
     const currentArtifactIds =
       this.currentMaterialRefsByProcessId.get(args.processId)?.artifactIds ?? [];
+    const packageContextMembers = await this.listProcessPackageContextMembersForReviewTargets(
+      args.processId,
+    );
     const reviewableArtifactIds = new Set([
       ...currentArtifactIds,
-      ...this.listProducedArtifactIds(args.processId),
+      ...packageContextMembers.map((member) => member.artifactId),
     ]);
     const targets = (
       await Promise.all(
@@ -3266,16 +3272,20 @@ export class InMemoryPlatformStore implements PlatformStore {
     );
   }
 
-  private listProducedArtifactIds(processId: string): Set<string> {
-    const artifactIds = new Set<string>();
+  private async listProcessPackageContextMembersForReviewTargets(
+    processId: string,
+  ): Promise<ProcessPackageContextMemberRecord[]> {
+    const currentPackageContext = await this.getCurrentProcessPackageContext({
+      processId,
+    });
 
-    for (const [artifactId, versions] of this.artifactVersionsByArtifactId.entries()) {
-      if (versions.some((version) => version.createdByProcessId === processId)) {
-        artifactIds.add(artifactId);
-      }
+    if (currentPackageContext === null) {
+      return [];
     }
 
-    return artifactIds;
+    return this.listProcessPackageContextMembers({
+      packageContextId: currentPackageContext.packageContextId,
+    });
   }
 
   async getProcessReviewPackage(args: {

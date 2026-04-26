@@ -34,6 +34,8 @@ import {
   listPackageSnapshotsForProcess,
   publishPackageSnapshot,
 } from '../../convex/packageSnapshots.js';
+import { listProcessPackageContextMembers } from '../../convex/processPackageContextMembers.js';
+import { getCurrentProcessPackageContext } from '../../convex/processPackageContexts.js';
 import { getCurrentProcessMaterialRefs, getProcessRecord } from '../../convex/processes.js';
 import { createFakeConvexContext } from '../../convex/test_helpers/fake_convex_context.js';
 import { buildApp } from '../utils/build-app.js';
@@ -321,6 +323,14 @@ function registerReviewWorkspaceHandlers(fixture: ReturnType<typeof createFakeCo
   register<{ processId: string }, { artifactIds: string[]; sourceAttachmentIds: string[] }>(
     'processes:getCurrentProcessMaterialRefs',
     getCurrentProcessMaterialRefs,
+  );
+  register<{ processId: string }, unknown | null>(
+    'processPackageContexts:getCurrentProcessPackageContext',
+    getCurrentProcessPackageContext,
+  );
+  register<{ packageContextId: string }, unknown[]>(
+    'processPackageContextMembers:listProcessPackageContextMembers',
+    listProcessPackageContextMembers,
   );
   register<{ projectId: string }, unknown[]>(
     'artifacts:listProjectArtifactSummaries',
@@ -690,11 +700,11 @@ describe('review workspace integration', () => {
     });
     expect(querySpy.mock.calls.map(([ref]) => readFunctionName(ref))).toEqual(
       expect.arrayContaining([
+        'processPackageContexts:getCurrentProcessPackageContext',
         'packageSnapshots:listPackageSnapshotsForProcess',
         'packageSnapshots:getPackageSnapshot',
         'packageSnapshotMembers:listPackageSnapshotMembers',
         'artifactVersions:getArtifactVersion',
-        'artifactVersions:getLatestArtifactVersion',
       ]),
     );
     expect(actionSpy).not.toHaveBeenCalled();
@@ -1038,7 +1048,7 @@ describe('review workspace integration', () => {
     }
   });
 
-  it('keeps process-produced artifacts reviewable after current material refs drop them from the working set', async () => {
+  it('keeps package-context-pinned artifacts reviewable after current material refs drop them from the working set', async () => {
     const scopedProjectSummary = projectSummarySchema.parse({
       projectId: 'project-review-scoping-001',
       name: 'Review Scoping',
@@ -1152,6 +1162,40 @@ describe('review workspace integration', () => {
           artifactIds: ['artifact-review-scope-001'],
           sourceAttachmentIds: [],
         },
+      },
+      processPackageContextsByProcessId: {
+        [scopedProcessSummary.processId]: {
+          packageContextId: 'package-context-review-scope-001',
+          processId: scopedProcessSummary.processId,
+          displayName: 'Implementation Package Draft',
+          packageType: 'implementation',
+          basePackageSnapshotId: null,
+          updatedAt: '2026-04-23T12:08:00.000Z',
+        },
+      },
+      processPackageContextMembersByContextId: {
+        'package-context-review-scope-001': [
+          {
+            memberId: 'package-context-member-review-scope-001',
+            packageContextId: 'package-context-review-scope-001',
+            position: 0,
+            artifactId: 'artifact-review-scope-003',
+            artifactVersionId: 'artifact-version-review-scope-003',
+            displayName: 'Launch Checklist',
+            versionLabel: 'launch-v1',
+            pinnedAt: '2026-04-23T12:08:00.000Z',
+          },
+          {
+            memberId: 'package-context-member-review-scope-002',
+            packageContextId: 'package-context-review-scope-001',
+            position: 1,
+            artifactId: 'artifact-review-scope-002',
+            artifactVersionId: 'artifact-version-review-scope-002',
+            displayName: 'Implementation Plan',
+            versionLabel: 'impl-v1',
+            pinnedAt: '2026-04-23T12:08:00.000Z',
+          },
+        ],
       },
     });
     const { app, baseUrl } = await startApp({

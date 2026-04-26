@@ -299,4 +299,96 @@ describe('version switcher', () => {
       `versionId=${currentArtifactVersionFixture.versionId}`,
     );
   });
+
+  it('reloads the review workspace with bounded unavailable state when a stale explicit version selection fails', async () => {
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const rawUrl =
+        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const url = new URL(rawUrl, 'http://localhost:5001');
+
+      if (url.pathname === '/auth/me') {
+        return Promise.resolve(
+          buildJsonResponse({
+            user: {
+              id: 'user:workos-user-1',
+              email: 'lee@example.com',
+              displayName: 'Lee Moore',
+            },
+          }),
+        );
+      }
+
+      if (
+        url.pathname ===
+          `/api/projects/${readyArtifactReviewWorkspaceFixture.project.projectId}/processes/${readyArtifactReviewWorkspaceFixture.process.processId}/review/artifacts/${readyArtifactReviewTargetFixture.artifactId}` &&
+        url.searchParams.get('versionId') === priorArtifactVersionFixture.versionId
+      ) {
+        return Promise.resolve(
+          buildJsonResponse(
+            {
+              code: 'ARTIFACT_VERSION_NOT_FOUND',
+              message: 'The requested artifact version is unavailable.',
+              status: 404,
+            },
+            404,
+          ),
+        );
+      }
+
+      if (
+        url.pathname ===
+        `/api/projects/${readyArtifactReviewWorkspaceFixture.project.projectId}/processes/${readyArtifactReviewWorkspaceFixture.process.processId}/review`
+      ) {
+        if (url.searchParams.get('versionId') === priorArtifactVersionFixture.versionId) {
+          return Promise.resolve(
+            buildJsonResponse({
+              ...readyArtifactReviewWorkspaceFixture,
+              process: {
+                ...readyArtifactReviewWorkspaceFixture.process,
+                reviewTargetKind: 'artifact',
+                reviewTargetId: readyArtifactReviewTargetFixture.artifactId,
+              },
+              target: {
+                targetKind: 'artifact',
+                displayName: readyArtifactReviewTargetFixture.displayName,
+                status: 'unavailable',
+                error: {
+                  code: 'ARTIFACT_VERSION_NOT_FOUND',
+                  message: 'The requested artifact version is unavailable.',
+                },
+              },
+            }),
+          );
+        }
+
+        return Promise.resolve(buildJsonResponse(readyArtifactReviewWorkspaceFixture));
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch request: ${url.pathname}${url.search}`));
+    });
+    const dom = await renderReviewApp(fetchMock);
+    const priorVersionButton = dom.window.document.querySelector(
+      `[data-artifact-version-id="${priorArtifactVersionFixture.versionId}"]`,
+    );
+
+    if (!(priorVersionButton instanceof dom.window.HTMLElement)) {
+      throw new Error('Expected the version switcher to render the stale version option.');
+    }
+
+    priorVersionButton.click();
+    await flush();
+    await flush();
+
+    expect(dom.window.document.body.textContent).toContain(
+      readyArtifactReviewWorkspaceFixture.process.displayLabel,
+    );
+    expect(dom.window.document.body.textContent).toContain('Review target unavailable');
+    expect(dom.window.document.body.textContent).toContain(
+      'The requested artifact version is unavailable.',
+    );
+    expect(dom.window.document.body.textContent).not.toContain('Review workspace failed to load');
+    expect(dom.window.location.href).toContain(
+      `versionId=${priorArtifactVersionFixture.versionId}`,
+    );
+  });
 });

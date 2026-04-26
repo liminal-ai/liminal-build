@@ -4,7 +4,7 @@
 - State: STORY_ACTIVE
 - Spec Pack Root: /Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment
 - Tech Design Shape: four-file (tech-design.md + tech-design-server.md + tech-design-client.md + test-plan.md)
-- Current Story: 02-versioned-checkpoint-realignment
+- Current Story: 03-process-scoped-artifact-review-realignment
 - Current Phase: implement
 - Last Completed Checkpoint: story-0-gate-pass (2026-04-26)
 
@@ -120,10 +120,30 @@
 - Open Risks: none
 - User Acceptance: accepted
 
+### story-03 (Process-Scoped Artifact Review Realignment)
+- Title: Story 3: Process-Scoped Artifact Review Realignment
+- Implementor Evidence Refs:
+  - artifacts/03-.../001-implementor.json (initial)
+  - artifacts/03-.../005-self-review-batch.json (self-review 3/3 passes)
+  - artifacts/03-.../007-continue.json (follow-up fixing SV-03-01)
+- Verifier Evidence Refs:
+  - artifacts/03-.../006-verify.json (initial: revise, SV-03-01 blocking — all ACs/TCs verified but workspace reload fallback missing)
+  - artifacts/03-.../008-verify.json (followup: pass, SV-03-01 resolved)
+- Gate Command: `corepack pnpm run green-verify`
+- Gate Result: pass
+- Gate Test Counts: convex:55 + server:249 + client:236 + packages:5 = 545
+- Dispositions:
+  - SV-03-01 (stale version selection collapses workspace instead of reload fallback): fixed
+- Baseline Before Story: 536 (convex:55 + server:243 + client:233 + packages:5)
+- Baseline After Story: 545 (convex:55 + server:249 + client:236 + packages:5)
+- Baseline Note: +9 net. Server +6, client +3. Largest delta so far — review eligibility, zero-version, and version selection tests.
+- Open Risks: none
+- User Acceptance: accepted
+
 ## Cumulative Baselines
-- Baseline Before Current Story: 536 (convex:55 + server:243 + client:233 + packages:5)
-- Expected After Current Story: 563 (536 + 27 planned for chunk 3)
-- Latest Actual Total: 536
+- Baseline Before Current Story: 545 (convex:55 + server:249 + client:236 + packages:5)
+- Expected After Current Story: 568 (545 + 23 planned for chunk 4)
+- Latest Actual Total: 545
 
 ## Cleanup / Epic Verification
 - Cleanup Artifact: pending
@@ -189,6 +209,9 @@ Only one Monitor should be active at a time since CLI operations are sequential.
 
 ### Tooling Observation: CLI Flag Names
 `story-continue` requires `--followup-text` (or `--followup-file`), not `--response-text`. The error message was clear (`INVALID_INVOCATION: Provide exactly one of --followup-file or --followup-text`), but the orchestrator initially guessed the wrong flag. The operations doc (`30-cli-operations.md`) presumably documents the exact flags — reading it before first use of each command would prevent this class of error.
+
+### Tooling Observation: Self-Review Speed
+Self-review (3 passes) consistently completes in ~90 seconds across all stories so far. Implementation takes 15-20 minutes, verification takes 10-15 minutes. The speed gap is notable. The fresh-session verifier has caught real blocking issues in 2/3 stories that self-review did not surface. Root cause unknown — needs investigation in the skill/CLI layer.
 
 ### Tooling Observation: Monitor Re-arm Cadence
 The Monitor tool has a max timeout of 600000ms (10 min). With a 5-minute polling cadence, that gives exactly 2 checks per monitor lifetime before timeout. Provider-backed CLI calls regularly run 10-20 minutes, so re-arming after timeout is expected and normal. A persistent monitor option exists but would run for the full session — overkill for a single operation watch.

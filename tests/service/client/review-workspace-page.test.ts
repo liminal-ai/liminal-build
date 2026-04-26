@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createAppStore } from '../../../apps/platform/client/app/store.js';
 import { renderReviewWorkspacePage } from '../../../apps/platform/client/features/review/review-workspace-page.js';
 import {
+  emptyArtifactReviewWorkspaceFixture,
   exportablePackageReviewWorkspaceFixture,
   multiTargetReviewWorkspaceFixture,
   readyArtifactReviewWorkspaceFixture,
@@ -215,6 +216,36 @@ describe('review workspace page', () => {
 
     expect(dom.window.document.body.textContent).toContain(
       'No review targets are available for this process yet.',
+    );
+  });
+
+  it('TC-3.4b renders the bounded empty artifact review state for a direct zero-version target', () => {
+    const { dom } = renderPage({
+      reviewWorkspace: {
+        projectId: emptyArtifactReviewWorkspaceFixture.project.projectId,
+        processId: emptyArtifactReviewWorkspaceFixture.process.processId,
+        selection: {
+          targetKind: 'artifact',
+          targetId: emptyArtifactReviewWorkspaceFixture.target?.artifact?.artifactId,
+        },
+        project: emptyArtifactReviewWorkspaceFixture.project,
+        process: emptyArtifactReviewWorkspaceFixture.process,
+        availableTargets: emptyArtifactReviewWorkspaceFixture.availableTargets,
+        target: emptyArtifactReviewWorkspaceFixture.target ?? null,
+        isLoading: false,
+        error: null,
+        exportState: {
+          isExporting: false,
+          lastExportByPackageId: {},
+          error: null,
+        },
+      },
+    });
+
+    expect(dom.window.document.body.textContent).toContain('Artifact review');
+    expect(dom.window.document.body.textContent).toContain('Status: empty');
+    expect(dom.window.document.body.textContent).toContain(
+      'This artifact exists in the current process context but has no durable version yet.',
     );
   });
 

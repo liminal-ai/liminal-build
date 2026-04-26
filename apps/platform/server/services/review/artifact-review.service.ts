@@ -7,7 +7,11 @@ import type {
 import { artifactReviewTargetSchema, reviewTargetSchema } from '../../../shared/contracts/index.js';
 import { AppError } from '../../errors/app-error.js';
 import { artifactVersionNotFoundErrorCode } from '../../errors/codes.js';
-import type { ArtifactVersionRecord, PlatformStore } from '../projects/platform-store.js';
+import type {
+  ArtifactVersionRecord,
+  PlatformStore,
+  ProcessPackageContextMemberRecord,
+} from '../projects/platform-store.js';
 import type { MarkdownRendererService } from '../rendering/markdown-renderer.service.js';
 
 export const ARTIFACT_CONTENT_FETCH_TIMEOUT_MS = 10_000;
@@ -40,6 +44,11 @@ export interface ArtifactReviewService {
     processId: string;
     artifactId: string;
     versionId?: string;
+  }): Promise<ArtifactReviewTarget | null>;
+  getArtifactReviewByVersion(args: {
+    projectId: string;
+    artifactId: string;
+    versionId: string;
   }): Promise<ArtifactReviewTarget | null>;
   getArtifactTarget(args: {
     projectId: string;
@@ -87,28 +96,63 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
     });
   }
 
-  private async readArtifactReviewState(args: {
+  async getArtifactReviewByVersion(args: {
     projectId: string;
-    processId: string;
     artifactId: string;
-    versionId?: string;
-  }): Promise<ArtifactReviewState | null> {
-    const [artifacts, versionRecords, currentMaterialRefs] = await Promise.all([
-      this.platformStore.listProjectArtifacts({
+    versionId: string;
+  }): Promise<ArtifactReviewTarget | null> {
+    const state = await this.readArtifactReviewState(
+      {
         projectId: args.projectId,
-      }),
-      this.platformStore.listArtifactVersions({
+        processId: '',
         artifactId: args.artifactId,
-      }),
-      this.platformStore.getCurrentProcessMaterialRefs({
-        processId: args.processId,
-      }),
-    ]);
+        versionId: args.versionId,
+      },
+      {
+        skipProcessContextCheck: true,
+      },
+    );
+
+    return state?.artifact ?? null;
+  }
+
+  private async readArtifactReviewState(
+    args: {
+      projectId: string;
+      processId: string;
+      artifactId: string;
+      versionId?: string;
+    },
+    options: {
+      skipProcessContextCheck?: boolean;
+    } = {},
+  ): Promise<ArtifactReviewState | null> {
+    const [artifacts, versionRecords, currentMaterialRefs, packageContextMembers] =
+      await Promise.all([
+        this.platformStore.listProjectArtifacts({
+          projectId: args.projectId,
+        }),
+        this.platformStore.listArtifactVersions({
+          artifactId: args.artifactId,
+        }),
+        options.skipProcessContextCheck
+          ? Promise.resolve<Awaited<ReturnType<PlatformStore['getCurrentProcessMaterialRefs']>>>({
+              artifactIds: [],
+              sourceAttachmentIds: [],
+            })
+          : this.platformStore.getCurrentProcessMaterialRefs({
+              processId: args.processId,
+            }),
+        options.skipProcessContextCheck
+          ? Promise.resolve<ProcessPackageContextMemberRecord[]>([])
+          : this.listProcessPackageContextMembers(args.processId),
+      ]);
 
     const artifact = artifacts.find((candidate) => candidate.artifactId === args.artifactId);
     const processCanReviewArtifact =
+      options.skipProcessContextCheck === true ||
       currentMaterialRefs.artifactIds.includes(args.artifactId) ||
-      versionRecords.some((candidate) => candidate.createdByProcessId === args.processId);
+      packageContextMembers.some((candidate) => candidate.artifactId === args.artifactId);
 
     if (artifact === undefined || !processCanReviewArtifact) {
       return null;
@@ -200,6 +244,26 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
       artifact: artifactReview,
       status: 'ready',
     };
+  }
+
+  private async listProcessPackageContextMembers(
+    processId: string,
+  ): Promise<ProcessPackageContextMemberRecord[]> {
+    const currentPackageContext = await this.platformStore.getCurrentProcessPackageContext?.({
+      processId,
+    });
+
+    if (
+      currentPackageContext === undefined ||
+      currentPackageContext === null ||
+      this.platformStore.listProcessPackageContextMembers === undefined
+    ) {
+      return [];
+    }
+
+    return this.platformStore.listProcessPackageContextMembers({
+      packageContextId: currentPackageContext.packageContextId,
+    });
   }
 
   private async buildArtifactVersionDetail(

@@ -52,7 +52,7 @@ export function renderArtifactReviewPanel(args: {
     container.append(
       createParagraph(
         args.targetDocument,
-        'No reviewable version is currently available for this artifact.',
+        'This artifact exists in the current process context but has no durable version yet.',
       ),
     );
     return container;

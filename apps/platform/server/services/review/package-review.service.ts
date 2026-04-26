@@ -115,9 +115,8 @@ export class DefaultPackageReviewService implements PackageReviewService {
       return packageReviewTargetSchema.parse(baseTarget);
     }
 
-    const artifact = await this.artifactReviewService.getArtifactReview({
+    const artifact = await this.artifactReviewService.getArtifactReviewByVersion({
       projectId: args.projectId,
-      processId: args.processId,
       artifactId: selectedMember.artifactId,
       versionId: selectedMember.artifactVersionId,
     });

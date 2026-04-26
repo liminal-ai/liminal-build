@@ -65,6 +65,41 @@ describe('review workspace api', () => {
     );
   });
 
+  it('preserves ARTIFACT_VERSION_NOT_FOUND from the artifact review endpoint', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            code: 'ARTIFACT_VERSION_NOT_FOUND',
+            message: 'The requested artifact version is unavailable.',
+            status: 404,
+          }),
+          {
+            status: 404,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+      ),
+    );
+
+    await expect(
+      getArtifactReview({
+        projectId: 'project-001',
+        processId: 'process-001',
+        artifactId: 'artifact-001',
+        versionId: 'artifact-version-missing',
+      }),
+    ).rejects.toMatchObject(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          code: 'ARTIFACT_VERSION_NOT_FOUND',
+          status: 404,
+        }),
+      }),
+    );
+  });
+
   it('maps export fallback failures to REVIEW_EXPORT_FAILED', async () => {
     vi.stubGlobal(
       'fetch',
