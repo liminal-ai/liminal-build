@@ -20,7 +20,7 @@ This repo requires two long-lived processes for a full runtime environment:
 pnpm run convex:dev
 ```
 
-This wraps `scripts/start-convex.sh`, which reads `CONVEX_URL` and
+This wraps `scripts/start-convex.ts`, which reads `CONVEX_URL` and
 `CONVEX_SITE_URL` from `.env.local` to determine the correct ports, then
 starts `convex dev` with explicit `--local-cloud-port` and
 `--local-site-port` flags. **Do not run `pnpm exec convex dev` directly** —
