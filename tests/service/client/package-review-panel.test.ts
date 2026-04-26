@@ -1,26 +1,26 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it, vi } from 'vitest';
+import { renderPackageReviewPanel } from '../../../apps/platform/client/features/review/package-review-panel.js';
 import {
   packageMemberReviewSchema,
   packageMemberSchema,
   packageReviewTargetSchema,
 } from '../../../apps/platform/shared/contracts/index.js';
 import { readyArtifactReviewTargetFixture } from '../../fixtures/artifact-versions.js';
+import { exportPackageResponseFixture } from '../../fixtures/export-responses.js';
 import {
   firstReadySelectedPackageFixture,
   readyPackageMemberFixture,
   unavailablePackageFixture,
 } from '../../fixtures/package-snapshots.js';
-import { exportPackageResponseFixture } from '../../fixtures/export-responses.js';
-import { renderPackageReviewPanel } from '../../../apps/platform/client/features/review/package-review-panel.js';
 
 const secondReadyMemberFixture = packageMemberSchema.parse({
   memberId: 'package-member-003',
   position: 1,
   artifactId: 'artifact-002',
   displayName: 'Implementation Notes',
-  versionId: 'artifact-version-002',
+  artifactVersionId: 'artifact-version-002',
   versionLabel: 'checkpoint-20260422121000',
   status: 'ready',
 });

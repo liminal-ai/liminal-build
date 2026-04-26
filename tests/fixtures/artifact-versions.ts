@@ -9,6 +9,8 @@ export const currentArtifactVersionFixture = artifactVersionSummarySchema.parse(
   versionLabel: 'checkpoint-20260422120000',
   isCurrent: true,
   createdAt: '2026-04-22T12:00:00.000Z',
+  producedByProcessId: 'process-feature-spec-001',
+  producedByProcessDisplayLabel: 'Feature Specification #1',
 });
 
 export const priorArtifactVersionFixture = artifactVersionSummarySchema.parse({
@@ -16,6 +18,8 @@ export const priorArtifactVersionFixture = artifactVersionSummarySchema.parse({
   versionLabel: 'checkpoint-20260421114500',
   isCurrent: false,
   createdAt: '2026-04-21T11:45:00.000Z',
+  producedByProcessId: 'process-product-def-001',
+  producedByProcessDisplayLabel: 'Product Definition #1',
 });
 
 export const markdownArtifactVersionDetailFixture = artifactVersionDetailSchema.parse({
@@ -26,6 +30,8 @@ export const markdownArtifactVersionDetailFixture = artifactVersionDetailSchema.
   body: '<h1>Feature Specification</h1>',
   mermaidBlocks: [],
   createdAt: currentArtifactVersionFixture.createdAt,
+  producedByProcessId: currentArtifactVersionFixture.producedByProcessId,
+  producedByProcessDisplayLabel: currentArtifactVersionFixture.producedByProcessDisplayLabel,
 });
 
 export const priorMarkdownArtifactVersionDetailFixture = artifactVersionDetailSchema.parse({
@@ -36,6 +42,8 @@ export const priorMarkdownArtifactVersionDetailFixture = artifactVersionDetailSc
   body: '<h1>Feature Specification - Prior</h1>',
   mermaidBlocks: [],
   createdAt: priorArtifactVersionFixture.createdAt,
+  producedByProcessId: priorArtifactVersionFixture.producedByProcessId,
+  producedByProcessDisplayLabel: priorArtifactVersionFixture.producedByProcessDisplayLabel,
 });
 
 export const readyArtifactReviewTargetFixture = artifactReviewTargetSchema.parse({

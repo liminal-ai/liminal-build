@@ -8,6 +8,7 @@ import {
   reviewTargetSchema,
   reviewWorkspaceResponseSchema,
 } from '../../../shared/contracts/index.js';
+import { AppError } from '../../errors/app-error.js';
 import type { AuthenticatedActor } from '../auth/auth-session.service.js';
 import type { ProcessAccessService } from '../processes/process-access.service.js';
 import type { PlatformStore } from '../projects/platform-store.js';
@@ -136,16 +137,31 @@ export class DefaultReviewWorkspaceService implements ReviewWorkspaceService {
       );
     }
 
-    const target = await this.artifactReviewService.getArtifactTarget({
-      projectId: args.projectId,
-      processId: args.processId,
-      artifactId: args.request.targetId,
-      versionId:
-        args.selection?.targetKind === 'artifact' &&
-        args.selection.targetId === args.request.targetId
-          ? args.selection.versionId
-          : undefined,
-    });
+    let target: ReviewTarget | null;
+
+    try {
+      target = await this.artifactReviewService.getArtifactTarget({
+        projectId: args.projectId,
+        processId: args.processId,
+        artifactId: args.request.targetId,
+        versionId:
+          args.selection?.targetKind === 'artifact' &&
+          args.selection.targetId === args.request.targetId
+            ? args.selection.versionId
+            : undefined,
+      });
+    } catch (error) {
+      if (error instanceof AppError) {
+        return this.buildUnavailableTarget({
+          request: args.request,
+          availableTargets: args.availableTargets,
+          errorCode: error.code,
+          message: error.message,
+        });
+      }
+
+      throw error;
+    }
 
     return (
       target ??
@@ -159,6 +175,8 @@ export class DefaultReviewWorkspaceService implements ReviewWorkspaceService {
   private buildUnavailableTarget(args: {
     request: SelectedTargetRequest;
     availableTargets: ReviewTargetSummary[];
+    errorCode?: string;
+    message?: string;
   }): ReviewTarget {
     const matchedTarget = args.availableTargets.find(
       (target) =>
@@ -168,16 +186,17 @@ export class DefaultReviewWorkspaceService implements ReviewWorkspaceService {
       matchedTarget?.displayName ??
       (args.request.targetKind === 'artifact' ? 'Unavailable artifact' : 'Unavailable package');
     const message =
-      args.request.targetKind === 'artifact'
+      args.message ??
+      (args.request.targetKind === 'artifact'
         ? 'The requested artifact or artifact version is unavailable.'
-        : 'The requested package is unavailable.';
+        : 'The requested package is unavailable.');
 
     return reviewTargetSchema.parse({
       targetKind: args.request.targetKind,
       displayName,
       status: 'unavailable',
       error: {
-        code: 'REVIEW_TARGET_NOT_FOUND',
+        code: args.errorCode ?? 'REVIEW_TARGET_NOT_FOUND',
         message,
       },
     });

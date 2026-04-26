@@ -1,0 +1,50 @@
+2026-04-26T21:25:32.431334Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /Users/leemoore/code/liminal-build-wt-1/apps/platform/server/services/projects/platform-store.ts:
+          member: {
+            memberId: member.memberId,
+            position: member.position,
+            artifactId: member.artifactId,
+            displayName,
+            versionId: member.artifactVersionId,
+            versionLabel,
+            status: 'unavailable' as const,
+          },
+          review: {
+            memberId: member.memberId,
+            status: 'unavailable' as const,
+            error: reviewTargetErrorSchema.parse({
+              code: 'REVIEW_MEMBER_UNAVAILABLE',
+              message: 'The pinned package member is currently unavailable.',
+            }),
+          },
+        };
+      }
+2026-04-26T21:25:53.601278Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /Users/leemoore/code/liminal-build-wt-1/apps/platform/server/services/projects/platform-store.ts:
+            memberId: member.memberId,
+            position: member.position,
+            artifactId: member.artifactId,
+            displayName,
+            versionId: member.artifactVersionId,
+            versionLabel,
+            status: 'unavailable' as const,
+          },
+          review: {
+            memberId: member.memberId,
+            status: 'unavailable' as const,
+            error: reviewTargetErrorSchema.parse({
+              code: 'REVIEW_MEMBER_UNAVAILABLE',
+              message: 'The pinned package member is currently unavailable.',
+            }),
+          },
+2026-04-26T21:27:15.083347Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /Users/leemoore/code/liminal-build-wt-1/tests/service/server/package-review-api.test.ts:
+      [olderReadyMember.versionId]: '# Feature Specification v1\n\nPinned package body.',
+      [newerReadyMember.versionId]: '# Implementation Notes v1\n\nCurrent notes.',
+2026-04-26T21:30:54.312355Z ERROR codex_core::tools::router: error=write_stdin failed: stdin is closed for this session; rerun exec_command with tty=true to keep stdin open
+2026-04-26T21:31:47.220477Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /Users/leemoore/code/liminal-build-wt-1/tests/service/server/review-workspace-api.test.ts:
+      target: {
+        targetKind: 'artifact',
+        status: 'unavailable',
+        displayName: readyArtifactReviewTargetFixture.displayName,
+        error: {
+          code: 'REVIEW_TARGET_NOT_FOUND',
+        },
+      },

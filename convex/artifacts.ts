@@ -57,19 +57,11 @@ export const listProjectArtifactSummaries = query({
     const summaries = await Promise.all(
       artifacts.map(async (artifact) => {
         const latestVersion = await getLatestArtifactVersionRow(ctx, artifact._id);
-        const attachedProcess =
-          artifact.processId === null
-            ? null
-            : await ctx.db.get(artifact.processId as Id<'processes'>);
 
         return {
           artifactId: artifact._id,
           displayName: artifact.displayName,
           currentVersionLabel: latestVersion?.versionLabel ?? null,
-          attachmentScope:
-            artifact.processId === null ? ('project' as const) : ('process' as const),
-          processId: artifact.processId,
-          processDisplayLabel: attachedProcess?.displayLabel ?? null,
           updatedAt: latestVersion?.createdAt ?? artifact.createdAt,
         };
       }),

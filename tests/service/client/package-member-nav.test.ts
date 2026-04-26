@@ -29,7 +29,7 @@ const secondReadyMemberFixture = packageMemberSchema.parse({
   position: 1,
   artifactId: 'artifact-002',
   displayName: 'Implementation Notes',
-  versionId: 'artifact-version-002',
+  artifactVersionId: 'artifact-version-002',
   versionLabel: 'checkpoint-20260422121000',
   status: 'ready',
 });
@@ -53,19 +53,19 @@ function buildPackageReview(selectedMemberId: string, body: string) {
         ...readyArtifactReviewTargetFixture,
         artifactId: selectedMember.artifactId,
         displayName: selectedMember.displayName,
-        currentVersionId: selectedMember.versionId,
+        currentVersionId: selectedMember.artifactVersionId,
         currentVersionLabel: selectedMember.versionLabel,
-        selectedVersionId: selectedMember.versionId,
+        selectedVersionId: selectedMember.artifactVersionId,
         versions: [
           {
             ...currentArtifactVersionFixture,
-            versionId: selectedMember.versionId,
+            versionId: selectedMember.artifactVersionId,
             versionLabel: selectedMember.versionLabel,
           },
         ],
         selectedVersion: {
           ...markdownArtifactVersionDetailFixture,
-          versionId: selectedMember.versionId,
+          versionId: selectedMember.artifactVersionId,
           versionLabel: selectedMember.versionLabel,
           body,
         },

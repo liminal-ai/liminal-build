@@ -17,6 +17,8 @@ import type * as processFeatureImplementationStates from "../processFeatureImple
 import type * as processFeatureSpecificationStates from "../processFeatureSpecificationStates.js";
 import type * as processHistoryItems from "../processHistoryItems.js";
 import type * as processOutputs from "../processOutputs.js";
+import type * as processPackageContextMembers from "../processPackageContextMembers.js";
+import type * as processPackageContexts from "../processPackageContexts.js";
 import type * as processProductDefinitionStates from "../processProductDefinitionStates.js";
 import type * as processSideWorkItems from "../processSideWorkItems.js";
 import type * as processes from "../processes.js";
@@ -43,6 +45,8 @@ declare const fullApi: ApiFromModules<{
   processFeatureSpecificationStates: typeof processFeatureSpecificationStates;
   processHistoryItems: typeof processHistoryItems;
   processOutputs: typeof processOutputs;
+  processPackageContextMembers: typeof processPackageContextMembers;
+  processPackageContexts: typeof processPackageContexts;
   processProductDefinitionStates: typeof processProductDefinitionStates;
   processSideWorkItems: typeof processSideWorkItems;
   processes: typeof processes;

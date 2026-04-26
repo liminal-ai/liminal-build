@@ -5,9 +5,9 @@ import {
   type SessionResolution,
   sessionCookieName,
 } from '../../../apps/platform/server/services/auth/auth-session.service.js';
-import { HmacExportUrlSigner } from '../../../apps/platform/server/services/review/export-url-signing.js';
 import { AuthUserSyncService } from '../../../apps/platform/server/services/auth/auth-user-sync.service.js';
 import { InMemoryPlatformStore } from '../../../apps/platform/server/services/projects/platform-store.js';
+import { HmacExportUrlSigner } from '../../../apps/platform/server/services/review/export-url-signing.js';
 import {
   processSummarySchema,
   projectSummarySchema,
@@ -157,7 +157,7 @@ function buildStore(includeUnavailableMember = false, useCollidingMemberNames = 
               position: 0,
               artifactId: 'artifact-001',
               displayName: firstMemberDisplayName,
-              versionId: 'artifact-version-001-pinned',
+              artifactVersionId: 'artifact-version-001-pinned',
               versionLabel: 'spec-v1',
               status: 'ready',
             },
@@ -166,7 +166,7 @@ function buildStore(includeUnavailableMember = false, useCollidingMemberNames = 
               position: 1,
               artifactId: 'artifact-002',
               displayName: secondMemberDisplayName,
-              versionId: 'artifact-version-002-pinned',
+              artifactVersionId: 'artifact-version-002-pinned',
               versionLabel: 'notes-v1',
               status: includeUnavailableMember ? 'unavailable' : 'ready',
             },
@@ -187,6 +187,8 @@ function buildStore(includeUnavailableMember = false, useCollidingMemberNames = 
                   versionLabel: 'spec-v1',
                   isCurrent: true,
                   createdAt: '2026-04-23T12:01:00.000Z',
+                  producedByProcessId: processSummary.processId,
+                  producedByProcessDisplayLabel: processSummary.displayLabel,
                 },
               ],
               selectedVersion: {
@@ -197,6 +199,8 @@ function buildStore(includeUnavailableMember = false, useCollidingMemberNames = 
                 body: '<h1>Feature Specification v1</h1>',
                 mermaidBlocks: [],
                 createdAt: '2026-04-23T12:01:00.000Z',
+                producedByProcessId: processSummary.processId,
+                producedByProcessDisplayLabel: processSummary.displayLabel,
               },
             },
           },

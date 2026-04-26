@@ -50,6 +50,9 @@ export const requestErrorCodeSchema = z.enum([
   'PROJECT_NOT_FOUND',
   'PROCESS_NOT_FOUND',
   'REVIEW_TARGET_NOT_FOUND',
+  'ARTIFACT_VERSION_NOT_FOUND',
+  'PACKAGE_MEMBER_UNAVAILABLE',
+  'PACKAGE_MEMBER_NOT_ALLOWED',
   'REVIEW_EXPORT_NOT_AVAILABLE',
   'REVIEW_EXPORT_FAILED',
   'PROJECT_NAME_CONFLICT',
@@ -147,12 +150,13 @@ export const artifactSummarySchema = z.object({
   artifactId: z.string().min(1),
   displayName: z.string().min(1),
   currentVersionLabel: z.string().min(1).nullable(),
-  attachmentScope: attachmentScopeSchema,
-  processId: z.string().min(1).nullable(),
-  processDisplayLabel: z.string().min(1).nullable(),
   updatedAt: z.string().min(1),
 });
-export type ArtifactSummary = z.infer<typeof artifactSummarySchema>;
+export type ArtifactSummary = z.infer<typeof artifactSummarySchema> & {
+  attachmentScope?: AttachmentScope;
+  processId?: string | null;
+  processDisplayLabel?: string | null;
+};
 
 export const sourceAttachmentSummarySchema = z.object({
   sourceAttachmentId: z.string().min(1),
@@ -273,6 +277,9 @@ const requestErrorStatusByCode = {
   PROJECT_NOT_FOUND: [404],
   PROCESS_NOT_FOUND: [404],
   REVIEW_TARGET_NOT_FOUND: [404],
+  ARTIFACT_VERSION_NOT_FOUND: [404],
+  PACKAGE_MEMBER_UNAVAILABLE: [404],
+  PACKAGE_MEMBER_NOT_ALLOWED: [409],
   REVIEW_EXPORT_NOT_AVAILABLE: [409],
   REVIEW_EXPORT_FAILED: [503],
   PROJECT_NAME_CONFLICT: [409],

@@ -107,6 +107,8 @@ describe('artifact review panel', () => {
           versionLabel: selectedVersion.versionLabel,
           contentKind: 'unsupported',
           createdAt: selectedVersion.createdAt,
+          producedByProcessId: selectedVersion.producedByProcessId,
+          producedByProcessDisplayLabel: selectedVersion.producedByProcessDisplayLabel,
         },
       },
       targetDocument: document,

@@ -5,10 +5,23 @@ import type {
   ReviewTargetError,
 } from '../../../shared/contracts/index.js';
 import { artifactReviewTargetSchema, reviewTargetSchema } from '../../../shared/contracts/index.js';
-import type { MarkdownRendererService } from '../rendering/markdown-renderer.service.js';
+import { AppError } from '../../errors/app-error.js';
+import { artifactVersionNotFoundErrorCode } from '../../errors/codes.js';
 import type { ArtifactVersionRecord, PlatformStore } from '../projects/platform-store.js';
+import type { MarkdownRendererService } from '../rendering/markdown-renderer.service.js';
 
 export const ARTIFACT_CONTENT_FETCH_TIMEOUT_MS = 10_000;
+
+function buildArtifactVersionNotFoundError(args: {
+  artifactId: string;
+  versionId: string;
+}): AppError {
+  return new AppError({
+    code: artifactVersionNotFoundErrorCode,
+    message: `Artifact version ${args.versionId} is unavailable for artifact ${args.artifactId}.`,
+    statusCode: 404,
+  });
+}
 
 type ReviewLogger = {
   info(fields: Record<string, unknown>, message?: string): void;
@@ -90,10 +103,25 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
     ]);
 
     const artifact = artifacts.find((candidate) => candidate.artifactId === args.artifactId);
+    const processCanReviewArtifact =
+      artifact?.processId === undefined
+        ? versionRecords.some((candidate) => candidate.createdByProcessId === args.processId)
+        : artifact.processId === args.processId;
 
-    if (artifact === undefined || artifact.processId !== args.processId) {
+    if (artifact === undefined || !processCanReviewArtifact) {
       return null;
     }
+
+    const processIds = Array.from(
+      new Set(versionRecords.map((version) => version.createdByProcessId)),
+    );
+    const processRecords =
+      (await this.platformStore.listProcessesByIds?.({
+        processIds,
+      })) ?? [];
+    const processDisplayLabelsById = new Map(
+      processRecords.map((processRecord) => [processRecord.processId, processRecord.displayLabel]),
+    );
 
     const currentVersion = versionRecords[0];
     const selectedVersionRecord =
@@ -102,7 +130,10 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
         : versionRecords.find((candidate) => candidate.versionId === args.versionId);
 
     if (args.versionId !== undefined && selectedVersionRecord === undefined) {
-      return null;
+      throw buildArtifactVersionNotFoundError({
+        artifactId: args.artifactId,
+        versionId: args.versionId,
+      });
     }
 
     const versions = versionRecords.map((version, index) => ({
@@ -110,6 +141,9 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
       versionLabel: version.versionLabel,
       isCurrent: index === 0,
       createdAt: version.createdAt,
+      producedByProcessId: version.createdByProcessId,
+      producedByProcessDisplayLabel:
+        processDisplayLabelsById.get(version.createdByProcessId) ?? null,
     }));
 
     const artifactReview = artifactReviewTargetSchema.parse({
@@ -122,7 +156,10 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
       selectedVersion:
         selectedVersionRecord === undefined
           ? undefined
-          : await this.buildArtifactVersionDetail(selectedVersionRecord),
+          : await this.buildArtifactVersionDetail(
+              selectedVersionRecord,
+              processDisplayLabelsById.get(selectedVersionRecord.createdByProcessId) ?? null,
+            ),
     });
 
     if (selectedVersionRecord !== undefined) {
@@ -165,6 +202,7 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
 
   private async buildArtifactVersionDetail(
     version: ArtifactVersionRecord,
+    producedByProcessDisplayLabel: string | null,
   ): Promise<ArtifactVersionDetail> {
     if (version.contentKind === 'unsupported') {
       return {
@@ -172,6 +210,8 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
         versionLabel: version.versionLabel,
         contentKind: 'unsupported',
         createdAt: version.createdAt,
+        producedByProcessId: version.createdByProcessId,
+        producedByProcessDisplayLabel,
       };
     }
 
@@ -243,6 +283,8 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
             bodyError: rendered.bodyError,
           }),
       createdAt: version.createdAt,
+      producedByProcessId: version.createdByProcessId,
+      producedByProcessDisplayLabel,
     };
   }
 
@@ -272,6 +314,8 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
         message,
       },
       createdAt: version.createdAt,
+      producedByProcessId: version.createdByProcessId,
+      producedByProcessDisplayLabel: null,
     };
   }
 }

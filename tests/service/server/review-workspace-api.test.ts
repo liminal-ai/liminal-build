@@ -427,7 +427,7 @@ describe('review workspace api', () => {
         displayName: readyArtifactReviewTargetFixture.displayName,
         status: 'unavailable',
         error: {
-          code: 'REVIEW_TARGET_NOT_FOUND',
+          code: 'ARTIFACT_VERSION_NOT_FOUND',
         },
       },
     });

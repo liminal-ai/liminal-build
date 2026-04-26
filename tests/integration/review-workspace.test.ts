@@ -19,15 +19,15 @@ import {
   processSummarySchema,
   projectSummarySchema,
 } from '../../apps/platform/shared/contracts/index.js';
+import { listProjectArtifactSummaries } from '../../convex/artifacts.js';
 import {
   getArtifactVersion,
   getArtifactVersionContentUrl,
   getLatestArtifactVersion,
   insertArtifactVersion,
   listArtifactsByProducingProcess,
+  listArtifactVersions,
 } from '../../convex/artifactVersions.js';
-import { listArtifactVersions } from '../../convex/artifactVersions.js';
-import { listProjectArtifactSummaries } from '../../convex/artifacts.js';
 import { listPackageSnapshotMembers } from '../../convex/packageSnapshotMembers.js';
 import {
   getPackageSnapshot,
@@ -867,7 +867,7 @@ describe('review workspace integration', () => {
           members: [
             {
               artifactId: 'artifact-review-convex-001',
-              versionId: 'artifact-version-review-convex-001',
+              artifactVersionId: 'artifact-version-review-convex-001',
               versionLabel: 'v1.2',
               status: 'unavailable',
             },
@@ -875,7 +875,7 @@ describe('review workspace integration', () => {
           selectedMember: {
             status: 'unavailable',
             error: {
-              code: 'REVIEW_MEMBER_UNAVAILABLE',
+              code: 'PACKAGE_MEMBER_UNAVAILABLE',
             },
           },
         },

@@ -81,7 +81,7 @@ function buildTwentyMemberStore() {
       position: index,
       artifactId: `artifact-nfr-${index + 1}`,
       displayName: `NFR Artifact ${index + 1}`,
-      versionId: `artifact-version-nfr-${index + 1}`,
+      artifactVersionId: `artifact-version-nfr-${index + 1}`,
       versionLabel: `nfr-v${index + 1}`,
       status: 'ready',
     }),
@@ -104,25 +104,29 @@ function buildTwentyMemberStore() {
       artifact: {
         artifactId: firstMember.artifactId,
         displayName: firstMember.displayName,
-        currentVersionId: firstMember.versionId,
+        currentVersionId: firstMember.artifactVersionId,
         currentVersionLabel: firstMember.versionLabel,
-        selectedVersionId: firstMember.versionId,
+        selectedVersionId: firstMember.artifactVersionId,
         versions: [
           {
-            versionId: firstMember.versionId,
+            versionId: firstMember.artifactVersionId,
             versionLabel: firstMember.versionLabel,
             isCurrent: true,
             createdAt: '2026-04-23T12:00:00.000Z',
+            producedByProcessId: processSummary.processId,
+            producedByProcessDisplayLabel: processSummary.displayLabel,
           },
         ],
         selectedVersion: {
-          versionId: firstMember.versionId,
+          versionId: firstMember.artifactVersionId,
           versionLabel: firstMember.versionLabel,
           contentKind: 'markdown',
           bodyStatus: 'ready',
           body: '<h1>NFR Artifact 1</h1>',
           mermaidBlocks: [],
           createdAt: '2026-04-23T12:00:00.000Z',
+          producedByProcessId: processSummary.processId,
+          producedByProcessDisplayLabel: processSummary.displayLabel,
         },
       },
     }),
@@ -158,7 +162,7 @@ function buildTwentyMemberStore() {
         member.artifactId,
         [
           {
-            versionId: member.versionId,
+            versionId: member.artifactVersionId,
             artifactId: member.artifactId,
             versionLabel: member.versionLabel,
             contentStorageId: `storage-nfr-${index + 1}`,
@@ -172,7 +176,7 @@ function buildTwentyMemberStore() {
     ),
     artifactContentsByVersionId: Object.fromEntries(
       members.map((member) => [
-        member.versionId,
+        member.artifactVersionId,
         `# ${member.displayName}\n\nNFR package member body for ${member.versionLabel}.`,
       ]),
     ),

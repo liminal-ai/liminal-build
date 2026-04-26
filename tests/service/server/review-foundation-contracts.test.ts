@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  artifactSummarySchema,
   artifactVersionDetailSchema,
   artifactVersionSummarySchema,
   buildReviewArtifactApiPath,
@@ -21,6 +22,13 @@ import {
 import { exportPackageResponseFixture } from '../../fixtures/export-responses.js';
 import { exportablePackageFixture } from '../../fixtures/package-snapshots.js';
 import {
+  artifactVersionNotFoundRequestErrorFixture,
+  artifactVersionNotFoundTargetErrorFixture,
+  packageMemberNotAllowedRequestErrorFixture,
+  packageMemberUnavailableRequestErrorFixture,
+  packageMemberUnavailableTargetErrorFixture,
+} from '../../fixtures/review-errors.js';
+import {
   emptyArtifactReviewWorkspaceFixture,
   exportablePackageReviewWorkspaceFixture,
   readyArtifactReviewWorkspaceFixture,
@@ -29,7 +37,7 @@ import {
   unsupportedReviewWorkspaceFixture,
 } from '../../fixtures/review-workspace.js';
 
-describe('Epic 04 Story 0 review foundation contracts', () => {
+describe('Epic 05 Story 0 review foundation contracts', () => {
   it('defines the shared review route and endpoint vocabulary once', () => {
     expect(
       buildReviewWorkspacePath({
@@ -83,6 +91,18 @@ describe('Epic 04 Story 0 review foundation contracts', () => {
     ).toMatchObject({
       code: 'REVIEW_TARGET_NOT_FOUND',
     });
+    expect(artifactVersionNotFoundRequestErrorFixture).toMatchObject({
+      code: 'ARTIFACT_VERSION_NOT_FOUND',
+      status: 404,
+    });
+    expect(packageMemberUnavailableRequestErrorFixture).toMatchObject({
+      code: 'PACKAGE_MEMBER_UNAVAILABLE',
+      status: 404,
+    });
+    expect(packageMemberNotAllowedRequestErrorFixture).toMatchObject({
+      code: 'PACKAGE_MEMBER_NOT_ALLOWED',
+      status: 409,
+    });
     expect(
       requestErrorSchema.parse({
         code: 'REVIEW_EXPORT_NOT_AVAILABLE',
@@ -110,9 +130,12 @@ describe('Epic 04 Story 0 review foundation contracts', () => {
         versionLabel: 'checkpoint-20260423030000',
         isCurrent: true,
         createdAt: '2026-04-23T03:00:00Z',
+        producedByProcessId: 'process-123',
+        producedByProcessDisplayLabel: 'Feature Specification #3',
       }),
     ).toMatchObject({
       createdAt: '2026-04-23T03:00:00Z',
+      producedByProcessId: 'process-123',
     });
     expect(() =>
       artifactVersionSummarySchema.parse({
@@ -120,6 +143,8 @@ describe('Epic 04 Story 0 review foundation contracts', () => {
         versionLabel: 'checkpoint-20260423030000',
         isCurrent: true,
         createdAt: 'not-a-date',
+        producedByProcessId: 'process-123',
+        producedByProcessDisplayLabel: 'Feature Specification #3',
       }),
     ).toThrow();
     expect(() =>
@@ -128,6 +153,8 @@ describe('Epic 04 Story 0 review foundation contracts', () => {
         versionLabel: 'checkpoint-20260230000000',
         isCurrent: true,
         createdAt: '2026-02-30T00:00:00.000Z',
+        producedByProcessId: 'process-123',
+        producedByProcessDisplayLabel: 'Feature Specification #3',
       }),
     ).toThrow();
     expect(() =>
@@ -152,7 +179,7 @@ describe('Epic 04 Story 0 review foundation contracts', () => {
         displayName: 'Mixed Package',
         status: 'unavailable',
         error: {
-          code: 'REVIEW_MEMBER_UNAVAILABLE',
+          code: 'PACKAGE_MEMBER_UNAVAILABLE',
           message: 'One package member is unavailable.',
         },
       }),
@@ -180,16 +207,13 @@ describe('Epic 04 Story 0 review foundation contracts', () => {
       packageMemberReviewSchema.parse({
         memberId: 'package-member-002',
         status: 'unavailable',
-        error: {
-          code: 'REVIEW_MEMBER_UNAVAILABLE',
-          message: 'The pinned package member is currently unavailable.',
-        },
+        error: packageMemberUnavailableTargetErrorFixture,
         artifact: readyArtifactReviewTargetFixture,
       }),
     ).toThrow();
   });
 
-  it('rejects invalid artifact version detail payloads by content kind and body status', () => {
+  it('rejects invalid artifact version detail payloads by content kind, body status, and provenance', () => {
     expect(() =>
       artifactVersionDetailSchema.parse({
         versionId: 'artifact-version-unsupported-001',
@@ -197,6 +221,8 @@ describe('Epic 04 Story 0 review foundation contracts', () => {
         contentKind: 'unsupported',
         body: 'This should not be present.',
         createdAt: '2026-04-23T04:00:00Z',
+        producedByProcessId: 'process-123',
+        producedByProcessDisplayLabel: 'Feature Specification #3',
       }),
     ).toThrow();
 
@@ -207,6 +233,8 @@ describe('Epic 04 Story 0 review foundation contracts', () => {
         contentKind: 'markdown',
         bodyStatus: 'ready',
         createdAt: currentArtifactVersionFixture.createdAt,
+        producedByProcessId: currentArtifactVersionFixture.producedByProcessId,
+        producedByProcessDisplayLabel: currentArtifactVersionFixture.producedByProcessDisplayLabel,
       }),
     ).toThrow();
 
@@ -219,10 +247,13 @@ describe('Epic 04 Story 0 review foundation contracts', () => {
         body: '<h1>Rendered Markdown</h1>',
         mermaidBlocks: [],
         createdAt: currentArtifactVersionFixture.createdAt,
+        producedByProcessId: currentArtifactVersionFixture.producedByProcessId,
+        producedByProcessDisplayLabel: currentArtifactVersionFixture.producedByProcessDisplayLabel,
       }),
     ).toMatchObject({
       contentKind: 'markdown',
       bodyStatus: 'ready',
+      producedByProcessId: currentArtifactVersionFixture.producedByProcessId,
     });
 
     expect(
@@ -234,6 +265,8 @@ describe('Epic 04 Story 0 review foundation contracts', () => {
         body: '',
         mermaidBlocks: [],
         createdAt: currentArtifactVersionFixture.createdAt,
+        producedByProcessId: currentArtifactVersionFixture.producedByProcessId,
+        producedByProcessDisplayLabel: currentArtifactVersionFixture.producedByProcessDisplayLabel,
       }),
     ).toMatchObject({
       bodyStatus: 'ready',
@@ -294,6 +327,25 @@ describe('Epic 04 Story 0 review foundation contracts', () => {
     ).toThrow();
   });
 
+  it('defines project artifact summaries without process-ownership fields', () => {
+    const summary = artifactSummarySchema.parse({
+      artifactId: 'artifact-001',
+      displayName: 'Cross-process Technical Design',
+      currentVersionLabel: 'v7',
+      updatedAt: '2026-04-25T18:45:00.000Z',
+      attachmentScope: 'process',
+      processId: 'process-legacy-001',
+      processDisplayLabel: 'Legacy Process Label',
+    });
+
+    expect(summary).toEqual({
+      artifactId: 'artifact-001',
+      displayName: 'Cross-process Technical Design',
+      currentVersionLabel: 'v7',
+      updatedAt: '2026-04-25T18:45:00.000Z',
+    });
+  });
+
   it('fixtures cover ready, empty, unsupported, unavailable, and bounded-error review workspace states', () => {
     expect(reviewWorkspaceResponseSchema.parse(readyArtifactReviewWorkspaceFixture)).toMatchObject({
       target: {
@@ -348,6 +400,10 @@ describe('Epic 04 Story 0 review foundation contracts', () => {
       available: false,
       reason: 'One or more members are unavailable.',
     });
+    expect(unavailableReviewWorkspaceFixture.target?.error).toMatchObject({
+      code: packageMemberUnavailableTargetErrorFixture.code,
+    });
+    expect(artifactVersionNotFoundTargetErrorFixture.code).toBe('ARTIFACT_VERSION_NOT_FOUND');
   });
 
   it('requires export download URLs to be valid absolute URLs', () => {

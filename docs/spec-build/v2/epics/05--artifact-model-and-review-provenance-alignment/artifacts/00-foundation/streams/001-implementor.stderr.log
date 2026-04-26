@@ -1,0 +1,15 @@
+Reading additional input from stdin...
+2026-04-26T20:56:35.882262Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /Users/leemoore/code/liminal-build-wt-1/apps/platform/server/services/projects/platform-store.ts:
+  async getProcessRecord(args: {
+    processId: string;
+  }): Promise<(ProcessSummary & { projectId: string }) | null> {
+    return this.client.query(getProcessRecordQuery, args);
+  }
+
+  async listProjectProcesses(args: { projectId: string }): Promise<ProcessSummary[]> {
+    return this.client.query(listProjectProcessesQuery, args);
+  }
+
+  async listProjectArtifacts(args: { projectId: string }): Promise<ArtifactSummary[]> {
+    return this.client.query(listProjectArtifactsQuery, args);
+  }

@@ -4,9 +4,9 @@ import {
   type SessionResolution,
   sessionCookieName,
 } from '../../../apps/platform/server/services/auth/auth-session.service.js';
-import { ARTIFACT_CONTENT_FETCH_TIMEOUT_MS } from '../../../apps/platform/server/services/review/artifact-review.service.js';
 import { AuthUserSyncService } from '../../../apps/platform/server/services/auth/auth-user-sync.service.js';
 import { InMemoryPlatformStore } from '../../../apps/platform/server/services/projects/platform-store.js';
+import { ARTIFACT_CONTENT_FETCH_TIMEOUT_MS } from '../../../apps/platform/server/services/review/artifact-review.service.js';
 import {
   processSummarySchema,
   projectSummarySchema,
@@ -223,6 +223,38 @@ describe('artifact review api', () => {
       },
     });
     expect(responseBody.selectedVersion.body).toContain('<h1>Prior version</h1>');
+
+    await app.close();
+  });
+
+  it('returns ARTIFACT_VERSION_NOT_FOUND when an explicit artifact version is unavailable', async () => {
+    const platformStore = buildStore();
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/review/artifacts/artifact-001?versionId=artifact-version-missing`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({
+      code: 'ARTIFACT_VERSION_NOT_FOUND',
+      status: 404,
+    });
 
     await app.close();
   });

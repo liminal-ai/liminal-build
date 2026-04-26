@@ -21,7 +21,7 @@ function buildUnavailableSelectedMember(member: PackageMember) {
     memberId: member.memberId,
     status: 'unavailable' as const,
     error: {
-      code: 'REVIEW_MEMBER_UNAVAILABLE' as const,
+      code: 'PACKAGE_MEMBER_UNAVAILABLE' as const,
       message: 'The pinned package member is currently unavailable.',
     },
   };
@@ -32,7 +32,7 @@ function buildPinnedArtifactReview(
   member: PackageMember,
 ): ArtifactReviewTarget {
   const selectedVersionSummary =
-    artifact.versions.find((version) => version.versionId === member.versionId) ??
+    artifact.versions.find((version) => version.versionId === member.artifactVersionId) ??
     artifact.versions[0];
   const selectedVersion =
     artifact.selectedVersion === undefined
@@ -45,9 +45,9 @@ function buildPinnedArtifactReview(
   return artifactReviewTargetSchema.parse({
     artifactId: artifact.artifactId,
     displayName: member.displayName,
-    currentVersionId: member.versionId,
+    currentVersionId: member.artifactVersionId,
     currentVersionLabel: member.versionLabel,
-    selectedVersionId: member.versionId,
+    selectedVersionId: member.artifactVersionId,
     versions:
       selectedVersionSummary === undefined
         ? []
@@ -119,7 +119,7 @@ export class DefaultPackageReviewService implements PackageReviewService {
       projectId: args.projectId,
       processId: args.processId,
       artifactId: selectedMember.artifactId,
-      versionId: selectedMember.versionId,
+      versionId: selectedMember.artifactVersionId,
     });
 
     if (artifact === null) {
