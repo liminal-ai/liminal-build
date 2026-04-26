@@ -1,0 +1,27 @@
+{
+  "command": "story-verify",
+  "status": "completed",
+  "phase": "finalizing",
+  "startedAt": "2026-04-26T23:28:08.235Z",
+  "updatedAt": "2026-04-26T23:35:12.459Z",
+  "lastOutputAt": "2026-04-26T23:35:12.376Z",
+  "provider": "codex",
+  "pid": 46933,
+  "cwd": "/Users/leemoore/code/liminal-build-wt-1",
+  "timeoutMs": 3600000,
+  "configuredStartupTimeoutMs": 300000,
+  "configuredSilenceTimeoutMs": 360000,
+  "artifactPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/04-cross-process-package-alignment/006-verify.json",
+  "streamPaths": {
+    "stdoutPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/04-cross-process-package-alignment/streams/006-verify.stdout.log",
+    "stderrPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/04-cross-process-package-alignment/streams/006-verify.stderr.log"
+  },
+  "progressPaths": {
+    "statusPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/04-cross-process-package-alignment/progress/006-verify.status.json",
+    "progressPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/04-cross-process-package-alignment/progress/006-verify.progress.jsonl"
+  },
+  "lastEvent": "completed",
+  "lastEventSummary": "story-verify completed for 04-cross-process-package-alignment with outcome revise.",
+  "verifiersCompleted": 1,
+  "verifiersPlanned": 1
+}

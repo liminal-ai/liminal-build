@@ -41,7 +41,7 @@ const projectSummary = projectSummarySchema.parse({
   name: 'Artifact Review',
   ownerDisplayName: 'Lee Moore',
   role: 'owner',
-  processCount: 1,
+  processCount: 2,
   artifactCount: 2,
   sourceAttachmentCount: 0,
   lastUpdatedAt: '2026-04-23T12:00:00.000Z',
@@ -57,6 +57,18 @@ const processSummary = processSummarySchema.parse({
   availableActions: ['review'],
   hasEnvironment: false,
   updatedAt: '2026-04-23T12:00:00.000Z',
+});
+
+const upstreamProcessSummary = processSummarySchema.parse({
+  processId: 'process-package-review-002',
+  displayLabel: 'Feature Implementation #1',
+  processType: 'FeatureImplementation',
+  status: 'completed',
+  phaseLabel: 'Completed',
+  nextActionLabel: 'Review the latest output',
+  availableActions: ['review'],
+  hasEnvironment: false,
+  updatedAt: '2026-04-23T12:03:00.000Z',
 });
 
 const olderReadyMember = packageMemberSchema.parse({
@@ -135,7 +147,7 @@ function buildStore(reviewPackages = [buildBasePackageReviewTarget()]) {
       },
     },
     processesByProjectId: {
-      [projectSummary.projectId]: [processSummary],
+      [projectSummary.projectId]: [processSummary, upstreamProcessSummary],
     },
     artifactsByProjectId: {
       [projectSummary.projectId]: [
@@ -153,8 +165,8 @@ function buildStore(reviewPackages = [buildBasePackageReviewTarget()]) {
           displayName: 'Implementation Notes',
           currentVersionLabel: 'notes-v1',
           attachmentScope: 'process',
-          processId: processSummary.processId,
-          processDisplayLabel: processSummary.displayLabel,
+          processId: upstreamProcessSummary.processId,
+          processDisplayLabel: upstreamProcessSummary.displayLabel,
           updatedAt: '2026-04-23T12:03:00.000Z',
         },
       ],
@@ -191,7 +203,7 @@ function buildStore(reviewPackages = [buildBasePackageReviewTarget()]) {
           contentKind: 'markdown',
           bytes: 20,
           createdAt: '2026-04-23T12:03:00.000Z',
-          createdByProcessId: processSummary.processId,
+          createdByProcessId: upstreamProcessSummary.processId,
         },
       ],
     },
@@ -471,6 +483,12 @@ describe('package review api', () => {
         artifact: {
           artifactId: newerReadyMember.artifactId,
           selectedVersionId: newerReadyMember.artifactVersionId,
+          versions: [
+            expect.objectContaining({
+              producedByProcessId: upstreamProcessSummary.processId,
+              producedByProcessDisplayLabel: upstreamProcessSummary.displayLabel,
+            }),
+          ],
         },
       },
     });

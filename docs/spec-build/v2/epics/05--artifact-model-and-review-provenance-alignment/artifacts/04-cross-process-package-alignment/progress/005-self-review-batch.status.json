@@ -1,0 +1,27 @@
+{
+  "command": "story-self-review",
+  "status": "completed",
+  "phase": "finalizing",
+  "startedAt": "2026-04-26T23:23:47.575Z",
+  "updatedAt": "2026-04-26T23:27:55.790Z",
+  "lastOutputAt": "2026-04-26T23:27:55.548Z",
+  "provider": "codex",
+  "pid": 45741,
+  "cwd": "/Users/leemoore/code/liminal-build-wt-1",
+  "timeoutMs": 7200000,
+  "configuredStartupTimeoutMs": 300000,
+  "configuredSilenceTimeoutMs": 600000,
+  "artifactPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/04-cross-process-package-alignment/005-self-review-batch.json",
+  "streamPaths": {
+    "stdoutPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/04-cross-process-package-alignment/streams/005-self-review-batch.stdout.log",
+    "stderrPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/04-cross-process-package-alignment/streams/005-self-review-batch.stderr.log"
+  },
+  "progressPaths": {
+    "statusPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/04-cross-process-package-alignment/progress/005-self-review-batch.status.json",
+    "progressPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/04-cross-process-package-alignment/progress/005-self-review-batch.progress.jsonl"
+  },
+  "lastEvent": "completed",
+  "lastEventSummary": "story-self-review completed for 04-cross-process-package-alignment with outcome ready-for-verification.",
+  "selfReviewPassesCompleted": 3,
+  "selfReviewPassesPlanned": 3
+}

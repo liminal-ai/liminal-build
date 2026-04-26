@@ -1,6 +1,11 @@
 import { v } from 'convex/values';
 import type { Id } from './_generated/dataModel.js';
-import { type MutationCtx, mutation, type QueryCtx, query } from './_generated/server.js';
+import {
+  internalMutation,
+  internalQuery,
+  type MutationCtx,
+  type QueryCtx,
+} from './_generated/server.js';
 
 export const processPackageContextsTableFields = {
   processId: v.id('processes'),
@@ -74,7 +79,52 @@ async function listMembersForContext(
     .take(MAX_PROCESS_PACKAGE_CONTEXT_MEMBERS);
 }
 
-export const getCurrentProcessPackageContext = query({
+async function resolveSeedMembersFromSnapshot(
+  ctx: MutationCtx,
+  args: {
+    processId: string;
+    basePackageSnapshotId: Id<'packageSnapshots'> | null;
+    members: Array<{
+      position: number;
+      artifactId: Id<'artifacts'>;
+      artifactVersionId: Id<'artifactVersions'>;
+      displayName: string;
+      versionLabel: string;
+    }>;
+  },
+) {
+  if (args.basePackageSnapshotId === null || args.members.length > 0) {
+    return args.members;
+  }
+
+  const snapshot = await ctx.db.get(args.basePackageSnapshotId);
+
+  if (snapshot === null) {
+    throw new Error('Base package snapshot not found.');
+  }
+
+  if (snapshot.processId !== (args.processId as Id<'processes'>)) {
+    throw new Error('Base package snapshot does not belong to the requested process.');
+  }
+
+  const snapshotMembers = await ctx.db
+    .query('packageSnapshotMembers')
+    .withIndex('by_packageSnapshotId_position', (indexQuery) =>
+      indexQuery.eq('packageSnapshotId', args.basePackageSnapshotId as Id<'packageSnapshots'>),
+    )
+    .order('asc')
+    .take(MAX_PROCESS_PACKAGE_CONTEXT_MEMBERS);
+
+  return snapshotMembers.map((member) => ({
+    position: member.position,
+    artifactId: member.artifactId,
+    artifactVersionId: member.artifactVersionId,
+    displayName: member.displayName,
+    versionLabel: member.versionLabel,
+  }));
+}
+
+export const getCurrentProcessPackageContext = internalQuery({
   args: {
     processId: v.string(),
   },
@@ -86,7 +136,7 @@ export const getCurrentProcessPackageContext = query({
   },
 });
 
-export const clearCurrentProcessPackageContext = mutation({
+export const clearCurrentProcessPackageContext = internalMutation({
   args: {
     processId: v.string(),
   },
@@ -107,7 +157,7 @@ export const clearCurrentProcessPackageContext = mutation({
   },
 });
 
-export const upsertCurrentProcessPackageContext = mutation({
+export const upsertCurrentProcessPackageContext = internalMutation({
   args: {
     processId: v.string(),
     displayName: v.string(),
@@ -116,7 +166,8 @@ export const upsertCurrentProcessPackageContext = mutation({
     members: v.array(upsertProcessPackageContextMemberInputValidator),
   },
   handler: async (ctx, args) => {
-    const normalizedMembers = [...args.members].sort(
+    const seedMembers = await resolveSeedMembersFromSnapshot(ctx, args);
+    const normalizedMembers = [...seedMembers].sort(
       (left, right) => left.position - right.position,
     );
     const seenPositions = new Set<number>();

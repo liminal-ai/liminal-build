@@ -4,7 +4,7 @@
 - State: STORY_ACTIVE
 - Spec Pack Root: /Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment
 - Tech Design Shape: four-file (tech-design.md + tech-design-server.md + tech-design-client.md + test-plan.md)
-- Current Story: 03-process-scoped-artifact-review-realignment
+- Current Story: 04-cross-process-package-alignment
 - Current Phase: implement
 - Last Completed Checkpoint: story-0-gate-pass (2026-04-26)
 
@@ -140,10 +140,30 @@
 - Open Risks: none
 - User Acceptance: accepted
 
+### story-04 (Cross-Process Package Alignment)
+- Title: Story 4: Cross-Process Package Alignment
+- Implementor Evidence Refs:
+  - artifacts/04-.../001-implementor.json (initial)
+  - artifacts/04-.../005-self-review-batch.json (self-review 3/3 passes)
+- Verifier Evidence Refs:
+  - artifacts/04-.../006-verify.json (initial: revise, SV-04-001 blocking — public Convex functions)
+  - artifacts/quick-fix/002-quick-fix.json (quick-fix for SV-04-001)
+  - artifacts/04-.../007-verify.json (followup: pass, SV-04-001 resolved)
+- Gate Command: `corepack pnpm run green-verify`
+- Gate Result: pass
+- Gate Test Counts: convex:60 + server:249 + client:236 + packages:5 = 550
+- Dispositions:
+  - SV-04-001 (public Convex package-context functions → internalQuery/internalMutation): fixed via quick-fix
+- Baseline Before Story: 545 (convex:55 + server:249 + client:236 + packages:5)
+- Baseline After Story: 550 (convex:60 + server:249 + client:236 + packages:5)
+- Baseline Note: +5 net. All from Convex layer — processPackageContexts.test.ts and packageSnapshots.test.ts now present. Deferred S0-F3 is now covered.
+- Open Risks: none
+- User Acceptance: accepted
+
 ## Cumulative Baselines
-- Baseline Before Current Story: 545 (convex:55 + server:249 + client:236 + packages:5)
-- Expected After Current Story: 568 (545 + 23 planned for chunk 4)
-- Latest Actual Total: 545
+- Baseline Before Current Story: 550 (convex:60 + server:249 + client:236 + packages:5)
+- Expected After Current Story: 569 (550 + 19 planned for chunk 5)
+- Latest Actual Total: 550
 
 ## Cleanup / Epic Verification
 - Cleanup Artifact: pending
@@ -151,7 +171,7 @@
 - Epic Verification Status: not-started
 
 ## Open Risks / Accepted Risks
-- S0-F3: convex/processPackageContexts.test.ts absent — deferred to Story 4 per test plan Chunk 4 assignment
+- ~~S0-F3: convex/processPackageContexts.test.ts absent — deferred to Story 4 per test plan Chunk 4 assignment~~ RESOLVED in Story 4 (convex:55→60)
 
 ## Retained Operational Notes
 
@@ -208,7 +228,7 @@ When a provider-backed CLI call is backgrounded:
 Only one Monitor should be active at a time since CLI operations are sequential. Old monitors from prior phases complete or time out naturally but remain visible in the Claude Code status area as stale entries, creating confusion about how many monitors are actually running. **Fix:** Use `TaskStop` to explicitly stop the current monitor before arming a new one at each phase transition. This keeps exactly one active monitor at all times. The skill should document this as part of the monitoring procedure: stop the prior monitor, then arm the next one.
 
 ### Tooling Observation: CLI Flag Names
-`story-continue` requires `--followup-text` (or `--followup-file`), not `--response-text`. The error message was clear (`INVALID_INVOCATION: Provide exactly one of --followup-file or --followup-text`), but the orchestrator initially guessed the wrong flag. The operations doc (`30-cli-operations.md`) presumably documents the exact flags — reading it before first use of each command would prevent this class of error.
+Each CLI command uses different flag names for its text input: `story-continue` uses `--followup-text`, `story-verify` follow-up uses `--response-text`, `quick-fix` uses `--request-text`. The orchestrator has hit wrong-flag errors on both `story-continue` (used `--response-text`) and `quick-fix` (used `--followup-text`). Error messages are clear but the inconsistency across commands is a recurring source of invocation failures. The operations doc (`30-cli-operations.md`) presumably documents the exact flags per command — reading it before first use of each command would prevent this class of error.
 
 ### Tooling Observation: Self-Review Speed
 Self-review (3 passes) consistently completes in ~90 seconds across all stories so far. Implementation takes 15-20 minutes, verification takes 10-15 minutes. The speed gap is notable. The fresh-session verifier has caught real blocking issues in 2/3 stories that self-review did not surface. Root cause unknown — needs investigation in the skill/CLI layer.

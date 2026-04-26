@@ -1,0 +1,21 @@
+Reading additional input from stdin...
+2026-04-26T23:17:00.512287Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /Users/leemoore/code/liminal-build-wt-1/convex/packageSnapshots.test.ts:
+        contentStorageId: 'storage-package-snapshots-1',
+        contentKind: 'markdown',
+        bytes: 128,
+        createdAt: '2026-04-23T12:03:00.000Z',
+        createdByProcessId: 'process-package-snapshots-1',
+      },
+      {
+        _id: 'artifact-version-package-snapshots-2',
+        artifactId: 'artifact-package-snapshots-2',
+        versionLabel: 'notes-v1',
+        contentStorageId: 'storage-package-snapshots-2',
+        contentKind: 'markdown',
+        bytes: 96,
+        createdAt: '2026-04-23T12:04:00.000Z',
+        createdByProcessId: 'process-package-snapshots-1',
+      },
+    ],
+  };
+}

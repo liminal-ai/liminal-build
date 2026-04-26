@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import type { Id } from './_generated/dataModel.js';
-import { query } from './_generated/server.js';
+import { internalQuery } from './_generated/server.js';
 
 export const processPackageContextMembersTableFields = {
   packageContextId: v.id('processPackageContexts'),
@@ -12,7 +12,7 @@ export const processPackageContextMembersTableFields = {
   pinnedAt: v.string(),
 };
 
-export const listProcessPackageContextMembers = query({
+export const listProcessPackageContextMembers = internalQuery({
   args: {
     packageContextId: v.string(),
   },

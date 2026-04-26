@@ -363,10 +363,10 @@ const PACKAGE_SNAPSHOT_ARTIFACT_VERSION_NOT_FOUND_ERROR =
 const PACKAGE_SNAPSHOT_ARTIFACT_VERSION_OWNERSHIP_ERROR =
   'Package snapshot member artifact version must belong to the specified artifact.';
 const PACKAGE_SNAPSHOT_ARTIFACT_NOT_FOUND_ERROR = 'Package snapshot member artifact not found.';
-
-function buildPackageSnapshotProcessOwnershipError(memberDisplayName: string): string {
-  return `Package snapshot member "${memberDisplayName}" must be produced by the publishing process.`;
-}
+const PACKAGE_SNAPSHOT_ARTIFACT_PROJECT_MISMATCH_ERROR =
+  'Package snapshot member artifact must belong to the publishing process project.';
+const PACKAGE_SNAPSHOT_MEMBER_NOT_ALLOWED_ERROR =
+  'Package snapshot member is not allowed in the current package-building context.';
 
 type NodeCryptoModule = {
   createHash(algorithm: 'sha256'): {
@@ -3041,12 +3041,39 @@ export class InMemoryPlatformStore implements PlatformStore {
     context: ProcessPackageContextRecord;
     members: ProcessPackageContextMemberRecord[];
   }> {
+    let seedMembers = args.members;
+
+    if (args.basePackageSnapshotId !== null && args.members.length === 0) {
+      const snapshot = await this.getPackageSnapshot({
+        packageSnapshotId: args.basePackageSnapshotId,
+      });
+
+      if (snapshot === null) {
+        throw new Error('Base package snapshot not found.');
+      }
+
+      if (snapshot.processId !== args.processId) {
+        throw new Error('Base package snapshot does not belong to the requested process.');
+      }
+
+      seedMembers = (
+        await this.listPackageSnapshotMembers({
+          packageSnapshotId: args.basePackageSnapshotId,
+        })
+      ).map((member) => ({
+        position: member.position,
+        artifactId: member.artifactId,
+        artifactVersionId: member.artifactVersionId,
+        displayName: member.displayName,
+        versionLabel: member.versionLabel,
+      }));
+    }
     const existingContext = this.packageContextsByProcessId.get(args.processId) ?? null;
     const existingMembers =
       existingContext === null
         ? []
         : (this.packageContextMembersByContextId.get(existingContext.packageContextId) ?? []);
-    const normalizedInputMembers = [...args.members].sort(
+    const normalizedInputMembers = [...seedMembers].sort(
       (left, right) => left.position - right.position,
     );
     const payloadMatchesExisting =
@@ -3126,14 +3153,37 @@ export class InMemoryPlatformStore implements PlatformStore {
     }
 
     const projectArtifacts = this.listArtifactsForProject(processRecord.projectId);
+    const currentArtifactIds =
+      this.currentMaterialRefsByProcessId.get(args.processId)?.artifactIds ?? [];
+    const currentPackageContextMembers =
+      await this.listProcessPackageContextMembersForReviewTargets(args.processId);
     const artifactDisplayNames = new Map(
       projectArtifacts.map((artifact) => [artifact.artifactId, artifact.displayName] as const),
     );
+    const currentVersionIdsByArtifactId = new Map<string, string>();
+    const pinnedVersionIdsByArtifactId = new Map<string, Set<string>>();
     const seenPositions = new Set<number>();
     const existingSnapshots = this.packageSnapshotsByProcessId.get(args.processId) ?? [];
     const packageSnapshotId = `${args.processId}:package-${existingSnapshots.length + 1}`;
     const publishedAt = new Date().toISOString();
     const memberRecords: PackageSnapshotMemberRecord[] = [];
+
+    for (const artifactId of currentArtifactIds) {
+      const latestVersion = await this.getLatestArtifactVersion({
+        artifactId,
+      });
+
+      if (latestVersion !== null) {
+        currentVersionIdsByArtifactId.set(artifactId, latestVersion.versionId);
+      }
+    }
+
+    for (const member of currentPackageContextMembers) {
+      const artifactVersionIds =
+        pinnedVersionIdsByArtifactId.get(member.artifactId) ?? new Set<string>();
+      artifactVersionIds.add(member.artifactVersionId);
+      pinnedVersionIdsByArtifactId.set(member.artifactId, artifactVersionIds);
+    }
 
     for (const [index, member] of args.members.entries()) {
       if (!Number.isInteger(member.position) || member.position < 0) {
@@ -3147,7 +3197,17 @@ export class InMemoryPlatformStore implements PlatformStore {
 
       const artifact = artifactDisplayNames.get(member.artifactId);
       if (artifact === undefined) {
-        throw new Error(PACKAGE_SNAPSHOT_ARTIFACT_NOT_FOUND_ERROR);
+        const belongsToDifferentProject = [...this.artifactsByProjectId.entries()].some(
+          ([projectId, artifacts]) =>
+            projectId !== processRecord.projectId &&
+            artifacts.some((candidate) => candidate.artifactId === member.artifactId),
+        );
+
+        throw new Error(
+          belongsToDifferentProject
+            ? PACKAGE_SNAPSHOT_ARTIFACT_PROJECT_MISMATCH_ERROR
+            : PACKAGE_SNAPSHOT_ARTIFACT_NOT_FOUND_ERROR,
+        );
       }
 
       const artifactVersion = await this.getArtifactVersion({
@@ -3161,8 +3221,13 @@ export class InMemoryPlatformStore implements PlatformStore {
         throw new Error(PACKAGE_SNAPSHOT_ARTIFACT_VERSION_OWNERSHIP_ERROR);
       }
 
-      if (artifactVersion.createdByProcessId !== args.processId) {
-        throw new Error(buildPackageSnapshotProcessOwnershipError(artifact));
+      const allowedByCurrentRefs =
+        currentVersionIdsByArtifactId.get(member.artifactId) === member.artifactVersionId;
+      const allowedByPinnedContext =
+        pinnedVersionIdsByArtifactId.get(member.artifactId)?.has(member.artifactVersionId) === true;
+
+      if (!allowedByCurrentRefs && !allowedByPinnedContext) {
+        throw new Error(PACKAGE_SNAPSHOT_MEMBER_NOT_ALLOWED_ERROR);
       }
 
       memberRecords.push({

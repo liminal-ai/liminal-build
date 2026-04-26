@@ -608,6 +608,9 @@ describe('review workspace integration', () => {
   it('resolves a manually-seeded package snapshot through ConvexPlatformStore reads', async () => {
     const fixture = createFakeConvexContext(buildReviewWorkspaceSeed());
     registerReviewWorkspaceHandlers(fixture);
+    await fixture.ctx.db.patch('process-state-review-convex-001', {
+      currentArtifactIds: ['artifact-review-convex-001', 'artifact-review-convex-002'],
+    });
 
     const publishPackageSnapshotHandler = getHandler<
       {
@@ -715,6 +718,9 @@ describe('review workspace integration', () => {
   it('preserves snapshot-time member display names after the artifact is renamed', async () => {
     const fixture = createFakeConvexContext(buildReviewWorkspaceSeed());
     registerReviewWorkspaceHandlers(fixture);
+    await fixture.ctx.db.patch('process-state-review-convex-001', {
+      currentArtifactIds: ['artifact-review-convex-001'],
+    });
 
     await fixture.ctx.db.patch('artifact-review-convex-001', {
       displayName: 'A-v1',
@@ -813,6 +819,9 @@ describe('review workspace integration', () => {
   it('preserves snapshot-time member version labels after the pinned version becomes unavailable', async () => {
     const fixture = createFakeConvexContext(buildReviewWorkspaceSeed());
     registerReviewWorkspaceHandlers(fixture);
+    await fixture.ctx.db.patch('process-state-review-convex-001', {
+      currentArtifactIds: ['artifact-review-convex-001'],
+    });
 
     await fixture.ctx.db.patch('artifact-version-review-convex-001', {
       versionLabel: 'v1.2',
@@ -984,6 +993,9 @@ describe('review workspace integration', () => {
   it('TC-6.1b reopens package review from durable route state after a reload', async () => {
     const fixture = createFakeConvexContext(buildReviewWorkspaceSeed());
     registerReviewWorkspaceHandlers(fixture);
+    await fixture.ctx.db.patch('process-state-review-convex-001', {
+      currentArtifactIds: ['artifact-review-convex-001'],
+    });
 
     const querySpy = vi
       .spyOn(ConvexHttpClient.prototype, 'query')

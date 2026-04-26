@@ -39,7 +39,7 @@ const projectSummary = projectSummarySchema.parse({
   name: 'Artifact Review',
   ownerDisplayName: 'Lee Moore',
   role: 'owner',
-  processCount: 1,
+  processCount: 2,
   artifactCount: 2,
   sourceAttachmentCount: 0,
   lastUpdatedAt: '2026-04-23T12:00:00.000Z',
@@ -57,6 +57,18 @@ const processSummary = processSummarySchema.parse({
   updatedAt: '2026-04-23T12:00:00.000Z',
 });
 
+const upstreamProcessSummary = processSummarySchema.parse({
+  processId: 'process-review-export-002',
+  displayLabel: 'Feature Implementation #1',
+  processType: 'FeatureImplementation',
+  status: 'completed',
+  phaseLabel: 'Completed',
+  nextActionLabel: 'Review the latest output',
+  availableActions: ['review'],
+  hasEnvironment: false,
+  updatedAt: '2026-04-23T12:03:00.000Z',
+});
+
 function buildStore(includeUnavailableMember = false, useCollidingMemberNames = false) {
   const firstMemberDisplayName = useCollidingMemberNames ? 'Spec' : 'Feature Specification';
   const secondMemberDisplayName = useCollidingMemberNames ? 'Spec' : 'Implementation Notes';
@@ -72,7 +84,7 @@ function buildStore(includeUnavailableMember = false, useCollidingMemberNames = 
       },
     },
     processesByProjectId: {
-      [projectSummary.projectId]: [processSummary],
+      [projectSummary.projectId]: [processSummary, upstreamProcessSummary],
     },
     artifactsByProjectId: {
       [projectSummary.projectId]: [
@@ -90,8 +102,8 @@ function buildStore(includeUnavailableMember = false, useCollidingMemberNames = 
           displayName: 'Implementation Notes',
           currentVersionLabel: 'notes-v1',
           attachmentScope: 'process',
-          processId: processSummary.processId,
-          processDisplayLabel: processSummary.displayLabel,
+          processId: upstreamProcessSummary.processId,
+          processDisplayLabel: upstreamProcessSummary.displayLabel,
           updatedAt: '2026-04-23T12:03:00.000Z',
         },
       ],
@@ -130,7 +142,7 @@ function buildStore(includeUnavailableMember = false, useCollidingMemberNames = 
               contentKind: 'markdown',
               bytes: 41,
               createdAt: '2026-04-23T12:03:00.000Z',
-              createdByProcessId: processSummary.processId,
+              createdByProcessId: upstreamProcessSummary.processId,
             },
           ],
     },
