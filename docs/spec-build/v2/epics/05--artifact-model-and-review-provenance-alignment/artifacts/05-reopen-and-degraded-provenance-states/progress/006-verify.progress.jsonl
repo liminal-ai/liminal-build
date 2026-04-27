@@ -1,0 +1,19 @@
+{"timestamp":"2026-04-26T23:48:18.803Z","command":"story-verify","phase":"verifier-initial","event":"command-started","summary":"story-verify started."}
+{"timestamp":"2026-04-26T23:48:18.804Z","command":"story-verify","phase":"verifier-initial","event":"verifier-started","summary":"Story verifier started for 05-reopen-and-degraded-provenance-states."}
+{"timestamp":"2026-04-26T23:48:18.806Z","command":"story-verify","phase":"verifier-initial","event":"provider-spawned","summary":"Provider spawned with pid 77830.","metadata":{"pid":77830}}
+{"timestamp":"2026-04-26T23:48:18.868Z","command":"story-verify","phase":"verifier-initial","event":"first-output-received","summary":"First provider stderr output received.","metadata":{"stream":"stderr"}}
+{"timestamp":"2026-04-26T23:48:49.380Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T23:49:22.084Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T23:50:02.233Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T23:50:35.394Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T23:51:18.298Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T23:51:53.609Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T23:52:28.388Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T23:53:12.168Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T23:53:45.805Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T23:55:11.725Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T23:56:28.219Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T23:57:25.192Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T23:57:25.282Z","command":"story-verify","phase":"verifier-initial","event":"provider-exit","summary":"Provider exited with code 0.","metadata":{"exitCode":0,"signal":null,"elapsedMs":546476,"configuredTimeoutMs":3600000}}
+{"timestamp":"2026-04-26T23:57:25.288Z","command":"story-verify","phase":"verifier-initial","event":"verifier-completed","summary":"Story verifier completed for 05-reopen-and-degraded-provenance-states.","metadata":{"outcome":"block"}}
+{"timestamp":"2026-04-26T23:57:25.289Z","command":"story-verify","phase":"finalizing","event":"completed","summary":"story-verify completed for 05-reopen-and-degraded-provenance-states with outcome block.","metadata":{"outcome":"block","verifiersCompleted":1}}

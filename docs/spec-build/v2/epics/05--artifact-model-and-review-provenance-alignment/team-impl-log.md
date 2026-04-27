@@ -1,11 +1,11 @@
 # Team Implementation Log
 
 ## Run Overview
-- State: STORY_ACTIVE
+- State: PRE_EPIC_VERIFY
 - Spec Pack Root: /Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment
 - Tech Design Shape: four-file (tech-design.md + tech-design-server.md + tech-design-client.md + test-plan.md)
-- Current Story: 04-cross-process-package-alignment
-- Current Phase: implement
+- Current Story: all-complete
+- Current Phase: pre-epic-verify
 - Last Completed Checkpoint: story-0-gate-pass (2026-04-26)
 
 ## Run Configuration
@@ -160,10 +160,31 @@
 - Open Risks: none
 - User Acceptance: accepted
 
+### story-05 (Reopen and Degraded Provenance States)
+- Title: Story 5: Reopen and Degraded Provenance States
+- Implementor Evidence Refs:
+  - artifacts/05-.../001-implementor.json (initial — 0 changed files, claimed existing coverage)
+  - artifacts/05-.../005-self-review-batch.json (self-review 3/3 passes)
+  - artifacts/05-.../007-continue.json (follow-up fixing SV-05-001)
+- Verifier Evidence Refs:
+  - artifacts/05-.../006-verify.json (initial: block, SV-05-001 — package-member reload fallback missing)
+  - artifacts/05-.../008-verify.json (followup: pass, SV-05-001 resolved)
+- Gate Command: `corepack pnpm run green-verify`
+- Gate Result: pass
+- Gate Test Counts: convex:60 + server:249 + client:237 + packages:5 = 551
+- Dispositions:
+  - SV-05-001 (stale package-member selection collapses workspace → reload fallback): fixed
+- Baseline Before Story: 550 (convex:60 + server:249 + client:236 + packages:5)
+- Baseline After Story: 551 (convex:60 + server:249 + client:237 + packages:5)
+- Baseline Note: +1 net. Implementor initially claimed 0 changes needed; verifier correctly identified missing package-member reload fallback. Client gained 1 test.
+- Open Risks: none
+- User Acceptance: accepted
+
 ## Cumulative Baselines
-- Baseline Before Current Story: 550 (convex:60 + server:249 + client:236 + packages:5)
-- Expected After Current Story: 569 (550 + 19 planned for chunk 5)
-- Latest Actual Total: 550
+- Baseline Before Epic: 529 (convex:54 + server:237 + client:233 + packages:5)
+- Final After All Stories: 551 (convex:60 + server:249 + client:237 + packages:5)
+- Net Delta: +22 (convex:+6, server:+12, client:+4)
+- Planned: +121 new tests; Actual net: +22 (restructuring of existing tests during vocabulary alignment accounts for the gap)
 
 ## Cleanup / Epic Verification
 - Cleanup Artifact: pending

@@ -1345,6 +1345,45 @@ export async function bootstrapApp(
           return;
         }
 
+        if (
+          error.payload.code === 'PACKAGE_MEMBER_UNAVAILABLE' ||
+          error.payload.code === 'REVIEW_TARGET_NOT_FOUND'
+        ) {
+          try {
+            await reloadReviewWorkspaceSelection({
+              projectId,
+              processId,
+              selection,
+              requestId,
+            });
+            return;
+          } catch (reloadError) {
+            if (reloadError instanceof ApiRequestError) {
+              const reloadedReviewWorkspace = store.get().reviewWorkspace;
+              const reloadedSelection = reloadedReviewWorkspace.selection;
+              if (
+                requestId !== routeLoadId ||
+                reloadedReviewWorkspace.projectId !== projectId ||
+                reloadedReviewWorkspace.processId !== processId ||
+                reloadedSelection === null ||
+                reloadedSelection.targetKind !== selection.targetKind ||
+                reloadedSelection.targetId !== selection.targetId ||
+                reloadedSelection.memberId !== selection.memberId
+              ) {
+                return;
+              }
+
+              store.patch('reviewWorkspace', {
+                ...reloadedReviewWorkspace,
+                error: reloadError.payload,
+              });
+              return;
+            }
+
+            throw reloadError;
+          }
+        }
+
         store.patch('reviewWorkspace', {
           ...latestReviewWorkspace,
           error: error.payload,

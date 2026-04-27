@@ -103,6 +103,49 @@ const packageWorkspaceFixture = reviewWorkspaceResponseSchema.parse({
   }),
 });
 
+const unavailableSecondMemberFixture = packageMemberSchema.parse({
+  ...secondReadyMemberFixture,
+  status: 'unavailable',
+});
+
+const unavailableSecondMemberWorkspaceFixture = reviewWorkspaceResponseSchema.parse({
+  project: packageWorkspaceFixture.project,
+  process: {
+    ...packageWorkspaceFixture.process,
+    reviewTargetKind: 'package',
+    reviewTargetId: initialPackageReviewFixture.packageId,
+  },
+  availableTargets: packageWorkspaceFixture.availableTargets,
+  target: reviewTargetSchema.parse({
+    targetKind: 'package',
+    displayName: initialPackageReviewFixture.displayName,
+    status: 'unavailable',
+    error: {
+      code: 'PACKAGE_MEMBER_UNAVAILABLE',
+      message: 'The pinned package member is currently unavailable.',
+    },
+    package: packageReviewTargetSchema.parse({
+      packageId: initialPackageReviewFixture.packageId,
+      displayName: initialPackageReviewFixture.displayName,
+      packageType: initialPackageReviewFixture.packageType,
+      members: [readyPackageMemberFixture, unavailableSecondMemberFixture],
+      selectedMemberId: unavailableSecondMemberFixture.memberId,
+      selectedMember: packageMemberReviewSchema.parse({
+        memberId: unavailableSecondMemberFixture.memberId,
+        status: 'unavailable',
+        error: {
+          code: 'PACKAGE_MEMBER_UNAVAILABLE',
+          message: 'The pinned package member is currently unavailable.',
+        },
+      }),
+      exportability: {
+        available: false,
+        reason: 'One or more members are unavailable.',
+      },
+    }),
+  }),
+});
+
 function buildJsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -240,5 +283,80 @@ describe('package member navigation', () => {
     expect(dom.window.document.body.textContent).toContain('Current member wins');
     expect(dom.window.document.body.textContent).not.toContain('Stale member replay');
     expect(dom.window.location.href).toContain(`memberId=${readyPackageMemberFixture.memberId}`);
+  });
+
+  it('reloads the review workspace with bounded unavailable state when a stale package member selection fails', async () => {
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const rawUrl =
+        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const url = new URL(rawUrl, 'http://localhost:5001');
+
+      if (url.pathname === '/auth/me') {
+        return Promise.resolve(
+          buildJsonResponse({
+            user: {
+              id: 'user:workos-user-1',
+              email: 'lee@example.com',
+              displayName: 'Lee Moore',
+            },
+          }),
+        );
+      }
+
+      if (
+        url.pathname ===
+          `/api/projects/${packageWorkspaceFixture.project.projectId}/processes/${packageWorkspaceFixture.process.processId}/review/packages/${initialPackageReviewFixture.packageId}` &&
+        url.searchParams.get('memberId') === secondReadyMemberFixture.memberId
+      ) {
+        return Promise.resolve(
+          buildJsonResponse(
+            {
+              code: 'PACKAGE_MEMBER_UNAVAILABLE',
+              message: 'The pinned package member is currently unavailable.',
+              status: 404,
+            },
+            404,
+          ),
+        );
+      }
+
+      if (
+        url.pathname ===
+        `/api/projects/${packageWorkspaceFixture.project.projectId}/processes/${packageWorkspaceFixture.process.processId}/review`
+      ) {
+        if (url.searchParams.get('memberId') === secondReadyMemberFixture.memberId) {
+          return Promise.resolve(buildJsonResponse(unavailableSecondMemberWorkspaceFixture));
+        }
+
+        return Promise.resolve(buildJsonResponse(packageWorkspaceFixture));
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch request: ${url.pathname}${url.search}`));
+    });
+    const dom = await renderReviewApp(fetchMock);
+    const unavailableMemberButton = dom.window.document.querySelector(
+      `[data-package-member-id="${secondReadyMemberFixture.memberId}"]`,
+    );
+
+    if (!(unavailableMemberButton instanceof dom.window.HTMLElement)) {
+      throw new Error('Expected the package member navigation to render the stale member option.');
+    }
+
+    unavailableMemberButton.click();
+    await flush();
+    await flush();
+
+    expect(dom.window.document.body.textContent).toContain(
+      packageWorkspaceFixture.process.displayLabel,
+    );
+    expect(dom.window.document.body.textContent).toContain(
+      unavailableSecondMemberWorkspaceFixture.target?.displayName ?? '',
+    );
+    expect(dom.window.document.body.textContent).toContain(
+      'The pinned package member is currently unavailable.',
+    );
+    expect(dom.window.document.body.textContent).toContain(readyPackageMemberFixture.displayName);
+    expect(dom.window.document.body.textContent).not.toContain('Review workspace failed to load');
+    expect(dom.window.location.href).toContain(`memberId=${secondReadyMemberFixture.memberId}`);
   });
 });
