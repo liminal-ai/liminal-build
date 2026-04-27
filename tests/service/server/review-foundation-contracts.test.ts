@@ -333,9 +333,6 @@ describe('Epic 05 Story 0 review foundation contracts', () => {
       displayName: 'Cross-process Technical Design',
       currentVersionLabel: 'v7',
       updatedAt: '2026-04-25T18:45:00.000Z',
-      attachmentScope: 'process',
-      processId: 'process-legacy-001',
-      processDisplayLabel: 'Legacy Process Label',
     });
 
     expect(summary).toEqual({

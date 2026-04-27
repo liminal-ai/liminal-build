@@ -152,11 +152,7 @@ export const artifactSummarySchema = z.object({
   currentVersionLabel: z.string().min(1).nullable(),
   updatedAt: z.string().min(1),
 });
-export type ArtifactSummary = z.infer<typeof artifactSummarySchema> & {
-  attachmentScope?: AttachmentScope;
-  processId?: string | null;
-  processDisplayLabel?: string | null;
-};
+export type ArtifactSummary = z.infer<typeof artifactSummarySchema>;
 
 export const sourceAttachmentSummarySchema = z.object({
   sourceAttachmentId: z.string().min(1),

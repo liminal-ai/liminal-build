@@ -427,14 +427,6 @@ class RecordingPlatformStore implements PlatformStore {
     return [];
   }
 
-  async listProcessReviewTargets() {
-    return [];
-  }
-
-  async getProcessReviewPackage() {
-    return null;
-  }
-
   private updateProjectSummary(
     projectId: string,
     update: (project: ProjectSummary) => ProjectSummary,
@@ -732,9 +724,6 @@ describe('processes api', () => {
         artifactId: 'artifact-1',
         displayName: 'Artifact',
         currentVersionLabel: 'v1',
-        attachmentScope: 'project',
-        processId: null,
-        processDisplayLabel: null,
         updatedAt: '2026-04-13T12:00:00.000Z',
       },
     ]);

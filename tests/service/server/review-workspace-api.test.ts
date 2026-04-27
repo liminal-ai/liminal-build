@@ -10,6 +10,7 @@ import {
   processSummarySchema,
   projectSummarySchema,
 } from '../../../apps/platform/shared/contracts/index.js';
+import { buildPackageSnapshotSeed } from '../../utils/package-snapshot-seed.js';
 import { readyArtifactReviewTargetFixture } from '../../fixtures/artifact-versions.js';
 import { exportablePackageFixture } from '../../fixtures/package-snapshots.js';
 import { buildApp } from '../../utils/build-app.js';
@@ -58,6 +59,10 @@ const processSummary = processSummarySchema.parse({
 });
 
 function buildStore(args: { includeArtifact?: boolean; includePackage?: boolean } = {}) {
+  const packageSnapshotSeed = buildPackageSnapshotSeed(processSummary.processId, [
+    exportablePackageFixture,
+  ]);
+
   const platformStore = new InMemoryPlatformStore({
     accessibleProjectsByUserId: {
       'user:workos-user-1': [projectSummary],
@@ -79,9 +84,6 @@ function buildStore(args: { includeArtifact?: boolean; includePackage?: boolean 
               displayName: readyArtifactReviewTargetFixture.displayName,
               currentVersionLabel:
                 readyArtifactReviewTargetFixture.currentVersionLabel ?? 'review-1',
-              attachmentScope: 'process',
-              processId: processSummary.processId,
-              processDisplayLabel: processSummary.displayLabel,
               updatedAt: '2026-04-23T12:00:00.000Z',
             },
           ]
@@ -119,9 +121,12 @@ function buildStore(args: { includeArtifact?: boolean; includePackage?: boolean 
         sourceAttachmentIds: [],
       },
     },
-    reviewPackagesByProcessId: {
-      [processSummary.processId]: args.includePackage ? [exportablePackageFixture] : [],
-    },
+    packageSnapshotsByProcessId: args.includePackage
+      ? packageSnapshotSeed.packageSnapshotsByProcessId
+      : {},
+    packageSnapshotMembersBySnapshotId: args.includePackage
+      ? packageSnapshotSeed.packageSnapshotMembersBySnapshotId
+      : {},
   });
 
   return platformStore;

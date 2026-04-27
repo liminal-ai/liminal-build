@@ -125,9 +125,6 @@ function buildPopulatedStore() {
     displayName: readyProcessMaterialsFixture.currentArtifacts[0]?.displayName ?? 'Artifact',
     currentVersionLabel:
       readyProcessMaterialsFixture.currentArtifacts[0]?.currentVersionLabel ?? null,
-    attachmentScope: 'process' as const,
-    processId: waitingProcessSummary.processId,
-    processDisplayLabel: waitingProcessSummary.displayLabel,
     updatedAt:
       readyProcessMaterialsFixture.currentArtifacts[0]?.updatedAt ??
       waitingProcessSummary.updatedAt,
@@ -166,6 +163,20 @@ function buildPopulatedStore() {
     },
     artifactsByProjectId: {
       [projectSummary.projectId]: [processArtifact],
+    },
+    artifactVersionsByArtifactId: {
+      [processArtifact.artifactId]: [
+        {
+          versionId: 'artifact-version-process-surface-001',
+          artifactId: processArtifact.artifactId,
+          versionLabel: processArtifact.currentVersionLabel ?? 'draft-3',
+          contentStorageId: 'storage-artifact-process-surface-001',
+          contentKind: 'markdown',
+          bytes: 32,
+          createdAt: processArtifact.updatedAt,
+          createdByProcessId: waitingProcessSummary.processId,
+        },
+      ],
     },
     sourceAttachmentsByProjectId: {
       [projectSummary.projectId]: [processSource],
@@ -501,9 +512,6 @@ describe('process work surface api', () => {
       artifactId: 'artifact-stale-process-001',
       displayName: 'Old Discovery Notes',
       currentVersionLabel: 'v1',
-      attachmentScope: 'process' as const,
-      processId: waitingProcessSummary.processId,
-      processDisplayLabel: waitingProcessSummary.displayLabel,
       updatedAt: '2026-04-13T12:09:00.000Z',
     };
     const sharedCurrentArtifact = {
@@ -943,9 +951,6 @@ describe('process work surface api', () => {
             artifactId: reviewArtifactId,
             displayName: 'Running review artifact',
             currentVersionLabel: 'review-1',
-            attachmentScope: 'process',
-            processId: runningProcessSummary.processId,
-            processDisplayLabel: runningProcessSummary.displayLabel,
             updatedAt: '2026-04-13T12:14:00.000Z',
           },
         ],
@@ -1134,9 +1139,6 @@ describe('process work surface api', () => {
             artifactId: reviewArtifactId,
             displayName: 'Completed review artifact',
             currentVersionLabel: 'review-2',
-            attachmentScope: 'process',
-            processId: completedProcessSummary.processId,
-            processDisplayLabel: completedProcessSummary.displayLabel,
             updatedAt: '2026-04-13T12:15:00.000Z',
           },
         ],

@@ -97,6 +97,32 @@ function buildPopulatedStore() {
         processScopedArtifactFixture,
       ],
     },
+    artifactVersionsByArtifactId: {
+      [currentVersionArtifactFixture.artifactId]: [
+        {
+          versionId: 'artifact-version-current-001',
+          artifactId: currentVersionArtifactFixture.artifactId,
+          versionLabel: 'v3',
+          contentStorageId: 'storage-artifact-current-001',
+          contentKind: 'markdown',
+          bytes: 32,
+          createdAt: currentVersionArtifactFixture.updatedAt,
+          createdByProcessId: draftProcessFixture.processId,
+        },
+      ],
+      [processScopedArtifactFixture.artifactId]: [
+        {
+          versionId: 'artifact-version-process-001',
+          artifactId: processScopedArtifactFixture.artifactId,
+          versionLabel: 'draft-1',
+          contentStorageId: 'storage-artifact-process-001',
+          contentKind: 'markdown',
+          bytes: 24,
+          createdAt: processScopedArtifactFixture.updatedAt,
+          createdByProcessId: waitingProcessFixture.processId,
+        },
+      ],
+    },
     sourceAttachmentsByProjectId: {
       [populatedProjectSummary.projectId]: [
         hydratedSourceFixture,
@@ -231,11 +257,22 @@ describe('project shell bootstrap api', () => {
           {
             artifactId: 'artifact-legacy-ownership-001',
             displayName: 'Legacy Ownership Artifact',
-            currentVersionLabel: 'v4',
-            attachmentScope: 'process',
-            processId: 'process-legacy-001',
-            processDisplayLabel: 'Legacy Process #1',
+            currentVersionLabel: null,
             updatedAt: '2026-04-13T15:00:00.000Z',
+          },
+        ],
+      },
+      artifactVersionsByArtifactId: {
+        'artifact-legacy-ownership-001': [
+          {
+            versionId: 'artifact-version-legacy-ownership-001',
+            artifactId: 'artifact-legacy-ownership-001',
+            versionLabel: 'v4',
+            contentStorageId: 'storage-artifact-legacy-ownership-001',
+            contentKind: 'markdown',
+            bytes: 28,
+            createdAt: '2026-04-13T15:00:00.000Z',
+            createdByProcessId: runningProcessFixture.processId,
           },
         ],
       },

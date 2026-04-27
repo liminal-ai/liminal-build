@@ -3,22 +3,17 @@ import { makeFunctionReference } from 'convex/server';
 import {
   type ArtifactSummary,
   artifactSummarySchema,
-  artifactReviewTargetSchema,
   type CurrentProcessRequest,
   defaultEnvironmentSummary,
   deriveEnvironmentStatusLabel,
   type EnvironmentSummary,
   environmentSummarySchema,
-  type PackageReviewTarget,
   type ProcessHistoryItem,
   type ProcessOutputReference,
   type ProcessSummary,
   type ProjectShellResponse,
   type ProjectSummary,
-  packageReviewTargetSchema,
   processSummarySchema,
-  type ReviewTargetSummary,
-  reviewTargetErrorSchema,
   type SideWorkItem,
   type SourceAttachmentSummary,
 } from '../../../shared/contracts/index.js';
@@ -307,15 +302,6 @@ export interface PlatformStore {
     members: ProcessPackageContextMemberRecord[];
   }>;
   clearCurrentProcessPackageContext?(args: { processId: string }): Promise<void>;
-  listProcessReviewTargets(args: {
-    projectId: string;
-    processId: string;
-  }): Promise<ReviewTargetSummary[]>;
-  getProcessReviewPackage(args: {
-    processId: string;
-    packageId: string;
-    memberId?: string;
-  }): Promise<PackageReviewTarget | null>;
 }
 
 function buildDefaultEnvironmentSummary(): EnvironmentSummary {
@@ -326,31 +312,6 @@ function buildDefaultEnvironmentSummary(): EnvironmentSummary {
 
 function cloneEnvironmentSummary(summary: EnvironmentSummary): EnvironmentSummary {
   return environmentSummarySchema.parse(summary);
-}
-
-function buildArtifactReviewTargetSummary(
-  artifact: Pick<ArtifactSummary, 'artifactId' | 'displayName'>,
-  position: number,
-): ReviewTargetSummary {
-  return {
-    position,
-    targetKind: 'artifact',
-    targetId: artifact.artifactId,
-    displayName: artifact.displayName,
-  };
-}
-
-function buildPackageReviewTargetSummary(args: {
-  packageId: string;
-  displayName: string;
-  position: number;
-}): ReviewTargetSummary {
-  return {
-    position: args.position,
-    targetKind: 'package',
-    targetId: args.packageId,
-    displayName: args.displayName,
-  };
 }
 
 const EMPTY_PACKAGE_SNAPSHOT_MEMBERS_ERROR = 'Package snapshot must include at least one member.';
@@ -1297,14 +1258,6 @@ export class NullPlatformStore implements PlatformStore {
   }
 
   async clearCurrentProcessPackageContext(): Promise<void> {}
-
-  async listProcessReviewTargets(): Promise<ReviewTargetSummary[]> {
-    return [];
-  }
-
-  async getProcessReviewPackage(): Promise<PackageReviewTarget | null> {
-    return null;
-  }
 }
 
 export class ConvexPlatformStore implements PlatformStore {
@@ -1716,266 +1669,6 @@ export class ConvexPlatformStore implements PlatformStore {
       skipQueue: true,
     });
   }
-
-  async listProcessReviewTargets(args: {
-    projectId: string;
-    processId: string;
-  }): Promise<ReviewTargetSummary[]> {
-    const [currentMaterialRefs, currentPackageContext, packageSnapshots] = await Promise.all([
-      this.getCurrentProcessMaterialRefs({
-        processId: args.processId,
-      }),
-      this.getCurrentProcessPackageContext({
-        processId: args.processId,
-      }),
-      this.listPackageSnapshotsForProcess({
-        processId: args.processId,
-      }),
-    ]);
-    const packageContextMembers =
-      currentPackageContext === null
-        ? []
-        : await this.listProcessPackageContextMembers({
-            packageContextId: currentPackageContext.packageContextId,
-          });
-    const reviewableArtifactIds = [
-      ...new Set([
-        ...currentMaterialRefs.artifactIds,
-        ...packageContextMembers.map((member) => member.artifactId),
-      ]),
-    ];
-    const artifactCandidates =
-      reviewableArtifactIds.length === 0
-        ? []
-        : await this.listProjectArtifactsByIds({
-            projectId: args.projectId,
-            artifactIds: reviewableArtifactIds,
-          });
-    const artifactTargets = (
-      await Promise.all(
-        artifactCandidates.map(async (artifact) => {
-          const latestVersion = await this.getLatestArtifactVersion({
-            artifactId: artifact.artifactId,
-          });
-
-          if (latestVersion === null) {
-            return null;
-          }
-
-          return {
-            publishedAt: latestVersion.createdAt,
-            targetKind: 'artifact' as const,
-            targetId: artifact.artifactId,
-            displayName: artifact.displayName,
-          };
-        }),
-      )
-    ).filter((target): target is NonNullable<typeof target> => target !== null);
-    const packageMembers = await Promise.all(
-      packageSnapshots.map((snapshot) =>
-        this.client.query(listPackageSnapshotMembersQuery, {
-          packageSnapshotId: snapshot.packageSnapshotId,
-        }),
-      ),
-    );
-    const packageTargets = packageSnapshots
-      .filter((_, index) => (packageMembers[index]?.length ?? 0) > 0)
-      .map((snapshot) => ({
-        publishedAt: snapshot.publishedAt,
-        targetKind: 'package' as const,
-        targetId: snapshot.packageSnapshotId,
-        displayName: snapshot.displayName,
-      }));
-    const orderedTargets = [...artifactTargets, ...packageTargets].sort((left, right) => {
-      const publishedAtComparison = right.publishedAt.localeCompare(left.publishedAt);
-
-      if (publishedAtComparison !== 0) {
-        return publishedAtComparison;
-      }
-
-      if (left.targetKind === right.targetKind) {
-        return left.displayName.localeCompare(right.displayName);
-      }
-
-      return left.targetKind === 'artifact' ? -1 : 1;
-    });
-
-    return orderedTargets.map((target, index) =>
-      target.targetKind === 'artifact'
-        ? buildArtifactReviewTargetSummary(
-            {
-              artifactId: target.targetId,
-              displayName: target.displayName,
-            },
-            index,
-          )
-        : buildPackageReviewTargetSummary({
-            packageId: target.targetId,
-            displayName: target.displayName,
-            position: index,
-          }),
-    );
-  }
-
-  async getProcessReviewPackage(args: {
-    processId: string;
-    packageId: string;
-    memberId?: string;
-  }): Promise<PackageReviewTarget | null> {
-    const snapshot = await this.client.query(getPackageSnapshotQuery, {
-      packageSnapshotId: args.packageId,
-    });
-
-    if (snapshot === null || snapshot.processId !== args.processId) {
-      return null;
-    }
-
-    const members = await this.client.query(listPackageSnapshotMembersQuery, {
-      packageSnapshotId: snapshot.packageSnapshotId,
-    });
-
-    if (members.length === 0) {
-      return null;
-    }
-
-    const memberStates = await Promise.all(
-      members.map(async (member) => {
-        const pinnedVersion = await this.client.query(getArtifactVersionQuery, {
-          versionId: member.artifactVersionId,
-        });
-        const displayName = member.displayName;
-        const versionLabel = member.versionLabel;
-        const producingProcess =
-          pinnedVersion === null
-            ? null
-            : await this.client.query(getProcessRecordQuery, {
-                processId: pinnedVersion.createdByProcessId,
-              });
-
-        if (pinnedVersion === null) {
-          return {
-            member: {
-              memberId: member.memberId,
-              position: member.position,
-              artifactId: member.artifactId,
-              displayName,
-              artifactVersionId: member.artifactVersionId,
-              versionLabel,
-              status: 'unavailable' as const,
-            },
-            review: {
-              memberId: member.memberId,
-              status: 'unavailable' as const,
-              error: reviewTargetErrorSchema.parse({
-                code: 'PACKAGE_MEMBER_UNAVAILABLE',
-                message: 'The pinned package member is currently unavailable.',
-              }),
-            },
-          };
-        }
-
-        if (pinnedVersion.contentKind === 'unsupported') {
-          return {
-            member: {
-              memberId: member.memberId,
-              position: member.position,
-              artifactId: member.artifactId,
-              displayName,
-              artifactVersionId: pinnedVersion.versionId,
-              versionLabel,
-              status: 'unsupported' as const,
-            },
-            review: {
-              memberId: member.memberId,
-              status: 'unsupported' as const,
-              error: reviewTargetErrorSchema.parse({
-                code: 'REVIEW_TARGET_UNSUPPORTED',
-                message: 'This artifact format is not reviewable in the current release.',
-              }),
-            },
-          };
-        }
-
-        return {
-          member: {
-            memberId: member.memberId,
-            position: member.position,
-            artifactId: member.artifactId,
-            displayName,
-            artifactVersionId: pinnedVersion.versionId,
-            versionLabel,
-            status: 'ready' as const,
-          },
-          review: {
-            memberId: member.memberId,
-            status: 'ready' as const,
-            artifact: artifactReviewTargetSchema.parse({
-              artifactId: member.artifactId,
-              displayName,
-              currentVersionId: pinnedVersion.versionId,
-              currentVersionLabel: versionLabel,
-              selectedVersionId: pinnedVersion.versionId,
-              versions: [
-                {
-                  versionId: pinnedVersion.versionId,
-                  versionLabel,
-                  isCurrent: true,
-                  createdAt: pinnedVersion.createdAt,
-                  producedByProcessId: pinnedVersion.createdByProcessId,
-                  producedByProcessDisplayLabel: producingProcess?.displayLabel ?? null,
-                },
-              ],
-            }),
-          },
-        };
-      }),
-    );
-    const requestedMember =
-      args.memberId === undefined
-        ? null
-        : (memberStates.find((entry) => entry.member.memberId === args.memberId) ?? null);
-    const missingRequestedMember =
-      args.memberId === undefined || requestedMember !== null
-        ? null
-        : {
-            review: {
-              memberId: args.memberId,
-              status: 'unavailable' as const,
-              error: reviewTargetErrorSchema.parse({
-                code: 'PACKAGE_MEMBER_UNAVAILABLE',
-                message: 'The requested package member is currently unavailable.',
-              }),
-            },
-          };
-    const readyMember =
-      missingRequestedMember ??
-      requestedMember ??
-      memberStates.find((entry) => entry.member.status === 'ready') ??
-      memberStates[0] ??
-      null;
-    const exportability = memberStates.every((entry) => entry.member.status === 'ready')
-      ? { available: true as const }
-      : {
-          available: false as const,
-          reason: 'One or more members are unavailable or unsupported.',
-        };
-
-    if (readyMember === null) {
-      return null;
-    }
-
-    return packageReviewTargetSchema.parse({
-      packageId: snapshot.packageSnapshotId,
-      displayName: snapshot.displayName,
-      packageType: snapshot.packageType,
-      members: memberStates
-        .map((entry) => entry.member)
-        .sort((left, right) => left.position - right.position),
-      selectedMemberId: readyMember.review.memberId,
-      selectedMember: readyMember.review,
-      exportability,
-    });
-  }
 }
 
 export class InMemoryPlatformStore implements PlatformStore {
@@ -2041,7 +1734,8 @@ export class InMemoryPlatformStore implements PlatformStore {
       processOutputsByProcessId?: Record<string, PlatformProcessOutputSeed[]>;
       processPackageContextsByProcessId?: Record<string, ProcessPackageContextRecord>;
       processPackageContextMembersByContextId?: Record<string, ProcessPackageContextMemberRecord[]>;
-      reviewPackagesByProcessId?: Record<string, PackageReviewTarget[]>;
+      packageSnapshotsByProcessId?: Record<string, PackageSnapshotRecord[]>;
+      packageSnapshotMembersBySnapshotId?: Record<string, PackageSnapshotMemberRecord[]>;
       processSideWorkItemsByProcessId?: Record<string, SideWorkItem[]>;
       startProcessResultsByProcessId?: Record<string, ProcessActionStoreResult>;
       resumeProcessResultsByProcessId?: Record<string, ProcessActionStoreResult>;
@@ -2138,33 +1832,14 @@ export class InMemoryPlatformStore implements PlatformStore {
       this.packageContextMembersByContextId.set(packageContextId, members);
     }
 
-    for (const [processId, packages] of Object.entries(args.reviewPackagesByProcessId ?? {})) {
-      const snapshots = packages.map((pkg) => ({
-        packageSnapshotId: pkg.packageId,
-        processId,
-        displayName: pkg.displayName,
-        packageType: pkg.packageType,
-        publishedAt:
-          pkg.selectedMember?.artifact?.selectedVersion?.createdAt ??
-          pkg.selectedMember?.artifact?.versions[0]?.createdAt ??
-          new Date('2026-01-01T00:00:00.000Z').toISOString(),
-      }));
-      this.packageSnapshotsByProcessId.set(processId, snapshots);
+    for (const [processId, snapshots] of Object.entries(args.packageSnapshotsByProcessId ?? {})) {
+      this.packageSnapshotsByProcessId.set(processId, [...snapshots]);
+    }
 
-      for (const pkg of packages) {
-        this.packageSnapshotMembersBySnapshotId.set(
-          pkg.packageId,
-          pkg.members.map((member) => ({
-            memberId: member.memberId,
-            packageSnapshotId: pkg.packageId,
-            position: member.position,
-            artifactId: member.artifactId,
-            artifactVersionId: member.artifactVersionId,
-            displayName: member.displayName,
-            versionLabel: member.versionLabel,
-          })),
-        );
-      }
+    for (const [packageSnapshotId, members] of Object.entries(
+      args.packageSnapshotMembersBySnapshotId ?? {},
+    )) {
+      this.packageSnapshotMembersBySnapshotId.set(packageSnapshotId, [...members]);
     }
 
     for (const [processId, items] of Object.entries(args.processSideWorkItemsByProcessId ?? {})) {
@@ -2965,47 +2640,24 @@ export class InMemoryPlatformStore implements PlatformStore {
     return [...(this.packageContextMembersByContextId.get(args.packageContextId) ?? [])];
   }
 
+  private async listCurrentProcessPackageContextMembers(
+    processId: string,
+  ): Promise<ProcessPackageContextMemberRecord[]> {
+    const currentPackageContext = await this.getCurrentProcessPackageContext({
+      processId,
+    });
+
+    if (currentPackageContext === null) {
+      return [];
+    }
+
+    return this.listProcessPackageContextMembers({
+      packageContextId: currentPackageContext.packageContextId,
+    });
+  }
+
   private readArtifactVersions(artifactId: string): ArtifactVersionRecord[] {
-    const explicitVersions = this.artifactVersionsByArtifactId.get(artifactId);
-
-    if (explicitVersions !== undefined) {
-      return explicitVersions;
-    }
-
-    for (const artifacts of this.artifactsByProjectId.values()) {
-      const artifact = artifacts.find((candidate) => candidate.artifactId === artifactId);
-
-      if (artifact === undefined || artifact.currentVersionLabel === null) {
-        continue;
-      }
-
-      const syntheticVersion = {
-        versionId: `${artifact.artifactId}:${artifact.currentVersionLabel}:${artifact.updatedAt}`,
-        artifactId: artifact.artifactId,
-        versionLabel: artifact.currentVersionLabel,
-        contentStorageId: `${artifact.artifactId}:content`,
-        contentKind: (this.artifactContentsByArtifactId.has(artifact.artifactId)
-          ? 'markdown'
-          : 'unsupported') as 'markdown' | 'unsupported',
-        bytes: 0,
-        createdAt: artifact.updatedAt,
-        createdByProcessId: artifact.processId ?? 'unknown-process',
-      };
-
-      if (
-        this.artifactContentsByArtifactId.has(artifact.artifactId) &&
-        !this.artifactContentsByVersionId.has(syntheticVersion.versionId)
-      ) {
-        const content = this.artifactContentsByArtifactId.get(artifact.artifactId);
-        if (content !== undefined) {
-          this.artifactContentsByVersionId.set(syntheticVersion.versionId, content);
-        }
-      }
-
-      return [syntheticVersion];
-    }
-
-    return [];
+    return [...(this.artifactVersionsByArtifactId.get(artifactId) ?? [])];
   }
 
   private listArtifactsForProject(projectId: string): ArtifactSummary[] {
@@ -3020,7 +2672,7 @@ export class InMemoryPlatformStore implements PlatformStore {
     return artifactSummarySchema.parse({
       artifactId: artifact.artifactId,
       displayName: artifact.displayName,
-      currentVersionLabel: latestVersion?.versionLabel ?? artifact.currentVersionLabel ?? null,
+      currentVersionLabel: latestVersion?.versionLabel ?? null,
       updatedAt: latestVersion?.createdAt ?? artifact.updatedAt,
     });
   }
@@ -3155,8 +2807,9 @@ export class InMemoryPlatformStore implements PlatformStore {
     const projectArtifacts = this.listArtifactsForProject(processRecord.projectId);
     const currentArtifactIds =
       this.currentMaterialRefsByProcessId.get(args.processId)?.artifactIds ?? [];
-    const currentPackageContextMembers =
-      await this.listProcessPackageContextMembersForReviewTargets(args.processId);
+    const currentPackageContextMembers = await this.listCurrentProcessPackageContextMembers(
+      args.processId,
+    );
     const artifactDisplayNames = new Map(
       projectArtifacts.map((artifact) => [artifact.artifactId, artifact.displayName] as const),
     );
@@ -3254,265 +2907,6 @@ export class InMemoryPlatformStore implements PlatformStore {
     this.packageSnapshotMembersBySnapshotId.set(packageSnapshotId, memberRecords);
 
     return packageSnapshotId;
-  }
-
-  async listProcessReviewTargets(args: {
-    projectId: string;
-    processId: string;
-  }): Promise<ReviewTargetSummary[]> {
-    const currentArtifactIds =
-      this.currentMaterialRefsByProcessId.get(args.processId)?.artifactIds ?? [];
-    const packageContextMembers = await this.listProcessPackageContextMembersForReviewTargets(
-      args.processId,
-    );
-    const reviewableArtifactIds = new Set([
-      ...currentArtifactIds,
-      ...packageContextMembers.map((member) => member.artifactId),
-    ]);
-    const targets = (
-      await Promise.all(
-        (this.artifactsByProjectId.get(args.projectId) ?? [])
-          .filter((artifact) => reviewableArtifactIds.has(artifact.artifactId))
-          .map(async (artifact) => {
-            const latestVersion = await this.getLatestArtifactVersion({
-              artifactId: artifact.artifactId,
-            });
-
-            if (latestVersion === null) {
-              return null;
-            }
-
-            return {
-              publishedAt: latestVersion.createdAt,
-              targetKind: 'artifact' as const,
-              targetId: artifact.artifactId,
-              displayName: artifact.displayName,
-            };
-          }),
-      )
-    ).filter((target): target is NonNullable<typeof target> => target !== null);
-    const packages = this.packageSnapshotsByProcessId.get(args.processId) ?? [];
-    const orderedTargets = [
-      ...targets,
-      ...packages
-        .filter(
-          (snapshot) =>
-            (this.packageSnapshotMembersBySnapshotId.get(snapshot.packageSnapshotId)?.length ?? 0) >
-            0,
-        )
-        .map((target) => ({
-          publishedAt: target.publishedAt,
-          targetKind: 'package' as const,
-          targetId: target.packageSnapshotId,
-          displayName: target.displayName,
-        })),
-    ].sort((left, right) => {
-      const publishedAtComparison = right.publishedAt.localeCompare(left.publishedAt);
-
-      if (publishedAtComparison !== 0) {
-        return publishedAtComparison;
-      }
-
-      if (left.targetKind === right.targetKind) {
-        return left.displayName.localeCompare(right.displayName);
-      }
-
-      return left.targetKind === 'artifact' ? -1 : 1;
-    });
-
-    return orderedTargets.map((target, index) =>
-      target.targetKind === 'artifact'
-        ? buildArtifactReviewTargetSummary(
-            {
-              artifactId: target.targetId,
-              displayName: target.displayName,
-            },
-            index,
-          )
-        : buildPackageReviewTargetSummary({
-            packageId: target.targetId,
-            displayName: target.displayName,
-            position: index,
-          }),
-    );
-  }
-
-  private async listProcessPackageContextMembersForReviewTargets(
-    processId: string,
-  ): Promise<ProcessPackageContextMemberRecord[]> {
-    const currentPackageContext = await this.getCurrentProcessPackageContext({
-      processId,
-    });
-
-    if (currentPackageContext === null) {
-      return [];
-    }
-
-    return this.listProcessPackageContextMembers({
-      packageContextId: currentPackageContext.packageContextId,
-    });
-  }
-
-  async getProcessReviewPackage(args: {
-    processId: string;
-    packageId: string;
-    memberId?: string;
-  }): Promise<PackageReviewTarget | null> {
-    const snapshot = this.packageSnapshotsByProcessId
-      .get(args.processId)
-      ?.find((candidate) => candidate.packageSnapshotId === args.packageId);
-
-    if (snapshot === undefined) {
-      return null;
-    }
-
-    const memberRecords =
-      this.packageSnapshotMembersBySnapshotId.get(snapshot.packageSnapshotId) ?? [];
-
-    return this.buildInMemoryPackageReviewTarget({
-      snapshot,
-      members: memberRecords,
-      requestedMemberId: args.memberId,
-    });
-  }
-
-  private buildInMemoryPackageReviewTarget(args: {
-    snapshot: PackageSnapshotRecord;
-    members: PackageSnapshotMemberRecord[];
-    requestedMemberId?: string;
-  }): PackageReviewTarget | null {
-    const memberStates = args.members.map((member) => {
-      const pinnedVersion =
-        this.readArtifactVersions(member.artifactId).find(
-          (candidate) => candidate.versionId === member.artifactVersionId,
-        ) ?? null;
-      const displayName = member.displayName;
-      const versionLabel = member.versionLabel;
-      const producingProcess = pinnedVersion
-        ? this.findProcessRecord(pinnedVersion.createdByProcessId)
-        : null;
-
-      if (pinnedVersion === null) {
-        return {
-          member: {
-            memberId: member.memberId,
-            position: member.position,
-            artifactId: member.artifactId,
-            displayName,
-            artifactVersionId: member.artifactVersionId,
-            versionLabel,
-            status: 'unavailable' as const,
-          },
-          review: {
-            memberId: member.memberId,
-            status: 'unavailable' as const,
-            error: reviewTargetErrorSchema.parse({
-              code: 'PACKAGE_MEMBER_UNAVAILABLE',
-              message: 'The pinned package member is currently unavailable.',
-            }),
-          },
-        };
-      }
-
-      if (pinnedVersion.contentKind === 'unsupported') {
-        return {
-          member: {
-            memberId: member.memberId,
-            position: member.position,
-            artifactId: member.artifactId,
-            displayName,
-            artifactVersionId: pinnedVersion.versionId,
-            versionLabel,
-            status: 'unsupported' as const,
-          },
-          review: {
-            memberId: member.memberId,
-            status: 'unsupported' as const,
-            error: reviewTargetErrorSchema.parse({
-              code: 'REVIEW_TARGET_UNSUPPORTED',
-              message: 'This artifact format is not reviewable in the current release.',
-            }),
-          },
-        };
-      }
-
-      return {
-        member: {
-          memberId: member.memberId,
-          position: member.position,
-          artifactId: member.artifactId,
-          displayName,
-          artifactVersionId: pinnedVersion.versionId,
-          versionLabel,
-          status: 'ready' as const,
-        },
-        review: {
-          memberId: member.memberId,
-          status: 'ready' as const,
-          artifact: artifactReviewTargetSchema.parse({
-            artifactId: member.artifactId,
-            displayName,
-            currentVersionId: pinnedVersion.versionId,
-            currentVersionLabel: versionLabel,
-            selectedVersionId: pinnedVersion.versionId,
-            versions: [
-              {
-                versionId: pinnedVersion.versionId,
-                versionLabel,
-                isCurrent: true,
-                createdAt: pinnedVersion.createdAt,
-                producedByProcessId: pinnedVersion.createdByProcessId,
-                producedByProcessDisplayLabel: producingProcess?.displayLabel ?? null,
-              },
-            ],
-          }),
-        },
-      };
-    });
-    const requestedEntry =
-      args.requestedMemberId === undefined
-        ? null
-        : (memberStates.find((entry) => entry.member.memberId === args.requestedMemberId) ?? null);
-    const missingRequestedEntry =
-      args.requestedMemberId === undefined || requestedEntry !== null
-        ? null
-        : {
-            review: {
-              memberId: args.requestedMemberId,
-              status: 'unavailable' as const,
-              error: reviewTargetErrorSchema.parse({
-                code: 'PACKAGE_MEMBER_UNAVAILABLE',
-                message: 'The requested package member is currently unavailable.',
-              }),
-            },
-          };
-    const selectedEntry =
-      missingRequestedEntry ??
-      requestedEntry ??
-      memberStates.find((entry) => entry.member.status === 'ready') ??
-      memberStates[0] ??
-      null;
-
-    if (selectedEntry === null) {
-      return null;
-    }
-
-    return packageReviewTargetSchema.parse({
-      packageId: args.snapshot.packageSnapshotId,
-      displayName: args.snapshot.displayName,
-      packageType: args.snapshot.packageType,
-      members: memberStates
-        .map((entry) => entry.member)
-        .sort((left, right) => left.position - right.position),
-      selectedMemberId: selectedEntry.review.memberId,
-      selectedMember: selectedEntry.review,
-      exportability: memberStates.every((entry) => entry.member.status === 'ready')
-        ? { available: true as const }
-        : {
-            available: false as const,
-            reason: 'One or more members are unavailable or unsupported.',
-          },
-    });
   }
 
   /**

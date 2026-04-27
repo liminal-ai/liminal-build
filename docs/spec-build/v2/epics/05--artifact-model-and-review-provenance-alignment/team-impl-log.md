@@ -1,7 +1,7 @@
 # Team Implementation Log
 
 ## Run Overview
-- State: PRE_EPIC_VERIFY
+- State: COMPLETE
 - Spec Pack Root: /Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment
 - Tech Design Shape: four-file (tech-design.md + tech-design-server.md + tech-design-client.md + test-plan.md)
 - Current Story: all-complete
@@ -187,9 +187,13 @@
 - Planned: +121 new tests; Actual net: +22 (restructuring of existing tests during vocabulary alignment accounts for the gap)
 
 ## Cleanup / Epic Verification
-- Cleanup Artifact: pending
-- Cleanup Status: not-started
-- Epic Verification Status: not-started
+- Cleanup Artifact: artifacts/cleanup/cleanup-batch.md
+- Cleanup Status: complete — SD-1 fixed (R1), SD-2 fixed (R2 after verifier rejection), SD-3 fixed (R1)
+- Cleanup Implementor Sessions: 019dcc4d-68f8-7433-b70e-22c24516bd55 (R1), resumed for R2
+- Cleanup Verifier Sessions: R1 found SD-2 remaining gaps, R2 confirmed all resolved
+- Epic Gate Command: `corepack pnpm run verify-all`
+- Epic Gate Result: pass (convex:60 + server:249 + client:237 + packages:5 + integration:22 = 573)
+- Epic Verification Status: complete
 
 ## Open Risks / Accepted Risks
 - ~~S0-F3: convex/processPackageContexts.test.ts absent — deferred to Story 4 per test plan Chunk 4 assignment~~ RESOLVED in Story 4 (convex:55→60)

@@ -19,6 +19,7 @@ import {
 import type { PackageError } from '../../../packages/markdown-package/src/errors.js';
 import { createPackageStream } from '../../../packages/markdown-package/src/tar/package-io.js';
 import { buildApp } from '../../utils/build-app.js';
+import { buildPackageSnapshotSeed } from '../../utils/package-snapshot-seed.js';
 
 const TWO_SECONDS_MS = 2_000;
 const MAX_ENTRY_BYTES = 64 * 1024 * 1024;
@@ -132,6 +133,7 @@ function buildTwentyMemberStore() {
     }),
     exportability: { available: true },
   });
+  const packageSnapshotSeed = buildPackageSnapshotSeed(processSummary.processId, [packageTarget]);
 
   return new InMemoryPlatformStore({
     accessibleProjectsByUserId: {
@@ -151,9 +153,6 @@ function buildTwentyMemberStore() {
         artifactId: member.artifactId,
         displayName: member.displayName,
         currentVersionLabel: member.versionLabel,
-        attachmentScope: 'process',
-        processId: processSummary.processId,
-        processDisplayLabel: processSummary.displayLabel,
         updatedAt: `2026-04-23T12:${String(index).padStart(2, '0')}:00.000Z`,
       })),
     },
@@ -186,9 +185,8 @@ function buildTwentyMemberStore() {
         sourceAttachmentIds: [],
       },
     },
-    reviewPackagesByProcessId: {
-      [processSummary.processId]: [packageTarget],
-    },
+    packageSnapshotsByProcessId: packageSnapshotSeed.packageSnapshotsByProcessId,
+    packageSnapshotMembersBySnapshotId: packageSnapshotSeed.packageSnapshotMembersBySnapshotId,
   });
 }
 
@@ -212,9 +210,6 @@ function buildVersionSwitchStore() {
           artifactId: 'artifact-version-switch-nfr',
           displayName: 'Version Switch Artifact',
           currentVersionLabel: 'v2',
-          attachmentScope: 'process',
-          processId: processSummary.processId,
-          processDisplayLabel: processSummary.displayLabel,
           updatedAt: '2026-04-23T12:02:00.000Z',
         },
       ],

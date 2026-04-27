@@ -16,6 +16,7 @@ import {
   projectSummarySchema,
 } from '../../../apps/platform/shared/contracts/index.js';
 import { buildApp } from '../../utils/build-app.js';
+import { buildPackageSnapshotSeed } from '../../utils/package-snapshot-seed.js';
 
 type LogRecord = Record<string, unknown>;
 
@@ -160,6 +161,7 @@ const packageTarget = packageReviewTargetSchema.parse({
   }),
   exportability: { available: true },
 });
+const packageSnapshotSeed = buildPackageSnapshotSeed(processSummary.processId, [packageTarget]);
 
 function buildStore(args: { includeContent?: boolean; forbidden?: boolean } = {}) {
   return new InMemoryPlatformStore({
@@ -180,9 +182,6 @@ function buildStore(args: { includeContent?: boolean; forbidden?: boolean } = {}
           artifactId: member.artifactId,
           displayName: member.displayName,
           currentVersionLabel: member.versionLabel,
-          attachmentScope: 'process',
-          processId: processSummary.processId,
-          processDisplayLabel: processSummary.displayLabel,
           updatedAt: '2026-04-23T12:00:00.000Z',
         },
       ],
@@ -213,9 +212,8 @@ function buildStore(args: { includeContent?: boolean; forbidden?: boolean } = {}
         sourceAttachmentIds: [],
       },
     },
-    reviewPackagesByProcessId: {
-      [processSummary.processId]: [packageTarget],
-    },
+    packageSnapshotsByProcessId: packageSnapshotSeed.packageSnapshotsByProcessId,
+    packageSnapshotMembersBySnapshotId: packageSnapshotSeed.packageSnapshotMembersBySnapshotId,
   });
 }
 

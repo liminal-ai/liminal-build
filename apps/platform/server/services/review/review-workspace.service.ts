@@ -14,6 +14,10 @@ import type { ProcessAccessService } from '../processes/process-access.service.j
 import type { PlatformStore } from '../projects/platform-store.js';
 import type { ArtifactReviewService } from './artifact-review.service.js';
 import type { PackageReviewService } from './package-review.service.js';
+import {
+  DefaultReviewContextService,
+  type ReviewContextService,
+} from './review-context.service.js';
 
 type SelectedTargetRequest = {
   explicit: boolean;
@@ -31,12 +35,18 @@ export interface ReviewWorkspaceService {
 }
 
 export class DefaultReviewWorkspaceService implements ReviewWorkspaceService {
+  private readonly reviewContextService: ReviewContextService;
+
   constructor(
-    private readonly platformStore: PlatformStore,
+    platformStore: PlatformStore,
     private readonly processAccessService: ProcessAccessService,
     private readonly artifactReviewService: ArtifactReviewService,
     private readonly packageReviewService: PackageReviewService,
-  ) {}
+    reviewContextService?: ReviewContextService,
+  ) {
+    this.reviewContextService =
+      reviewContextService ?? new DefaultReviewContextService(platformStore);
+  }
 
   async getWorkspace(args: {
     actor: AuthenticatedActor;
@@ -45,7 +55,7 @@ export class DefaultReviewWorkspaceService implements ReviewWorkspaceService {
     selection: ReviewWorkspaceSelection | null;
   }): Promise<ReviewWorkspaceResponse> {
     const access = await this.processAccessService.assertProcessAccess(args);
-    const availableTargets = await this.platformStore.listProcessReviewTargets({
+    const availableTargets = await this.reviewContextService.listAvailableTargets({
       projectId: args.projectId,
       processId: args.processId,
     });

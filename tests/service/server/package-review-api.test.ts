@@ -15,6 +15,7 @@ import {
   projectSummarySchema,
 } from '../../../apps/platform/shared/contracts/index.js';
 import { buildApp } from '../../utils/build-app.js';
+import { buildPackageSnapshotSeed } from '../../utils/package-snapshot-seed.js';
 
 function createTestAuthSessionService(resolution: SessionResolution) {
   class TestAuthSessionService extends AuthSessionService {
@@ -136,6 +137,8 @@ function buildBasePackageReviewTarget() {
 }
 
 function buildStore(reviewPackages = [buildBasePackageReviewTarget()]) {
+  const packageSnapshotSeed = buildPackageSnapshotSeed(processSummary.processId, reviewPackages);
+
   return new InMemoryPlatformStore({
     accessibleProjectsByUserId: {
       'user:workos-user-1': [projectSummary],
@@ -155,18 +158,12 @@ function buildStore(reviewPackages = [buildBasePackageReviewTarget()]) {
           artifactId: 'artifact-001',
           displayName: 'Feature Specification',
           currentVersionLabel: 'spec-v2',
-          attachmentScope: 'process',
-          processId: processSummary.processId,
-          processDisplayLabel: processSummary.displayLabel,
           updatedAt: '2026-04-23T12:05:00.000Z',
         },
         {
           artifactId: 'artifact-002',
           displayName: 'Implementation Notes',
           currentVersionLabel: 'notes-v1',
-          attachmentScope: 'process',
-          processId: upstreamProcessSummary.processId,
-          processDisplayLabel: upstreamProcessSummary.displayLabel,
           updatedAt: '2026-04-23T12:03:00.000Z',
         },
       ],
@@ -218,9 +215,8 @@ function buildStore(reviewPackages = [buildBasePackageReviewTarget()]) {
         sourceAttachmentIds: [],
       },
     },
-    reviewPackagesByProcessId: {
-      [processSummary.processId]: reviewPackages,
-    },
+    packageSnapshotsByProcessId: packageSnapshotSeed.packageSnapshotsByProcessId,
+    packageSnapshotMembersBySnapshotId: packageSnapshotSeed.packageSnapshotMembersBySnapshotId,
   });
 }
 
@@ -307,6 +303,9 @@ function buildTwentyMemberPackageStore() {
       available: true,
     },
   });
+  const packageSnapshotSeed = buildPackageSnapshotSeed(smokeProcessSummary.processId, [
+    packageTarget,
+  ]);
 
   return {
     packageId,
@@ -330,9 +329,6 @@ function buildTwentyMemberPackageStore() {
           artifactId: member.artifactId,
           displayName: member.displayName,
           currentVersionLabel: member.versionLabel,
-          attachmentScope: 'process',
-          processId: smokeProcessSummary.processId,
-          processDisplayLabel: smokeProcessSummary.displayLabel,
           updatedAt: `2026-04-23T12:${String(index).padStart(2, '0')}:00.000Z`,
         })),
       },
@@ -344,9 +340,8 @@ function buildTwentyMemberPackageStore() {
           sourceAttachmentIds: [],
         },
       },
-      reviewPackagesByProcessId: {
-        [smokeProcessSummary.processId]: [packageTarget],
-      },
+      packageSnapshotsByProcessId: packageSnapshotSeed.packageSnapshotsByProcessId,
+      packageSnapshotMembersBySnapshotId: packageSnapshotSeed.packageSnapshotMembersBySnapshotId,
     }),
   };
 }
@@ -663,7 +658,7 @@ describe('package review api', () => {
       },
       exportability: {
         available: false,
-        reason: 'One or more members are unavailable or unsupported.',
+        reason: 'One or more members are unavailable.',
       },
     });
 
