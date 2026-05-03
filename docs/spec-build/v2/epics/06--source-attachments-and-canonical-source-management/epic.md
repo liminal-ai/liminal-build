@@ -37,8 +37,7 @@ freshness state across the project and process surfaces, request rehydration
 when the attached source is `stale` or `not_hydrated`, detach sources without
 erasing the history of work that already used them, and review provenance
 showing which repository and ref informed or received code work. This epic is
-the first
-source-management implementation epic derived from PRD Feature 5, and it
+the first source-management implementation epic derived from PRD Feature 5, and it
 sequences after Epic 5's artifact-model alignment. It covers source attachment
 lifecycle and canonical-source management while explicitly inheriting the
 aligned artifact model where artifacts remain project-level assets and process
@@ -46,6 +45,36 @@ materials remain reference-based. Full archive, turn, chunk, and derived-view
 behavior are deferred to Epic 7. External-source and MCP-backed attachment
 flows are deferred to later source-integration work beyond the current Epic 5,
 Epic 6, and Epic 7 sequence.
+
+## Current Implemented Baseline
+
+The current repository already has a durable `sourceAttachments` table and
+summary read paths. A source attachment belongs to a project and may be scoped
+to one process through nullable `processId`. Current durable fields include
+`displayName`, `purpose`, `accessMode`, `repositoryUrl`, `targetRef`,
+`hydrationState`, and `updatedAt`.
+
+Current project-shell source summaries expose source attachments with purpose,
+target ref, scope, and hydration state. Current process materials expose
+`materials.currentSources` from the process's current source references. Epic 3
+environment hydration and checkpoint behavior already use already-attached
+sources, treat `repositoryUrl` as the operational clone/write address, and
+track environment-level hydration/checkpoint state.
+
+Epic 6 adds the missing management layer above that baseline: attach, update,
+refresh, and detach routes/actions; richer freshness details; durable
+process-specific source provenance; duplicate and conflict handling; soft
+detach semantics; and current-source management behavior across project and
+process scope. `lastHydratedAt` and `freshnessReason` are new Epic 6 source
+attachment summary/state fields, not fields present in the pre-Epic-6 source
+attachment summary contract.
+
+Epic 6 also clarifies repository identity. The current operational field is
+`repositoryUrl`: the URL used for clone and durable write paths. The canonical
+GitHub repository identity is `repositoryFullName` in `owner/name` form. Epic 6
+requires source-management contracts to store and return both: `repositoryUrl`
+for operations, and `repositoryFullName` for uniqueness, conflict detection,
+and provenance identity.
 
 ---
 
@@ -72,6 +101,10 @@ summary-only source state:
 - Return-later and reopen behavior for durable source attachment state
 - Degraded and unavailable source-management behavior when one source, one
   refresh path, or one provenance lookup fails independently
+
+This scope remains repository-focused. Archive, turn, chunk, and derived-view
+work remains Epic 7. MCP-backed and other external-source attachment flows
+remain later source-integration work.
 
 Epic 6 inherits Epic 5's aligned artifact world rather than redefining it:
 
@@ -118,14 +151,14 @@ Source-management read integration in Epic 6 follows these rules:
 | A7 | Purpose and access mode are durable properties of a source attachment, not transient per-run hints | Validated | Platform | Later process work and provenance read them from durable source state |
 | A8 | Detaching a source attachment removes it from current active use but does not erase prior process history or prior durable code-update visibility | Validated | Product + Platform | Current work and prior provenance remain distinct concerns |
 | A9 | Epic 6 implements the repository-focused source-management half of PRD Feature 5 and Epic 7 will implement the archive and derived-view half | Validated | Platform | The Feature 5 implementation split is intentional, and external/MCP source attachment remains a later follow-on beyond the current sequence |
-| A10 | Attach, update, refresh, and detach settle through request/response behavior in the existing shell and process surfaces rather than through a separate source-management live subscription | Validated | Platform | Epic 6 does not add a new live-update surface |
+| A10 | Attach, update, refresh, and detach use request/response behavior in the existing shell and process surfaces rather than through a separate source-management live subscription | Validated | Platform | Refresh may either settle immediately or return a durable pending refresh state when the work cannot complete cheaply; Epic 6 does not add a new live-update surface |
 
 ---
 
-## PRD Backfills
+## PRD/Architecture Alignment Notes
 
-This epic depends on PRD clarifications needed to keep the implementation
-sequence and the platform model aligned.
+This epic records the PRD and architecture alignment decisions that shape the
+implementation sequence.
 
 | PRD Area | Backfill | Why |
 |----------|----------|-----|
@@ -161,13 +194,17 @@ Epic 6 uses these route and uniqueness rules:
   regardless of whether the attachment is project-scoped or process-scoped
 - `purpose` and `accessMode` are mutable metadata and are not part of the
   uniqueness key
-- an exact duplicate means same repository, same scope, and same target ref,
-  where a missing `targetRef` counts as the same missing target ref
+- an exact duplicate means same canonical repository identity
+  (`repositoryFullName`), same scope, and same target ref, where a missing
+  `targetRef` counts as the same missing target ref
 - the same repository and target ref may exist once at project scope and once at
   process scope; those are independent attachments
 - when both scopes exist for the same repository, the process-scoped attachment
   shadows the project-scoped attachment for that one process's current-source
-  view only
+  view only; the Tech Design must define the exact read algorithm and conflict
+  handling without changing that product rule
+- `repositoryUrl` remains the operational clone/write URL; `repositoryFullName`
+  is the normalized GitHub identity used for uniqueness and provenance
 
 1. User opens a project shell or process work surface
 2. User chooses to attach a repository
@@ -269,9 +306,8 @@ attachments.
   - When: The source attachment appears in the current surface
   - Then: The user can tell that the source attachment is writable
 
-**AC-2.4:** Updating target ref or other source-defining metadata updates
-freshness state when the current hydrated working copy no longer matches the
-attached source definition.
+**AC-2.4:** Updating the target ref updates freshness state when the current
+hydrated working copy no longer matches the attached source definition.
 
 - **TC-2.4a: Target-ref change marks source stale**
   - Given: A source attachment was previously hydrated
@@ -363,21 +399,25 @@ updates. Provenance must stay visible even after the active environment is gone.
 4. System shows which sources informed or received that work
 5. User understands the canonical source path of the work
 
-In Epic 6, source provenance is process-specific and complements the
-artifact-version provenance aligned in Epic 5. The project shell continues to
-show attached source state. The process work surface is where the user sees
-which repositories and refs informed or received that process's work.
+In Epic 6, source provenance is durable, process-specific, and complements the
+artifact-version provenance aligned in Epic 5. Epic 6 requires durable
+process-specific provenance records; the exact schema is deferred to Tech
+Design. The project shell continues to show attached source state. The process
+work surface is where the user sees which repositories and refs informed or
+received that process's work.
 
 Epic 6 records provenance durably at two moments:
 
 - `informed_work` provenance is recorded when process work uses attached sources
-  as part of current process work
+  as current process material
 - `received_code_update` provenance is recorded when a durable code update lands
   in an attached writable source
 
-Provenance remains durable after detach because each provenance entry stores
-canonical repository identity and target ref in its own record, not only the
-attachment reference.
+Provenance remains durable after detach because each provenance entry copies
+immutable source identity at the time it is recorded: `repositoryFullName`,
+`repositoryUrl`, `targetRef`, and `sourceAttachmentId` when the attachment is
+still available. Provenance reads must not depend only on a current attachment
+lookup.
 
 Each provenance relationship resolves independently. If one provenance lookup
 cannot fully enrich current attachment context, the provenance endpoint still
@@ -441,6 +481,9 @@ detach removes that source from future current attachment state but does not
 rewrite the already-hydrated working copy mid-run. Any later durable code update
 that still depends on the detached source follows the existing checkpoint
 failure path unless the source is re-attached before that checkpoint attempt.
+The detach operation is soft detach: it marks the attachment detached or
+inactive for current use, such as with `detachedAt`, rather than hard-deleting
+identity needed for provenance.
 
 1. User opens an attached source
 2. User chooses to detach it from current project or process use
@@ -542,7 +585,7 @@ Epic 6 works inside the existing project and process surfaces.
 | Route | Description |
 |-------|-------------|
 | `/projects/{projectId}` | Project shell showing project-scoped shared source attachments |
-| `/projects/{projectId}/processes/{processId}` | Process work surface showing process-scoped source attachments and source provenance |
+| `/projects/{projectId}/processes/{processId}` | Process work surface showing current sources for that process, including process-scoped sources and applicable project-scoped sources after shadowing/conflict rules, plus source provenance |
 
 Epic 6 does not introduce a separate standalone source-management page in the
 first cut.
@@ -565,7 +608,8 @@ first cut.
 | Field | Type | Required | Validation | Description |
 |-------|------|----------|------------|-------------|
 | provider | enum | yes | `github` | Source provider for this first-cut epic |
-| repositoryFullName | string | yes | `owner/name` format, non-empty | Canonical repository identity |
+| repositoryUrl | string | yes | full GitHub URL, non-empty | Operational clone/write URL used by hydration and checkpoint paths |
+| repositoryFullName | string | no | `owner/name` format when present | Normalized canonical GitHub identity used for uniqueness and provenance; may be provided by the client or derived from `repositoryUrl` during validation |
 | displayName | string | yes | non-empty | User-visible source label |
 | purpose | enum | yes | `research`, `review`, `implementation`, or `other` | Why the source is attached |
 | accessMode | enum | yes | `read_only` or `read_write` | Whether durable code work may land back in this source |
@@ -593,7 +637,8 @@ Create-scope ownership is route-based in Epic 6:
 |-------|------|----------|------------|-------------|
 | sourceAttachmentId | string | yes | non-empty | Stable source attachment identifier |
 | provider | enum | yes | `github` | Source provider |
-| repositoryFullName | string | yes | `owner/name` format, non-empty | Canonical repository identity |
+| repositoryUrl | string | yes | full GitHub URL, non-empty | Operational clone/write URL used by hydration and checkpoint paths; existing pre-Epic-6 summaries already expose this field |
+| repositoryFullName | string | yes | `owner/name` format, non-empty | Normalized canonical GitHub identity used for uniqueness, conflict handling, and provenance; new in Epic 6 |
 | displayName | string | yes | non-empty | User-visible source label |
 | attachmentScope | enum | yes | `project` or `process` | Whether the source is attached at project level or for one process |
 | processId | string | no | non-empty when present | Process identifier when process-scoped |
@@ -602,8 +647,9 @@ Create-scope ownership is route-based in Epic 6:
 | accessMode | enum | yes | `read_only` or `read_write` | Whether durable code work may land back in this source |
 | targetRef | string | no | non-empty when present | Branch, tag, or commit ref if known |
 | hydrationState | enum | yes | `not_hydrated`, `hydrated`, `stale`, or `unavailable` | Current hydration or freshness state |
-| lastHydratedAt | string | no | ISO 8601 UTC when present | Most recent successful hydration time |
-| freshnessReason | string | no | non-empty when present | Current reason the source is `stale` or `unavailable`; recoverable missing-working-copy cases are expressed as `stale` rather than as a fifth state |
+| lastHydratedAt | string | no | ISO 8601 UTC when present | Most recent successful hydration time; new in Epic 6 |
+| freshnessReason | string | no | non-empty when present | Current reason the source is `stale` or `unavailable`; new in Epic 6; recoverable missing-working-copy cases are expressed as `stale` rather than as a fifth state |
+| detachedAt | string | no | ISO 8601 UTC when present | Present only for responses that need to describe a soft-detached attachment; detached attachments are excluded from current active source lists |
 | updatedAt | string | yes | ISO 8601 UTC | Most recent durable update time |
 
 Epic 6 uses only these four attachment states. `missing` is represented through
@@ -614,9 +660,10 @@ Epic 6 uses only these four attachment states. `missing` is represented through
 | Field | Type | Required | Validation | Description |
 |-------|------|----------|------------|-------------|
 | provenanceId | string | yes | non-empty | Stable provenance identifier |
-| sourceAttachmentId | string | yes | non-empty | Attached source this provenance entry refers to |
+| sourceAttachmentId | string | no | non-empty when present | Attached source this provenance entry refers to, when the source attachment is still available |
 | relationshipKind | enum | yes | `informed_work` or `received_code_update` | How this source relates to the process work |
 | repositoryFullName | string | yes | `owner/name` format, non-empty | Canonical repository identity |
+| repositoryUrl | string | yes | full GitHub URL, non-empty | Operational source URL copied at the time provenance is recorded |
 | targetRef | string | no | non-empty when present | Ref that informed or received the work |
 | entryStatus | enum | yes | `ready` or `degraded` | Whether this provenance entry resolved cleanly or is returned with bounded degradation |
 | degradationReason | string | no | non-empty when present | Why this provenance entry is degraded when `entryStatus` is `degraded` |
@@ -641,7 +688,9 @@ They do not redefine artifact ownership or version producer lineage.
 
 | Field | Type | Required | Validation | Description |
 |-------|------|----------|------------|-------------|
-| sourceAttachment | Source Attachment Summary | yes | present | Updated durable source attachment state after refresh request settles |
+| sourceAttachment | Source Attachment Summary | no | present when refresh settles in the request | Updated durable source attachment state after a synchronous refresh settles |
+| refreshStatus | enum | yes | `settled`, `pending`, or `failed` | Whether the refresh settled in the request, was accepted for longer-running work, or failed |
+| refreshRequestedAt | string | no | ISO 8601 UTC when present | Time a pending refresh was accepted |
 
 ### Detach Source Attachment Response
 
@@ -649,6 +698,7 @@ They do not redefine artifact ownership or version producer lineage.
 |-------|------|----------|------------|-------------|
 | detached | boolean | yes | `true` | Indicates the source attachment was removed from current active use |
 | sourceAttachmentId | string | yes | non-empty | Detached source attachment identifier |
+| detachedAt | string | yes | ISO 8601 UTC | Time the attachment was soft-detached from current active use |
 
 ### Source Provenance Response
 
@@ -665,10 +715,15 @@ rest of the provenance surface is still readable.
 ### Refresh Failure Boundary
 
 In Epic 6, attach, update, refresh, and detach are request/response actions
-inside the existing shell and process surfaces rather than long-running live
-workflows. Refresh returns only after the source attachment settles into a new
-durable source state or fails with an immediate request-level error. Epic 6
-does not introduce a separate source-management live subscription.
+inside the existing shell and process surfaces rather than a separate
+source-management live subscription. Attach, update, and detach settle in the
+request. Refresh may settle in the request when the freshness check or
+rehydration is cheap, or it may return a durable `pending` refresh state when
+the work cannot safely complete within a short request. Pending refresh state
+is UI progress metadata; it does not add a fifth canonical hydration state.
+Request-level refresh errors mean the refresh was not accepted or is not
+allowed. `refreshStatus: failed` means the refresh was accepted but resolved
+into a visible failed refresh result for that attachment.
 
 ### Error Responses
 
@@ -717,8 +772,9 @@ Process dependencies:
   normal conditions
 - Updating source metadata appears in the current surface within 1 second under
   normal conditions
-- Refreshing one recoverable source attachment returns a settled visible result
-  within 10 seconds under normal conditions
+- Refreshing one recoverable source attachment returns either a settled visible
+  result or a visible pending refresh state within 10 seconds under normal
+  conditions
 
 ### Security
 
@@ -769,7 +825,9 @@ Questions for the Tech Lead to address during design:
    visibility, without reintroducing artifact-ownership semantics already
    settled in Epic 5?
 3. What exact conflict rule should apply when the same repository and target ref
-   are attached more than once in related contexts?
+   are attached more than once in related contexts, using
+   `repositoryFullName` as canonical identity while preserving `repositoryUrl`
+   as the operational clone/write URL?
 4. What exact refresh and freshness-check policy should map durable conditions
    into Epic 6's four source states: `not_hydrated`, `hydrated`, `stale`, and
    `unavailable`?
@@ -779,6 +837,12 @@ Questions for the Tech Lead to address during design:
 6. How should Epic 6 extend the current shell and process surfaces so source
    attachment management remains coherent across project-scoped and
    process-scoped use?
+7. What exact process current-source read algorithm should combine
+   project-scoped and process-scoped sources, apply process-scoped shadowing,
+   and degrade boundedly when conflicts or unavailable sources are encountered?
+8. What soft-detach representation should preserve source identity and
+   provenance visibility while excluding detached attachments from current
+   active use?
 
 ---
 
@@ -804,6 +868,7 @@ seams, and test helpers used by all later stories.
 - AC-1.1 (attach project-scoped or process-scoped repository)
 - AC-1.2 (new attachment identity and scope visible)
 - AC-1.3 (duplicate exact attachment blocked)
+- AC-1.4 (invalid or inaccessible repository rejected without partial record)
 
 ### Story 2: Manage Purpose, Access Mode, and Target Ref
 

@@ -12,12 +12,14 @@ still looks like one Fastify-owned control plane sitting over Convex durable
 state and a browser client that talks only to Fastify. What changes is where
 the alignment logic lives.
 
-Today, some of that logic is trapped in the wrong layer. `PlatformStore`
-implements high-level review target listing and package review assembly, which
-means the pre-alignment same-process assumptions are duplicated in the Convex
-store implementation and the in-memory test store. Epic 5 fixes that by
-pulling review-context composition back up into review-owned services and pure
-helpers while keeping `PlatformStore` focused on durable reads and writes.
+The Epic 5 merge initially left some of that logic in the wrong layer.
+Follow-up commits `f33ea92`, `849dcce`, and `b231ee6` remediated the main
+package/review boundary drift. Current main uses `ReviewContextService` for
+process-scoped review context, keeps package publication/context policy in
+server-side review helpers invoked from the Fastify-side store facade, and
+removes the prior high-level review/package composition methods from
+`PlatformStore`. There is no separate `package-context.service.ts` class/file
+in the accepted shipped shape.
 
 That server posture is important because Epic 5 is fundamentally a policy
 change. The durable store should answer factual questions:
@@ -69,8 +71,7 @@ apps/platform/server/
 │       ├── package-review.service.ts                 # MODIFIED
 │       ├── review-context.service.ts                 # NEW
 │       ├── review-context.ts                         # NEW pure helpers
-│       ├── package-context.service.ts                # NEW
-│       └── package-context.ts                        # NEW pure helpers
+│       └── package-publication-policy.service.ts     # NEW package policy helpers
 
 apps/platform/shared/contracts/
 ├── schemas.ts                                        # MODIFIED
@@ -90,18 +91,18 @@ convex/
 
 | Module | Status | Responsibility | Dependencies | ACs Covered |
 |--------|--------|----------------|--------------|-------------|
-| `app.ts` | MODIFIED | Wire `ReviewContextService` and `PackageContextService` into `DefaultArtifactReviewService`, `DefaultPackageReviewService`, `DefaultReviewWorkspaceService`, and process-surface review enablement; register any new review/package context dependencies at app composition time | Fastify service composition | AC-3 through AC-5 |
+| `app.ts` | MODIFIED | Wire review services so `DefaultArtifactReviewService`, `DefaultPackageReviewService`, `DefaultReviewWorkspaceService`, and process-surface review enablement use aligned review/package context decisions | Fastify service composition | AC-3 through AC-5 |
 | `schemas/review.ts` | MODIFIED | Expand route schemas and response-code expectations so target-specific review endpoints can return exact 404 codes for missing explicit versions and unavailable package members | shared contracts | AC-3, AC-4, AC-5 |
 | `routes/review.ts` | MODIFIED | Map review lookup result kinds and `AppError` subclasses to exact request codes instead of collapsing all null reads into `REVIEW_TARGET_NOT_FOUND` | review services, route schemas | AC-3 through AC-5 |
 | `platform-store.ts` | MODIFIED | Provide low-level durable reads and writes for artifacts, versions, current refs, package contexts, and package snapshots; stop owning review-context composition | Convex queries/mutations, shared contracts | AC-1 through AC-5 |
 | `review-context.service.ts` | NEW | Resolve aligned process review context from current refs, package context, and published package snapshots; answer `availableTargets`, direct-access eligibility, and review enablement | `PlatformStore`, pure helpers | AC-3, AC-5 |
-| `package-context.service.ts` | NEW | Upsert current package-building context, seed from published snapshot on reopen, and validate publish eligibility against same-project + in-context rules | `PlatformStore`, pure helpers | AC-4 |
+| `package-publication-policy.service.ts` | NEW | Keep package publication/context policy helpers for eligible versions, snapshot seeding, idempotent context comparison, and same-project + in-context validation | `PlatformStore`, pure helpers | AC-4 |
 | `artifact-review.service.ts` | MODIFIED | Resolve artifact review through process review context, not artifact ownership; return zero-version empty state and exact missing-version failures | `PlatformStore`, `review-context.service.ts`, renderer | AC-2, AC-3, AC-5 |
 | `package-review.service.ts` | MODIFIED | Resolve mixed-producer package members, keep unrelated members readable when one degrades, and classify selected-member failures accurately | `PlatformStore`, `review-context.service.ts`, `artifact-review.service.ts` | AC-4, AC-5 |
 | `review-workspace.service.ts` | MODIFIED | Bootstrap the review workspace from aligned review context and keep bounded degraded target states inside the workspace envelope | process access, review services | AC-3, AC-5 |
 | `artifact-section.reader.ts` | MODIFIED | Build project artifact summaries from project identity + latest version projection only | `PlatformStore` | AC-1, AC-2 |
 | `process-work-surface.service.ts` | MODIFIED | Compute review control enablement from aligned review context instead of same-process production shortcuts | `review-context.service.ts` | AC-3 |
-| `convex/artifacts.ts` | MODIFIED | Remove artifact-row process ownership and keep checkpoint writes version-oriented | `artifactVersions`, process refs | AC-1, AC-2 |
+| `convex/artifacts.ts` | MODIFIED | Remove artifact-row process ownership and keep checkpoint writes version-oriented; atomically persist/upsert checkpoint bundles and enforce same-project artifact invariants | `artifactVersions`, process refs | AC-1, AC-2 |
 | `convex/processPackageContexts.ts` + members | NEW | Durable current package-building context with ordered pinned version members | Convex schema | AC-4 |
 | `convex/packageSnapshots.ts` | MODIFIED | Publish immutable snapshots from aligned same-project/current-context rules instead of same-process-producer rules | Convex schema, package context validation | AC-4 |
 
@@ -290,6 +291,14 @@ in the in-memory store used by tests.
 Epic 5 narrows `PlatformStore`. The store boundary should return durable facts,
 not precomposed review semantics.
 
+Shipped-shape note: current main satisfies this boundary through
+`ReviewContextService` and package publication/context helper functions in the
+server-side review module. It does not introduce a separate
+`package-context.service.ts` class/file. That is an accepted implementation
+shape because the package helpers keep workflow policy above the durable store
+without adding another service object. `PlatformStore` remains the Fastify-side
+facade that calls those helpers and Convex persistence primitives.
+
 ### Remove or Retire High-Level Review Composition
 
 The following methods are retired from the long-term interface:
@@ -391,7 +400,7 @@ context-aware rather than same-process-producer aware.
 
 Why these additions matter:
 
-- `listProjectArtifactsByIds` keeps review-context and package-context services
+- `listProjectArtifactsByIds` keeps review-context services and package-policy helpers
   from reimplementing ad hoc artifact/project joins
 - `listProcessesByIds` is the primitive that lets review services derive
   `producedByProcessDisplayLabel` without turning `PlatformStore` back into a
@@ -488,6 +497,12 @@ The crucial server change is in `convex/artifacts.ts`:
 - never patch a process ownership field because none exists anymore
 - always insert a new `artifactVersions` row
 
+Boundary decision: Convex may perform the atomic checkpoint
+persistence/upsert bundle and enforce cross-record integrity invariants,
+including same-project artifact validation. Fastify/process services own the
+workflow intent: what to checkpoint, when, and why. This is an accepted
+persistence-invariant boundary blur, not a blocker for Epic 5 closure.
+
 Project and process summary reads then derive `currentVersionLabel` and
 `updatedAt` from `getLatestArtifactVersion(artifactId)`.
 
@@ -534,18 +549,16 @@ This flow settles AC-4.
 ```mermaid
 sequenceDiagram
     participant ProcessModule as Downstream Process Module
-    participant PkgCtx as PackageContextService
+    participant PkgPolicy as Package Policy Helpers
     participant Store as PlatformStore
     participant Convex as Convex
 
     Note over ProcessModule,Convex: AC-4.1 / AC-4.2 / AC-4.3
-    ProcessModule->>PkgCtx: upsertCurrentContext(processId, members)
-    PkgCtx->>Store: validate same project + version ownership-to-artifact
-    PkgCtx->>Store: write processPackageContext + members
-    ProcessModule->>PkgCtx: publishSnapshot(processId, requestedMembers)
-    PkgCtx->>Store: load current refs + current package context
-    PkgCtx->>PkgCtx: validate package-building context rule
-    PkgCtx->>Store: publishPackageSnapshot(processId, requestedMembers)
+    ProcessModule->>Store: upsertCurrentProcessPackageContext(processId, members)
+    Store->>PkgPolicy: resolve/compare context members
+    Store->>Convex: write processPackageContext + members
+    ProcessModule->>Store: publishPackageSnapshot(processId, requestedMembers)
+    Store->>PkgPolicy: load eligible versions + validate package-building context rule
     Store->>Convex: insert packageSnapshots + packageSnapshotMembers
 ```
 
@@ -679,40 +692,59 @@ export interface ReviewContextService {
 }
 ```
 
-### Package Context Shapes
+### Package Context Policy Helpers
 
 ```ts
-export interface PackageContextService {
-  getCurrentContext(args: {
-    processId: string;
-  }): Promise<{
-    context: ProcessPackageContextRecord | null;
-    members: ProcessPackageContextMemberRecord[];
-  }>;
+export async function listEligiblePackageArtifactVersionIds(args: {
+  platformStore: Pick<
+    PlatformStore,
+    | 'getCurrentProcessMaterialRefs'
+    | 'getLatestArtifactVersion'
+    | 'getCurrentProcessPackageContext'
+    | 'listProcessPackageContextMembers'
+  >;
+  processId: string;
+}): Promise<string[]>;
 
-  upsertCurrentContext(args: {
-    processId: string;
+export async function resolvePackageContextMembers(args: {
+  platformStore: Pick<PlatformStore, 'getPackageSnapshot' | 'listPackageSnapshotMembers'>;
+  processId: string;
+  basePackageSnapshotId: string | null;
+  members: Array<{
+    position: number;
+    artifactId: string;
+    artifactVersionId: string;
     displayName: string;
-    packageType: string;
-    basePackageSnapshotId: string | null;
-    members: Array<{
-      position: number;
-      artifactId: string;
-      artifactVersionId: string;
-    }>;
-  }): Promise<{
-    context: ProcessPackageContextRecord;
-    members: ProcessPackageContextMemberRecord[];
+    versionLabel: string;
   }>;
+}): Promise<typeof args.members>;
 
-  publishFromCurrentContext(args: {
-    processId: string;
+export function assertPackageMembersEligible(args: {
+  members: PackageSnapshotMemberWriteInput[];
+  eligibleArtifactVersionIds: string[];
+}): void;
+
+export function packageContextPayloadMatches(args: {
+  existingContext: ProcessPackageContextRecord | null;
+  existingMembers: ProcessPackageContextMemberRecord[];
+  displayName: string;
+  packageType: string;
+  basePackageSnapshotId: string | null;
+  members: Array<{
+    position: number;
+    artifactId: string;
+    artifactVersionId: string;
     displayName: string;
-    packageType: string;
-    members: PackageSnapshotMemberWriteInput[];
-  }): Promise<string>;
-}
+    versionLabel: string;
+  }>;
+}): boolean;
 ```
+
+Current main implements this policy as helper functions in
+`package-publication-policy.service.ts`, called from the Fastify-side
+`PlatformStore` facade that exposes the durable package-context reads/writes.
+This preserves the intended boundary without requiring a standalone
+package-context service class.
 
 ### Review Lookup Result Types
 

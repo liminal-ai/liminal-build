@@ -5,8 +5,8 @@
 - Spec Pack Root: /Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment
 - Tech Design Shape: four-file (tech-design.md + tech-design-server.md + tech-design-client.md + test-plan.md)
 - Current Story: all-complete
-- Current Phase: pre-epic-verify
-- Last Completed Checkpoint: story-0-gate-pass (2026-04-26)
+- Current Phase: closed-on-main-after-remediation
+- Last Completed Checkpoint: mainline-closure-alignment (2026-05-03)
 
 ## Run Configuration
 - Primary Harness: claude-code (v2.1.119, authenticated, max subscription)
@@ -195,8 +195,25 @@
 - Epic Gate Result: pass (convex:60 + server:249 + client:237 + packages:5 + integration:22 = 573)
 - Epic Verification Status: complete
 
+## Mainline Closure Alignment
+- Epic 5 merged to main.
+- Package/review boundary drift was remediated after the Epic 5 merge by
+  commits `f33ea92`, `849dcce`, and `b231ee6`.
+- Remediation moved review-context behavior into `ReviewContextService` and
+  package publication/context policy into server-side review helpers. The
+  shipped shape does not include a separate `package-context.service.ts`
+  class/file; that is accepted, not an open bug.
+- Verification passed after the Epic 5 cleanup/remediation sequence. Historical
+  story/test-count receipts above remain unchanged.
+- Checkpoint persistence was reviewed and accepted: Convex may execute atomic
+  checkpoint persistence/upsert bundles and enforce cross-record integrity
+  invariants, including same-project artifact validation. Fastify/process
+  services own workflow intent: what to checkpoint, when, and why.
+
 ## Open Risks / Accepted Risks
 - ~~S0-F3: convex/processPackageContexts.test.ts absent — deferred to Story 4 per test plan Chunk 4 assignment~~ RESOLVED in Story 4 (convex:55→60)
+- Checkpoint persistence boundary: ACCEPTED. The Convex same-project validation
+  is a durable persistence invariant and does not block Epic 5 closure.
 
 ## Retained Operational Notes
 

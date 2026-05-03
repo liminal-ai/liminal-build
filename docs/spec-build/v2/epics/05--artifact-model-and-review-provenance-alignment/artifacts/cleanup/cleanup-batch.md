@@ -9,29 +9,52 @@
 
 ## Accepted-Risk Items
 
-None across all 6 stories.
+### Checkpoint persistence boundary (ACCEPTED)
+- Status: Accepted as shipped architecture
+- Description: Convex executes atomic checkpoint persistence/upsert bundles and
+  enforces cross-record integrity invariants, including same-project artifact
+  validation. Fastify/process services own workflow intent: what to
+  checkpoint, when, and why.
+- Impact: Conscious boundary blur at the persistence-invariant layer, not a
+  functional or architectural blocker.
+- Action needed: none for Epic 5 closure
 
 ## Spec Deviations Noted Across Stories
 
-### SD-1: PlatformStore review composition surface
+### SD-1: PlatformStore review/package boundary drift (RESOLVED)
 - Noted in: Story 4 self-review, Story 5 self-review, Story 5 implementor
-- Description: PlatformStore still owns part of the review/package composition surface through `listProcessReviewTargets` and `getProcessReviewPackage` instead of the fully narrowed durable-facts-only boundary described in the Epic 5 server tech design.
-- Impact: Architectural — the behavior is correct but the service boundary is wider than the tech design specifies. Review policy lives in PlatformStore methods rather than in dedicated review-owned services.
-- Recommendation: Architectural cleanup in a follow-on pass, not a functional gap.
+- Status: Remediated after the Epic 5 merge by commits `f33ea92`,
+  `849dcce`, and `b231ee6`
+- Description: The earlier implementation left package/review policy too wide
+  at the store boundary. Main now has `ReviewContextService` plus server-side
+  review helpers for package publication/context policy. There is no separate
+  `package-context.service.ts` class/file in the accepted shipped shape.
+- Impact: Accepted implementation shape. No open cleanup item.
+- Action needed: none
 
-### SD-2: InMemoryPlatformStore test-store compatibility shim
+### SD-2: InMemoryPlatformStore test-store compatibility shim (RESOLVED)
 - Noted in: Story 2 self-review (both initial and post-fix)
-- Description: InMemoryPlatformStore carries a synthetic artifact-version fallback for seeded test data that lack explicit version rows.
-- Impact: Test infrastructure only — not a production path.
-- Recommendation: Clean up when test fixtures are fully migrated to explicit version rows.
+- Status: Resolved during the cleanup/remediation sequence
+- Description: InMemoryPlatformStore previously carried a synthetic
+  artifact-version fallback for seeded test data that lacked explicit version
+  rows.
+- Impact: Historical test infrastructure issue. No open cleanup item.
+- Action needed: none
 
-### SD-3: Legacy optional ownership fields in ArtifactSummary TypeScript shape
+### SD-3: Legacy optional ownership fields in ArtifactSummary TypeScript shape (RESOLVED)
 - Noted in: Story 2 self-review
-- Description: ArtifactSummary TypeScript shape still tolerates legacy optional ownership fields for fixture compatibility even though the runtime schema/output strips them.
-- Impact: Type-level only — runtime behavior is correct.
-- Recommendation: Remove optional fields once all fixture references are updated.
+- Status: Resolved during the cleanup/remediation sequence
+- Description: ArtifactSummary previously tolerated legacy optional ownership
+  fields for fixture compatibility even though the runtime schema/output
+  stripped them.
+- Impact: Historical type-level compatibility issue. Current
+  `ArtifactSummary` is project-scoped and has no ownership field.
+- Action needed: none
 
 ## Summary
 
-- 0 items requiring cleanup dispatch (only deferred item already resolved)
-- 3 spec deviations noted as architectural/infrastructure cleanup for later
+- 0 items requiring cleanup dispatch
+- Package/review boundary drift was remediated after merge by `f33ea92`,
+  `849dcce`, and `b231ee6`
+- Checkpoint persistence boundary reviewed and accepted for Epic 5 closure
+- All story-receipt spec deviations are resolved or accepted for Epic 5 closure

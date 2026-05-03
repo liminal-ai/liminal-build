@@ -52,7 +52,7 @@ review route family rather than inventing new top-level product surfaces.
 |-------|---------------|------------|--------|
 | Current onboarding pack says the markdown review workspace and package surface are not present, but the current repo now contains `routes/review.ts`, review services, review client pages, and full review/package test suites | `docs/onboarding/current-state-process-work-surface.md`, `docs/onboarding/current-state-tech-design.md` | Treat the onboarding pack as a stale baseline for this domain. Design against current code and tests, and record the drift here so later doc refresh work has a concrete starting point | Resolved — clarified |
 | Epic 5's error-response table does not distinguish between review-workspace bootstrap reads, which benefit from bounded degraded target states, and target-specific follow-up reads, which can legitimately return request-level 404/409 responses | Data Contracts → Error Responses; AC-5.3, AC-5.4 | Design keeps the existing review-workspace bootstrap pattern: once project/process context resolves, `GET /review` returns `200` with bounded `target.status` / `target.error` degradation. Target-specific follow-up reads continue to use request-level `404` / `409` when the caller asks for an explicit missing version, missing member, or disallowed publication member | Resolved — clarified |
-| Current `PlatformStore` interface owns high-level review-target composition and package review assembly, which bakes the pre-alignment same-process assumptions into every store implementation | Current code: `apps/platform/server/services/projects/platform-store.ts`; Epic Q3, Q5 | Epic 5 narrows `PlatformStore` back toward durable-state primitives and moves review-context composition into server review services and pure helpers. This is an intentional design deviation because the old interface shape would force the wrong policy to keep leaking into every store implementation | Resolved — deviated |
+| Current `PlatformStore` interface owns high-level review-target composition and package review assembly, which bakes the pre-alignment same-process assumptions into every store implementation | Current code: `apps/platform/server/services/projects/platform-store.ts`; Epic Q3, Q5 | Epic 5 narrows `PlatformStore` back toward durable-state primitives and moves review-context composition into server review services and pure helpers. Follow-up commits `f33ea92`, `849dcce`, and `b231ee6` remediated the package/review boundary drift after merge. | Resolved |
 | Current package publication logic still requires every pinned member version to have `createdByProcessId === publishingProcessId`, which directly conflicts with AC-4.1 and AC-4.2 | Current code: package publication path in `platform-store.ts`; AC-4.1, AC-4.2 | Publish eligibility is rewritten around same-project membership plus current package-building context, not same-process production. Cross-process package members become valid when they are either current versions of currently referenced artifacts or explicitly pinned in the same process's current package context | Resolved |
 | The epic asks how current package-building context should be represented durably, but the current repo only has immutable `packageSnapshots` and their members | Tech Design Questions Q4 | Design adds a dedicated mutable package-context model rather than overloading immutable package snapshots or broadening current-refs into a catch-all relation table | Resolved |
 | The epic requires version provenance visibility via `producedByProcessId`, but raw ids alone are too thin for a user-facing provenance surface | Data Contracts → Artifact Version Summary; AC-2.2 | Design keeps `producedByProcessId` in browser-facing contracts and adds derived `producedByProcessDisplayLabel` so the UI can show readable provenance while still preserving the stable id | Resolved — clarified |
@@ -272,7 +272,9 @@ Use a staged code migration with a pragmatic data posture:
    package publication rule, so current and future publishers have a durable
    bounded context to validate against.
 3. Rewrite artifact checkpoint, review eligibility, and package publication to
-   stop reading `artifacts.processId`.
+   stop reading `artifacts.processId`. Convex may still execute atomic
+   checkpoint persistence/upsert bundles and enforce same-project artifact
+   invariants; Fastify/process services own the workflow intent.
 4. Remove `processId` from the `artifacts` table and delete the legacy summary
    fields from `ArtifactSummary`.
 5. Migrate or reset dev data as needed. Because this repo is still pre-customer,
@@ -394,7 +396,7 @@ apps/platform/server/
 │       ├── artifact-review.service.ts       # MODIFIED
 │       ├── package-review.service.ts        # MODIFIED
 │       ├── review-context.service.ts        # NEW
-│       └── package-context.service.ts       # NEW
+│       └── package-publication-policy.service.ts # NEW package policy helpers
 
 apps/platform/client/
 ├── app/
@@ -429,10 +431,10 @@ convex/
 |--------|--------|----------------|-------------|
 | `schemas.ts` | MODIFIED | Slim project artifact summary; add request-error codes for aligned review/package failures | AC-1, AC-2, AC-5 |
 | `review-workspace.ts` | MODIFIED | Expand review-target error taxonomy and selected-target semantics for zero-version, unavailable-version, and unavailable-member cases | AC-3, AC-4, AC-5 |
-| `app.ts` + `server/schemas/review.ts` | MODIFIED | Wire new review/package-context services into the running app and tighten route-level request/response contracts for exact review/package error codes | AC-3, AC-4, AC-5 |
+| `app.ts` + `server/schemas/review.ts` | MODIFIED | Wire review services into the running app and tighten route-level request/response contracts for exact review/package error codes | AC-3, AC-4, AC-5 |
 | `platform-store.ts` | MODIFIED | Expose aligned durable-state primitives; remove review composition from the store boundary; add package-context reads/writes | AC-1 through AC-5 |
 | `review-context.service.ts` | NEW | Compute process-scoped review context from current refs, package context, and package snapshots | AC-3, AC-5 |
-| `package-context.service.ts` | NEW | Maintain the current mutable package-building context and validate publish eligibility against it | AC-4 |
+| `package-publication-policy.service.ts` | NEW | Maintain package publication/context policy helpers for eligible versions, snapshot seeding, and publish eligibility | AC-4 |
 | `artifact-review.service.ts` | MODIFIED | Resolve artifact review through process context rather than artifact-row ownership | AC-2, AC-3, AC-5 |
 | `package-review.service.ts` | MODIFIED | Resolve mixed-producer package members and degrade per member rather than per package | AC-4, AC-5 |
 | `artifact-section.ts` | MODIFIED | Render project artifact summaries without ownership language | AC-1, AC-2 |
