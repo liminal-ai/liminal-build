@@ -1527,6 +1527,16 @@ describe('review workspace integration', () => {
           sourceAttachmentIds: [],
         },
       },
+      artifactsByProjectId: {
+        [reviewProjectSummary.projectId]: [
+          {
+            artifactId: checkpointArtifactId,
+            displayName: 'Checkpointed Spec',
+            currentVersionLabel: null,
+            updatedAt: '2026-04-23T12:00:00.000Z',
+          },
+        ],
+      },
     });
     const providerAdapter = buildSequentialArtifactCheckpointProvider({
       artifactId: checkpointArtifactId,

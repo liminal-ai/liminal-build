@@ -401,16 +401,18 @@ async function upsertArtifactCheckpoint(
   if (args.artifactId !== undefined) {
     const existingArtifact = await ctx.db.get(args.artifactId as Id<'artifacts'>);
 
-    if (existingArtifact !== null && existingArtifact.projectId === args.processRecord.projectId) {
-      await ctx.db.patch(existingArtifact._id, nextFields);
-      artifactId = existingArtifact._id;
-    } else {
-      artifactId = await ctx.db.insert('artifacts', {
-        projectId: args.processRecord.projectId,
-        ...nextFields,
-        createdAt: args.producedAt,
-      });
+    if (existingArtifact === null) {
+      throw new Error(`Artifact checkpoint target '${args.artifactId}' was not found.`);
     }
+
+    if (existingArtifact.projectId !== args.processRecord.projectId) {
+      throw new Error(
+        `Artifact checkpoint target '${args.artifactId}' does not belong to this process project.`,
+      );
+    }
+
+    await ctx.db.patch(existingArtifact._id, nextFields);
+    artifactId = existingArtifact._id;
   } else {
     artifactId = await ctx.db.insert('artifacts', {
       projectId: args.processRecord.projectId,

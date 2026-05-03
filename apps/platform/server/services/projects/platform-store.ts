@@ -2386,12 +2386,20 @@ export class InMemoryPlatformStore implements PlatformStore {
     const existingArtifacts = this.artifactsByProjectId.get(processRecord.projectId) ?? [];
     const existingOutputs = this.processOutputsByProcessId.get(args.processId) ?? [];
     const checkpointOutputs = args.artifacts.map((artifact, index) => {
+      const existingArtifact =
+        artifact.artifactId === undefined
+          ? undefined
+          : existingArtifacts.find((candidate) => candidate.artifactId === artifact.artifactId);
+
+      if (artifact.artifactId !== undefined && existingArtifact === undefined) {
+        throw new Error(
+          `Artifact checkpoint target '${artifact.artifactId}' was not found in this process project.`,
+        );
+      }
+
       const artifactId =
         artifact.artifactId ??
         `${args.processId}:checkpoint-artifact-${existingArtifacts.length + index + 1}`;
-      const existingArtifact = existingArtifacts.find(
-        (candidate) => candidate.artifactId === artifactId,
-      );
       const versionLabel = buildCheckpointVersionLabel(artifact.producedAt);
       const versionId = `${artifactId}:${versionLabel}:${artifact.producedAt}`;
       const createdAt = new Date().toISOString();
