@@ -12,19 +12,21 @@ function getHandler<TArgs, TReturn>(
   return (registered as { _handler: (ctx: unknown, args: TArgs) => Promise<TReturn> })._handler;
 }
 
-const publishPackageSnapshotHandler = getHandler<
-  {
-    processId: string;
-    displayName: string;
-    packageType: string;
-    members: Array<{
-      artifactId: string;
-      artifactVersionId: string;
-      position: number;
-    }>;
-  },
-  string
->(publishPackageSnapshot);
+type PublishPackageSnapshotHandlerArgs = {
+  processId: string;
+  displayName: string;
+  packageType: string;
+  members: Array<{
+    artifactId: string;
+    artifactVersionId: string;
+    position: number;
+  }>;
+  allowedArtifactVersionIds: string[];
+};
+
+const publishPackageSnapshotHandler = getHandler<PublishPackageSnapshotHandlerArgs, string>(
+  publishPackageSnapshot,
+);
 
 const getPackageSnapshotHandler = getHandler<
   { packageSnapshotId: string },
@@ -237,17 +239,35 @@ function buildPackageSnapshotSeed() {
   };
 }
 
+function publishPackageSnapshotArgs(
+  args: Omit<PublishPackageSnapshotHandlerArgs, 'allowedArtifactVersionIds'> &
+    Partial<Pick<PublishPackageSnapshotHandlerArgs, 'allowedArtifactVersionIds'>>,
+): PublishPackageSnapshotHandlerArgs {
+  return {
+    allowedArtifactVersionIds: [
+      'artifact-version-package-snapshots-1-current',
+      'artifact-version-package-snapshots-2',
+      'artifact-version-package-snapshots-3',
+      'artifact-version-package-snapshots-4',
+    ],
+    ...args,
+  };
+}
+
 describe('convex/packageSnapshots publishPackageSnapshot', () => {
   it('rejects empty member arrays', async () => {
     const { ctx } = createFakeConvexContext(buildPackageSnapshotSeed());
 
     await expect(
-      publishPackageSnapshotHandler(ctx, {
-        processId: 'process-package-snapshots-1',
-        displayName: 'Feature Specification Package',
-        packageType: 'FeatureSpecificationOutput',
-        members: [],
-      }),
+      publishPackageSnapshotHandler(
+        ctx,
+        publishPackageSnapshotArgs({
+          processId: 'process-package-snapshots-1',
+          displayName: 'Feature Specification Package',
+          packageType: 'FeatureSpecificationOutput',
+          members: [],
+        }),
+      ),
     ).rejects.toThrow('Package snapshot must include at least one member.');
   });
 
@@ -257,18 +277,21 @@ describe('convex/packageSnapshots publishPackageSnapshot', () => {
     const { ctx } = createFakeConvexContext(buildPackageSnapshotSeed());
 
     await expect(
-      publishPackageSnapshotHandler(ctx, {
-        processId: 'process-package-snapshots-1',
-        displayName: 'Feature Specification Package',
-        packageType: 'FeatureSpecificationOutput',
-        members: [
-          {
-            artifactId: 'artifact-package-snapshots-1',
-            artifactVersionId: 'artifact-version-package-snapshots-1-current',
-            position,
-          },
-        ],
-      }),
+      publishPackageSnapshotHandler(
+        ctx,
+        publishPackageSnapshotArgs({
+          processId: 'process-package-snapshots-1',
+          displayName: 'Feature Specification Package',
+          packageType: 'FeatureSpecificationOutput',
+          members: [
+            {
+              artifactId: 'artifact-package-snapshots-1',
+              artifactVersionId: 'artifact-version-package-snapshots-1-current',
+              position,
+            },
+          ],
+        }),
+      ),
     ).rejects.toThrow('Package snapshot member position must be a non-negative integer.');
   });
 
@@ -276,18 +299,21 @@ describe('convex/packageSnapshots publishPackageSnapshot', () => {
     const { ctx } = createFakeConvexContext(buildPackageSnapshotSeed());
 
     await expect(
-      publishPackageSnapshotHandler(ctx, {
-        processId: 'process-package-snapshots-1',
-        displayName: 'Feature Specification Package',
-        packageType: 'FeatureSpecificationOutput',
-        members: [
-          {
-            artifactId: 'artifact-package-snapshots-1',
-            artifactVersionId: 'missing-artifact-version',
-            position: 0,
-          },
-        ],
-      }),
+      publishPackageSnapshotHandler(
+        ctx,
+        publishPackageSnapshotArgs({
+          processId: 'process-package-snapshots-1',
+          displayName: 'Feature Specification Package',
+          packageType: 'FeatureSpecificationOutput',
+          members: [
+            {
+              artifactId: 'artifact-package-snapshots-1',
+              artifactVersionId: 'missing-artifact-version',
+              position: 0,
+            },
+          ],
+        }),
+      ),
     ).rejects.toThrow('Package snapshot member artifact version not found.');
   });
 
@@ -295,18 +321,21 @@ describe('convex/packageSnapshots publishPackageSnapshot', () => {
     const { ctx } = createFakeConvexContext(buildPackageSnapshotSeed());
 
     await expect(
-      publishPackageSnapshotHandler(ctx, {
-        processId: 'process-package-snapshots-1',
-        displayName: 'Feature Specification Package',
-        packageType: 'FeatureSpecificationOutput',
-        members: [
-          {
-            artifactId: 'artifact-package-snapshots-1',
-            artifactVersionId: 'artifact-version-package-snapshots-2',
-            position: 0,
-          },
-        ],
-      }),
+      publishPackageSnapshotHandler(
+        ctx,
+        publishPackageSnapshotArgs({
+          processId: 'process-package-snapshots-1',
+          displayName: 'Feature Specification Package',
+          packageType: 'FeatureSpecificationOutput',
+          members: [
+            {
+              artifactId: 'artifact-package-snapshots-1',
+              artifactVersionId: 'artifact-version-package-snapshots-2',
+              position: 0,
+            },
+          ],
+        }),
+      ),
     ).rejects.toThrow(
       'Package snapshot member artifact version must belong to the specified artifact.',
     );
@@ -316,18 +345,21 @@ describe('convex/packageSnapshots publishPackageSnapshot', () => {
     const { ctx } = createFakeConvexContext(buildPackageSnapshotSeed());
 
     await expect(
-      publishPackageSnapshotHandler(ctx, {
-        processId: 'process-package-snapshots-1',
-        displayName: 'Feature Specification Package',
-        packageType: 'FeatureSpecificationOutput',
-        members: [
-          {
-            artifactId: 'artifact-package-snapshots-2',
-            artifactVersionId: 'artifact-version-package-snapshots-2',
-            position: 0,
-          },
-        ],
-      }),
+      publishPackageSnapshotHandler(
+        ctx,
+        publishPackageSnapshotArgs({
+          processId: 'process-package-snapshots-1',
+          displayName: 'Feature Specification Package',
+          packageType: 'FeatureSpecificationOutput',
+          members: [
+            {
+              artifactId: 'artifact-package-snapshots-2',
+              artifactVersionId: 'artifact-version-package-snapshots-2',
+              position: 0,
+            },
+          ],
+        }),
+      ),
     ).resolves.toEqual(expect.any(String));
   });
 
@@ -335,18 +367,21 @@ describe('convex/packageSnapshots publishPackageSnapshot', () => {
     const { ctx } = createFakeConvexContext(buildPackageSnapshotSeed());
 
     await expect(
-      publishPackageSnapshotHandler(ctx, {
-        processId: 'process-package-snapshots-1',
-        displayName: 'Feature Specification Package',
-        packageType: 'FeatureSpecificationOutput',
-        members: [
-          {
-            artifactId: 'artifact-package-snapshots-4',
-            artifactVersionId: 'artifact-version-package-snapshots-4',
-            position: 0,
-          },
-        ],
-      }),
+      publishPackageSnapshotHandler(
+        ctx,
+        publishPackageSnapshotArgs({
+          processId: 'process-package-snapshots-1',
+          displayName: 'Feature Specification Package',
+          packageType: 'FeatureSpecificationOutput',
+          members: [
+            {
+              artifactId: 'artifact-package-snapshots-4',
+              artifactVersionId: 'artifact-version-package-snapshots-4',
+              position: 0,
+            },
+          ],
+        }),
+      ),
     ).rejects.toThrow(
       'Package snapshot member artifact must belong to the publishing process project.',
     );
@@ -356,44 +391,50 @@ describe('convex/packageSnapshots publishPackageSnapshot', () => {
     const { ctx } = createFakeConvexContext(buildPackageSnapshotSeed());
 
     await expect(
-      publishPackageSnapshotHandler(ctx, {
-        processId: 'process-package-snapshots-1',
-        displayName: 'Feature Specification Package',
-        packageType: 'FeatureSpecificationOutput',
-        members: [
-          {
-            artifactId: 'artifact-package-snapshots-3',
-            artifactVersionId: 'artifact-version-package-snapshots-3',
-            position: 0,
-          },
-        ],
-      }),
+      publishPackageSnapshotHandler(
+        ctx,
+        publishPackageSnapshotArgs({
+          processId: 'process-package-snapshots-1',
+          displayName: 'Feature Specification Package',
+          packageType: 'FeatureSpecificationOutput',
+          members: [
+            {
+              artifactId: 'artifact-package-snapshots-3',
+              artifactVersionId: 'artifact-version-package-snapshots-3',
+              position: 0,
+            },
+          ],
+        }),
+      ),
     ).resolves.toEqual(expect.any(String));
   });
 
-  it('rejects missing artifacts', async () => {
+  it('rejects package members omitted from the required allow-list', async () => {
     const { ctx } = createFakeConvexContext(buildPackageSnapshotSeed());
-    await ctx.db.patch('artifact-version-package-snapshots-1-current', {
-      artifactId: 'missing-artifact',
-    });
 
     await expect(
-      publishPackageSnapshotHandler(ctx, {
-        processId: 'process-package-snapshots-1',
-        displayName: 'Feature Specification Package',
-        packageType: 'FeatureSpecificationOutput',
-        members: [
-          {
-            artifactId: 'missing-artifact',
-            artifactVersionId: 'artifact-version-package-snapshots-1-current',
-            position: 0,
-          },
-        ],
-      }),
-    ).rejects.toThrow('Package snapshot member artifact not found.');
+      publishPackageSnapshotHandler(
+        ctx,
+        publishPackageSnapshotArgs({
+          processId: 'process-package-snapshots-1',
+          displayName: 'Feature Specification Package',
+          packageType: 'FeatureSpecificationOutput',
+          allowedArtifactVersionIds: ['artifact-version-package-snapshots-1-current'],
+          members: [
+            {
+              artifactId: 'artifact-package-snapshots-3',
+              artifactVersionId: 'artifact-version-package-snapshots-3',
+              position: 0,
+            },
+          ],
+        }),
+      ),
+    ).rejects.toThrow(
+      'Package snapshot member is not allowed in the current package-building context.',
+    );
   });
 
-  it('rejects duplicate member positions', async () => {
+  it('rejects direct internal callers that omit the required allow-list', async () => {
     const { ctx } = createFakeConvexContext(buildPackageSnapshotSeed());
 
     await expect(
@@ -407,31 +448,83 @@ describe('convex/packageSnapshots publishPackageSnapshot', () => {
             artifactVersionId: 'artifact-version-package-snapshots-1-current',
             position: 0,
           },
-          {
-            artifactId: 'artifact-package-snapshots-2',
-            artifactVersionId: 'artifact-version-package-snapshots-2',
-            position: 0,
-          },
         ],
-      }),
+      } as PublishPackageSnapshotHandlerArgs),
+    ).rejects.toThrow(
+      'Package snapshot member is not allowed in the current package-building context.',
+    );
+  });
+
+  it('rejects missing artifacts', async () => {
+    const { ctx } = createFakeConvexContext(buildPackageSnapshotSeed());
+    await ctx.db.patch('artifact-version-package-snapshots-1-current', {
+      artifactId: 'missing-artifact',
+    });
+
+    await expect(
+      publishPackageSnapshotHandler(
+        ctx,
+        publishPackageSnapshotArgs({
+          processId: 'process-package-snapshots-1',
+          displayName: 'Feature Specification Package',
+          packageType: 'FeatureSpecificationOutput',
+          members: [
+            {
+              artifactId: 'missing-artifact',
+              artifactVersionId: 'artifact-version-package-snapshots-1-current',
+              position: 0,
+            },
+          ],
+        }),
+      ),
+    ).rejects.toThrow('Package snapshot member artifact not found.');
+  });
+
+  it('rejects duplicate member positions', async () => {
+    const { ctx } = createFakeConvexContext(buildPackageSnapshotSeed());
+
+    await expect(
+      publishPackageSnapshotHandler(
+        ctx,
+        publishPackageSnapshotArgs({
+          processId: 'process-package-snapshots-1',
+          displayName: 'Feature Specification Package',
+          packageType: 'FeatureSpecificationOutput',
+          members: [
+            {
+              artifactId: 'artifact-package-snapshots-1',
+              artifactVersionId: 'artifact-version-package-snapshots-1-current',
+              position: 0,
+            },
+            {
+              artifactId: 'artifact-package-snapshots-2',
+              artifactVersionId: 'artifact-version-package-snapshots-2',
+              position: 0,
+            },
+          ],
+        }),
+      ),
     ).rejects.toThrow('Package snapshot member positions must be unique.');
   });
 
   it('derives member display names and version labels from durable rows without caller-supplied labels', async () => {
     const { ctx, db } = createFakeConvexContext(buildPackageSnapshotSeed());
 
-    const packageSnapshotId = await publishPackageSnapshotHandler(ctx, {
-      processId: 'process-package-snapshots-1',
-      displayName: 'Feature Specification Package',
-      packageType: 'FeatureSpecificationOutput',
-      members: [
-        {
-          artifactId: 'artifact-package-snapshots-1',
-          artifactVersionId: 'artifact-version-package-snapshots-1-current',
-          position: 0,
-        },
-      ],
-    });
+    const packageSnapshotId = await publishPackageSnapshotHandler(
+      ctx,
+      publishPackageSnapshotArgs({
+        processId: 'process-package-snapshots-1',
+        displayName: 'Feature Specification Package',
+        packageType: 'FeatureSpecificationOutput',
+        members: [
+          {
+            artifactId: 'artifact-package-snapshots-1',
+            artifactVersionId: 'artifact-version-package-snapshots-1-current',
+            position: 0,
+          },
+        ],
+      }),
+    );
 
     expect(db.list('packageSnapshotMembers')).toEqual([
       expect.objectContaining({
@@ -448,23 +541,26 @@ describe('convex/packageSnapshots publishPackageSnapshot', () => {
   it('writes package snapshots and row-derived member display names and version labels durably on the happy path', async () => {
     const { ctx, db } = createFakeConvexContext(buildPackageSnapshotSeed());
 
-    const packageSnapshotId = await publishPackageSnapshotHandler(ctx, {
-      processId: 'process-package-snapshots-1',
-      displayName: 'Feature Specification Package',
-      packageType: 'FeatureSpecificationOutput',
-      members: [
-        {
-          artifactId: 'artifact-package-snapshots-1',
-          artifactVersionId: 'artifact-version-package-snapshots-1-current',
-          position: 0,
-        },
-        {
-          artifactId: 'artifact-package-snapshots-2',
-          artifactVersionId: 'artifact-version-package-snapshots-2',
-          position: 1,
-        },
-      ],
-    });
+    const packageSnapshotId = await publishPackageSnapshotHandler(
+      ctx,
+      publishPackageSnapshotArgs({
+        processId: 'process-package-snapshots-1',
+        displayName: 'Feature Specification Package',
+        packageType: 'FeatureSpecificationOutput',
+        members: [
+          {
+            artifactId: 'artifact-package-snapshots-1',
+            artifactVersionId: 'artifact-version-package-snapshots-1-current',
+            position: 0,
+          },
+          {
+            artifactId: 'artifact-package-snapshots-2',
+            artifactVersionId: 'artifact-version-package-snapshots-2',
+            position: 1,
+          },
+        ],
+      }),
+    );
 
     await expect(
       getPackageSnapshotHandler(ctx, {

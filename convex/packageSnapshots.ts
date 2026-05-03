@@ -83,7 +83,7 @@ export const publishPackageSnapshot = internalMutation({
     displayName: v.string(),
     packageType: v.string(),
     members: v.array(publishPackageSnapshotMemberInputValidator),
-    allowedArtifactVersionIds: v.optional(v.array(v.id('artifactVersions'))),
+    allowedArtifactVersionIds: v.array(v.id('artifactVersions')),
   },
   handler: async (ctx, args) => {
     if (args.members.length === 0) {
@@ -96,8 +96,7 @@ export const publishPackageSnapshot = internalMutation({
       throw new Error('Process not found.');
     }
 
-    const allowedArtifactVersionIds =
-      args.allowedArtifactVersionIds === undefined ? null : new Set(args.allowedArtifactVersionIds);
+    const allowedArtifactVersionIds = new Set(args.allowedArtifactVersionIds);
     const seenPositions = new Set<number>();
     const validatedMembers: Array<{
       member: (typeof args.members)[number];
@@ -133,10 +132,7 @@ export const publishPackageSnapshot = internalMutation({
         throw new Error(PACKAGE_SNAPSHOT_ARTIFACT_PROJECT_MISMATCH_ERROR);
       }
 
-      if (
-        allowedArtifactVersionIds !== null &&
-        !allowedArtifactVersionIds.has(member.artifactVersionId)
-      ) {
+      if (!allowedArtifactVersionIds.has(member.artifactVersionId)) {
         throw new Error(PACKAGE_SNAPSHOT_MEMBER_NOT_ALLOWED_ERROR);
       }
 
