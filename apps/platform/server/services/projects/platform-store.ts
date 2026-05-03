@@ -18,6 +18,12 @@ import {
   type SourceAttachmentSummary,
 } from '../../../shared/contracts/index.js';
 import type { ArtifactCheckpointTarget } from '../processes/environment/checkpoint-types.js';
+import {
+  assertPackageMembersEligible,
+  listEligiblePackageArtifactVersionIds,
+  packageContextPayloadMatches,
+  resolvePackageContextMembers,
+} from '../review/package-publication-policy.service.js';
 
 export interface StoredPlatformUser {
   userId: string;
@@ -326,8 +332,6 @@ const PACKAGE_SNAPSHOT_ARTIFACT_VERSION_OWNERSHIP_ERROR =
 const PACKAGE_SNAPSHOT_ARTIFACT_NOT_FOUND_ERROR = 'Package snapshot member artifact not found.';
 const PACKAGE_SNAPSHOT_ARTIFACT_PROJECT_MISMATCH_ERROR =
   'Package snapshot member artifact must belong to the publishing process project.';
-const PACKAGE_SNAPSHOT_MEMBER_NOT_ALLOWED_ERROR =
-  'Package snapshot member is not allowed in the current package-building context.';
 
 type NodeCryptoModule = {
   createHash(algorithm: 'sha256'): {
@@ -704,6 +708,7 @@ const publishPackageSnapshotMutation = makeFunctionReference<
     displayName: string;
     packageType: string;
     members: PackageSnapshotMemberWriteInput[];
+    allowedArtifactVersionIds: string[];
   },
   string
 >('packageSnapshots:publishPackageSnapshot');
@@ -1546,9 +1551,26 @@ export class ConvexPlatformStore implements PlatformStore {
   }
 
   async publishPackageSnapshot(args: PackageSnapshotWriteInput): Promise<string> {
-    return this.client.mutation(publishPackageSnapshotMutation, args, {
-      skipQueue: true,
+    const allowedArtifactVersionIds = await listEligiblePackageArtifactVersionIds({
+      platformStore: this,
+      processId: args.processId,
     });
+
+    assertPackageMembersEligible({
+      members: args.members,
+      eligibleArtifactVersionIds: allowedArtifactVersionIds,
+    });
+
+    return this.client.mutation(
+      publishPackageSnapshotMutation,
+      {
+        ...args,
+        allowedArtifactVersionIds,
+      },
+      {
+        skipQueue: true,
+      },
+    );
   }
 
   async listProcessSideWorkItems(args: { processId: string }): Promise<SideWorkItem[]> {
@@ -1659,9 +1681,49 @@ export class ConvexPlatformStore implements PlatformStore {
     context: ProcessPackageContextRecord;
     members: ProcessPackageContextMemberRecord[];
   }> {
-    return this.client.mutation(upsertCurrentProcessPackageContextMutation, args, {
-      skipQueue: true,
+    const members = await resolvePackageContextMembers({
+      platformStore: this,
+      processId: args.processId,
+      basePackageSnapshotId: args.basePackageSnapshotId,
+      members: args.members,
     });
+    const existingContext = await this.getCurrentProcessPackageContext({
+      processId: args.processId,
+    });
+    const existingMembers =
+      existingContext === null
+        ? []
+        : await this.listProcessPackageContextMembers({
+            packageContextId: existingContext.packageContextId,
+          });
+
+    if (
+      existingContext !== null &&
+      packageContextPayloadMatches({
+        existingContext,
+        existingMembers,
+        displayName: args.displayName,
+        packageType: args.packageType,
+        basePackageSnapshotId: args.basePackageSnapshotId,
+        members,
+      })
+    ) {
+      return {
+        context: existingContext,
+        members: existingMembers,
+      };
+    }
+
+    return this.client.mutation(
+      upsertCurrentProcessPackageContextMutation,
+      {
+        ...args,
+        members,
+      },
+      {
+        skipQueue: true,
+      },
+    );
   }
 
   async clearCurrentProcessPackageContext(args: { processId: string }): Promise<void> {
@@ -2660,22 +2722,6 @@ export class InMemoryPlatformStore implements PlatformStore {
     return [...(this.packageContextMembersByContextId.get(args.packageContextId) ?? [])];
   }
 
-  private async listCurrentProcessPackageContextMembers(
-    processId: string,
-  ): Promise<ProcessPackageContextMemberRecord[]> {
-    const currentPackageContext = await this.getCurrentProcessPackageContext({
-      processId,
-    });
-
-    if (currentPackageContext === null) {
-      return [];
-    }
-
-    return this.listProcessPackageContextMembers({
-      packageContextId: currentPackageContext.packageContextId,
-    });
-  }
-
   private readArtifactVersions(artifactId: string): ArtifactVersionRecord[] {
     return [...(this.artifactVersionsByArtifactId.get(artifactId) ?? [])];
   }
@@ -2713,33 +2759,12 @@ export class InMemoryPlatformStore implements PlatformStore {
     context: ProcessPackageContextRecord;
     members: ProcessPackageContextMemberRecord[];
   }> {
-    let seedMembers = args.members;
-
-    if (args.basePackageSnapshotId !== null && args.members.length === 0) {
-      const snapshot = await this.getPackageSnapshot({
-        packageSnapshotId: args.basePackageSnapshotId,
-      });
-
-      if (snapshot === null) {
-        throw new Error('Base package snapshot not found.');
-      }
-
-      if (snapshot.processId !== args.processId) {
-        throw new Error('Base package snapshot does not belong to the requested process.');
-      }
-
-      seedMembers = (
-        await this.listPackageSnapshotMembers({
-          packageSnapshotId: args.basePackageSnapshotId,
-        })
-      ).map((member) => ({
-        position: member.position,
-        artifactId: member.artifactId,
-        artifactVersionId: member.artifactVersionId,
-        displayName: member.displayName,
-        versionLabel: member.versionLabel,
-      }));
-    }
+    const seedMembers = await resolvePackageContextMembers({
+      platformStore: this,
+      processId: args.processId,
+      basePackageSnapshotId: args.basePackageSnapshotId,
+      members: args.members,
+    });
     const existingContext = this.packageContextsByProcessId.get(args.processId) ?? null;
     const existingMembers =
       existingContext === null
@@ -2748,23 +2773,14 @@ export class InMemoryPlatformStore implements PlatformStore {
     const normalizedInputMembers = [...seedMembers].sort(
       (left, right) => left.position - right.position,
     );
-    const payloadMatchesExisting =
-      existingContext !== null &&
-      existingContext.displayName === args.displayName &&
-      existingContext.packageType === args.packageType &&
-      existingContext.basePackageSnapshotId === args.basePackageSnapshotId &&
-      existingMembers.length === normalizedInputMembers.length &&
-      existingMembers.every((member, index) => {
-        const candidate = normalizedInputMembers[index];
-        return (
-          candidate !== undefined &&
-          member.position === candidate.position &&
-          member.artifactId === candidate.artifactId &&
-          member.artifactVersionId === candidate.artifactVersionId &&
-          member.displayName === candidate.displayName &&
-          member.versionLabel === candidate.versionLabel
-        );
-      });
+    const payloadMatchesExisting = packageContextPayloadMatches({
+      existingContext,
+      existingMembers,
+      displayName: args.displayName,
+      packageType: args.packageType,
+      basePackageSnapshotId: args.basePackageSnapshotId,
+      members: seedMembers,
+    });
 
     if (payloadMatchesExisting && existingContext !== null) {
       return {
@@ -2825,38 +2841,18 @@ export class InMemoryPlatformStore implements PlatformStore {
     }
 
     const projectArtifacts = this.listArtifactsForProject(processRecord.projectId);
-    const currentArtifactIds =
-      this.currentMaterialRefsByProcessId.get(args.processId)?.artifactIds ?? [];
-    const currentPackageContextMembers = await this.listCurrentProcessPackageContextMembers(
-      args.processId,
-    );
+    const eligibleArtifactVersionIds = await listEligiblePackageArtifactVersionIds({
+      platformStore: this,
+      processId: args.processId,
+    });
     const artifactDisplayNames = new Map(
       projectArtifacts.map((artifact) => [artifact.artifactId, artifact.displayName] as const),
     );
-    const currentVersionIdsByArtifactId = new Map<string, string>();
-    const pinnedVersionIdsByArtifactId = new Map<string, Set<string>>();
     const seenPositions = new Set<number>();
     const existingSnapshots = this.packageSnapshotsByProcessId.get(args.processId) ?? [];
     const packageSnapshotId = `${args.processId}:package-${existingSnapshots.length + 1}`;
     const publishedAt = new Date().toISOString();
     const memberRecords: PackageSnapshotMemberRecord[] = [];
-
-    for (const artifactId of currentArtifactIds) {
-      const latestVersion = await this.getLatestArtifactVersion({
-        artifactId,
-      });
-
-      if (latestVersion !== null) {
-        currentVersionIdsByArtifactId.set(artifactId, latestVersion.versionId);
-      }
-    }
-
-    for (const member of currentPackageContextMembers) {
-      const artifactVersionIds =
-        pinnedVersionIdsByArtifactId.get(member.artifactId) ?? new Set<string>();
-      artifactVersionIds.add(member.artifactVersionId);
-      pinnedVersionIdsByArtifactId.set(member.artifactId, artifactVersionIds);
-    }
 
     for (const [index, member] of args.members.entries()) {
       if (!Number.isInteger(member.position) || member.position < 0) {
@@ -2894,14 +2890,10 @@ export class InMemoryPlatformStore implements PlatformStore {
         throw new Error(PACKAGE_SNAPSHOT_ARTIFACT_VERSION_OWNERSHIP_ERROR);
       }
 
-      const allowedByCurrentRefs =
-        currentVersionIdsByArtifactId.get(member.artifactId) === member.artifactVersionId;
-      const allowedByPinnedContext =
-        pinnedVersionIdsByArtifactId.get(member.artifactId)?.has(member.artifactVersionId) === true;
-
-      if (!allowedByCurrentRefs && !allowedByPinnedContext) {
-        throw new Error(PACKAGE_SNAPSHOT_MEMBER_NOT_ALLOWED_ERROR);
-      }
+      assertPackageMembersEligible({
+        members: [member],
+        eligibleArtifactVersionIds,
+      });
 
       memberRecords.push({
         memberId: `${packageSnapshotId}:member-${index + 1}`,

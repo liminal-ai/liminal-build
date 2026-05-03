@@ -352,7 +352,7 @@ describe('convex/packageSnapshots publishPackageSnapshot', () => {
     );
   });
 
-  it('rejects same-project package members outside the current package-building context', async () => {
+  it('persists same-project package members when the server has already accepted eligibility', async () => {
     const { ctx } = createFakeConvexContext(buildPackageSnapshotSeed());
 
     await expect(
@@ -368,9 +368,7 @@ describe('convex/packageSnapshots publishPackageSnapshot', () => {
           },
         ],
       }),
-    ).rejects.toThrow(
-      'Package snapshot member is not allowed in the current package-building context.',
-    );
+    ).resolves.toEqual(expect.any(String));
   });
 
   it('rejects missing artifacts', async () => {

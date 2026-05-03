@@ -1,6 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { listPackageSnapshotMembers } from './packageSnapshotMembers.js';
-import { publishPackageSnapshot } from './packageSnapshots.js';
 import { listProcessPackageContextMembers } from './processPackageContextMembers.js';
 import {
   clearCurrentProcessPackageContext,
@@ -80,33 +78,6 @@ const upsertCurrentProcessPackageContextHandler = getHandler<
 const clearCurrentProcessPackageContextHandler = getHandler<{ processId: string }, null>(
   clearCurrentProcessPackageContext,
 );
-
-const publishPackageSnapshotHandler = getHandler<
-  {
-    processId: string;
-    displayName: string;
-    packageType: string;
-    members: Array<{
-      artifactId: string;
-      artifactVersionId: string;
-      position: number;
-    }>;
-  },
-  string
->(publishPackageSnapshot);
-
-const listPackageSnapshotMembersHandler = getHandler<
-  { packageSnapshotId: string },
-  Array<{
-    memberId: string;
-    packageSnapshotId: string;
-    position: number;
-    artifactId: string;
-    artifactVersionId: string;
-    displayName: string;
-    versionLabel: string;
-  }>
->(listPackageSnapshotMembers);
 
 function buildProcessPackageContextSeed() {
   return {
@@ -363,7 +334,7 @@ describe('convex/processPackageContexts', () => {
     expect(db.list('processPackageContextMembers')).toEqual([]);
   });
 
-  it('auto-seeds a reopened package context from the published snapshot and keeps the earlier pinned version eligible', async () => {
+  it('stores only caller-provided package context members without snapshot seeding orchestration', async () => {
     const { ctx } = createFakeConvexContext(buildProcessPackageContextSeed());
 
     const reopenedContext = await upsertCurrentProcessPackageContextHandler(ctx, {
@@ -374,37 +345,6 @@ describe('convex/processPackageContexts', () => {
       members: [],
     });
 
-    expect(reopenedContext.members).toEqual([
-      expect.objectContaining({
-        artifactId: 'artifact-package-contexts-1',
-        artifactVersionId: 'artifact-version-package-contexts-1-older',
-        displayName: 'Technical Design',
-        versionLabel: 'design-v1',
-      }),
-    ]);
-
-    const packageSnapshotId = await publishPackageSnapshotHandler(ctx, {
-      processId: 'process-package-contexts-1',
-      displayName: 'Republished Implementation Package',
-      packageType: 'FeatureImplementationOutput',
-      members: [
-        {
-          artifactId: 'artifact-package-contexts-1',
-          artifactVersionId: 'artifact-version-package-contexts-1-older',
-          position: 0,
-        },
-      ],
-    });
-    const packageMembers = await listPackageSnapshotMembersHandler(ctx, {
-      packageSnapshotId,
-    });
-
-    expect(packageMembers).toEqual([
-      expect.objectContaining({
-        artifactId: 'artifact-package-contexts-1',
-        artifactVersionId: 'artifact-version-package-contexts-1-older',
-        versionLabel: 'design-v1',
-      }),
-    ]);
+    expect(reopenedContext.members).toEqual([]);
   });
 });

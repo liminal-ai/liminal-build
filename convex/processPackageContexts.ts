@@ -79,51 +79,6 @@ async function listMembersForContext(
     .take(MAX_PROCESS_PACKAGE_CONTEXT_MEMBERS);
 }
 
-async function resolveSeedMembersFromSnapshot(
-  ctx: MutationCtx,
-  args: {
-    processId: string;
-    basePackageSnapshotId: Id<'packageSnapshots'> | null;
-    members: Array<{
-      position: number;
-      artifactId: Id<'artifacts'>;
-      artifactVersionId: Id<'artifactVersions'>;
-      displayName: string;
-      versionLabel: string;
-    }>;
-  },
-) {
-  if (args.basePackageSnapshotId === null || args.members.length > 0) {
-    return args.members;
-  }
-
-  const snapshot = await ctx.db.get(args.basePackageSnapshotId);
-
-  if (snapshot === null) {
-    throw new Error('Base package snapshot not found.');
-  }
-
-  if (snapshot.processId !== (args.processId as Id<'processes'>)) {
-    throw new Error('Base package snapshot does not belong to the requested process.');
-  }
-
-  const snapshotMembers = await ctx.db
-    .query('packageSnapshotMembers')
-    .withIndex('by_packageSnapshotId_position', (indexQuery) =>
-      indexQuery.eq('packageSnapshotId', args.basePackageSnapshotId as Id<'packageSnapshots'>),
-    )
-    .order('asc')
-    .take(MAX_PROCESS_PACKAGE_CONTEXT_MEMBERS);
-
-  return snapshotMembers.map((member) => ({
-    position: member.position,
-    artifactId: member.artifactId,
-    artifactVersionId: member.artifactVersionId,
-    displayName: member.displayName,
-    versionLabel: member.versionLabel,
-  }));
-}
-
 export const getCurrentProcessPackageContext = internalQuery({
   args: {
     processId: v.string(),
@@ -166,8 +121,7 @@ export const upsertCurrentProcessPackageContext = internalMutation({
     members: v.array(upsertProcessPackageContextMemberInputValidator),
   },
   handler: async (ctx, args) => {
-    const seedMembers = await resolveSeedMembersFromSnapshot(ctx, args);
-    const normalizedMembers = [...seedMembers].sort(
+    const normalizedMembers = [...args.members].sort(
       (left, right) => left.position - right.position,
     );
     const seenPositions = new Set<number>();
@@ -186,43 +140,6 @@ export const upsertCurrentProcessPackageContext = internalMutation({
 
     const contexts = await listContextsForProcess(ctx, args.processId);
     const [canonicalContext, ...duplicateContexts] = [...contexts].sort(compareCanonicalContexts);
-
-    if (canonicalContext !== undefined) {
-      const existingMembers = await listMembersForContext(ctx, canonicalContext._id);
-      const payloadMatchesExisting =
-        canonicalContext.displayName === args.displayName &&
-        canonicalContext.packageType === args.packageType &&
-        canonicalContext.basePackageSnapshotId === args.basePackageSnapshotId &&
-        existingMembers.length === normalizedMembers.length &&
-        existingMembers.every((member, index) => {
-          const candidate = normalizedMembers[index];
-
-          return (
-            candidate !== undefined &&
-            member.position === candidate.position &&
-            member.artifactId === candidate.artifactId &&
-            member.artifactVersionId === candidate.artifactVersionId &&
-            member.displayName === candidate.displayName &&
-            member.versionLabel === candidate.versionLabel
-          );
-        });
-
-      if (payloadMatchesExisting && duplicateContexts.length === 0) {
-        return {
-          context: toProcessPackageContextRecord(canonicalContext),
-          members: existingMembers.map((member) => ({
-            memberId: member._id,
-            packageContextId: member.packageContextId,
-            position: member.position,
-            artifactId: member.artifactId,
-            artifactVersionId: member.artifactVersionId,
-            displayName: member.displayName,
-            versionLabel: member.versionLabel,
-            pinnedAt: member.pinnedAt,
-          })),
-        };
-      }
-    }
 
     const updatedAt = new Date().toISOString();
     const packageContextId =
