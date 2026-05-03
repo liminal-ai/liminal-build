@@ -11,8 +11,8 @@ vi.mock('../../../apps/platform/client/features/review/mermaid-runtime.js', () =
   renderMermaid: renderMermaidMock,
 }));
 
-import { createAppStore } from '../../../apps/platform/client/app/store.js';
 import { createShellApp } from '../../../apps/platform/client/app/shell-app.js';
+import { createAppStore } from '../../../apps/platform/client/app/store.js';
 import { renderArtifactReviewPanel } from '../../../apps/platform/client/features/review/artifact-review-panel.js';
 import { renderExportTrigger } from '../../../apps/platform/client/features/review/export-trigger.js';
 import { renderMarkdownBody } from '../../../apps/platform/client/features/review/markdown-body.js';
@@ -255,7 +255,7 @@ describe('review workspace accessibility', () => {
     const firstMember = packageMemberSchema.parse({
       memberId: 'member-ready-1',
       artifactId: 'artifact-ready-1',
-      versionId: 'artifact-ready-1-version-1',
+      artifactVersionId: 'artifact-ready-1-version-1',
       position: 0,
       displayName: 'Ready member 1',
       versionLabel: 'v1',
@@ -264,7 +264,7 @@ describe('review workspace accessibility', () => {
     const selectedUnavailableMember = packageMemberSchema.parse({
       memberId: 'member-unavailable-2',
       artifactId: 'artifact-unavailable-2',
-      versionId: 'artifact-unavailable-2-version-1',
+      artifactVersionId: 'artifact-unavailable-2-version-1',
       position: 1,
       displayName: 'Unavailable member 2',
       versionLabel: 'v1',
@@ -273,7 +273,7 @@ describe('review workspace accessibility', () => {
     const thirdMember = packageMemberSchema.parse({
       memberId: 'member-ready-3',
       artifactId: 'artifact-ready-3',
-      versionId: 'artifact-ready-3-version-1',
+      artifactVersionId: 'artifact-ready-3-version-1',
       position: 2,
       displayName: 'Ready member 3',
       versionLabel: 'v1',

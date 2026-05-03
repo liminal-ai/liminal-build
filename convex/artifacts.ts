@@ -21,7 +21,6 @@ import { assertValidApiKey } from './serviceApiKey.js';
 
 export const artifactsTableFields = {
   projectId: v.string(),
-  processId: v.union(v.string(), v.null()),
   displayName: v.string(),
   createdAt: v.string(),
 };
@@ -57,19 +56,11 @@ export const listProjectArtifactSummaries = query({
     const summaries = await Promise.all(
       artifacts.map(async (artifact) => {
         const latestVersion = await getLatestArtifactVersionRow(ctx, artifact._id);
-        const attachedProcess =
-          artifact.processId === null
-            ? null
-            : await ctx.db.get(artifact.processId as Id<'processes'>);
 
         return {
           artifactId: artifact._id,
           displayName: artifact.displayName,
           currentVersionLabel: latestVersion?.versionLabel ?? null,
-          attachmentScope:
-            artifact.processId === null ? ('project' as const) : ('process' as const),
-          processId: artifact.processId,
-          processDisplayLabel: attachedProcess?.displayLabel ?? null,
           updatedAt: latestVersion?.createdAt ?? artifact.createdAt,
         };
       }),
@@ -401,8 +392,6 @@ async function upsertArtifactCheckpoint(
   },
 ): Promise<Id<'artifacts'>> {
   const nextFields = {
-    projectId: args.processRecord.projectId,
-    processId: args.processRecord._id,
     displayName: args.targetLabel,
   };
   const versionLabel = buildCheckpointVersionLabel(args.producedAt);
@@ -412,17 +401,21 @@ async function upsertArtifactCheckpoint(
   if (args.artifactId !== undefined) {
     const existingArtifact = await ctx.db.get(args.artifactId as Id<'artifacts'>);
 
-    if (existingArtifact !== null && existingArtifact.projectId === args.processRecord.projectId) {
-      await ctx.db.patch(existingArtifact._id, nextFields);
-      artifactId = existingArtifact._id;
-    } else {
-      artifactId = await ctx.db.insert('artifacts', {
-        ...nextFields,
-        createdAt: args.producedAt,
-      });
+    if (existingArtifact === null) {
+      throw new Error(`Artifact checkpoint target '${args.artifactId}' was not found.`);
     }
+
+    if (existingArtifact.projectId !== args.processRecord.projectId) {
+      throw new Error(
+        `Artifact checkpoint target '${args.artifactId}' does not belong to this process project.`,
+      );
+    }
+
+    await ctx.db.patch(existingArtifact._id, nextFields);
+    artifactId = existingArtifact._id;
   } else {
     artifactId = await ctx.db.insert('artifacts', {
+      projectId: args.processRecord.projectId,
       ...nextFields,
       createdAt: args.producedAt,
     });

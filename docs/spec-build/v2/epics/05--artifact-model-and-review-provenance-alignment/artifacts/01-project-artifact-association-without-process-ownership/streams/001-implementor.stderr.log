@@ -1,0 +1,234 @@
+Reading additional input from stdin...
+2026-04-26T21:53:35.908466Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /Users/leemoore/code/liminal-build-wt-1/apps/platform/server/services/projects/platform-store.ts:
+  async listProcessReviewTargets(args: {
+    projectId: string;
+    processId: string;
+  }): Promise<ReviewTargetSummary[]> {
+    const [artifacts, producedArtifactIds, packageSnapshots] = await Promise.all([
+      this.listProjectArtifacts({
+      this.listProjectArtifacts({
+        projectId: args.projectId,
+      }),
+      this.client.query(listArtifactsByProducingProcessQuery, {
+        processId: args.processId,
+      }),
+      this.client.query(listPackageSnapshotsForProcessQuery, {
+        processId: args.processId,
+      }),
+    ]);
+    const reviewableArtifactIds = new Set(producedArtifactIds);
+    const artifactCandidates = artifacts.filter((artifact) =>
+      reviewableArtifactIds.has(artifact.artifactId),
+    );
+    const artifactTargets = (
+      await Promise.all(
+        artifactCandidates.map(async (artifact) => {
+          const latestVersion = await this.getLatestArtifactVersion({
+            artifactId: artifact.artifactId,
+          });
+
+          if (latestVersion === null) {
+            return null;
+          }
+
+          return {
+            publishedAt: latestVersion.createdAt,
+            targetKind: 'artifact' as const,
+            targetId: artifact.artifactId,
+            displayName: artifact.displayName,
+          };
+        }),
+      )
+    ).filter((target): target is NonNullable<typeof target> => target !== null);
+    const packageMembers = await Promise.all(
+      packageSnapshots.map((snapshot) =>
+        this.client.query(listPackageSnapshotMembersQuery, {
+          packageSnapshotId: snapshot.packageSnapshotId,
+        }),
+      ),
+    );
+    const packageTargets = packageSnapshots
+      .filter((_, index) => (packageMembers[index]?.length ?? 0) > 0)
+      .map((snapshot) => ({
+        publishedAt: snapshot.publishedAt,
+        targetKind: 'package' as const,
+        targetId: snapshot.packageSnapshotId,
+        displayName: snapshot.displayName,
+      }));
+    const orderedTargets = [...artifactTargets, ...packageTargets].sort((left, right) => {
+      const publishedAtComparison = right.publishedAt.localeCompare(left.publishedAt);
+
+      if (publishedAtComparison !== 0) {
+        return publishedAtComparison;
+      }
+
+      if (left.targetKind === right.targetKind) {
+        return left.displayName.localeCompare(right.displayName);
+      }
+
+      return left.targetKind === 'artifact' ? -1 : 1;
+    });
+
+    return orderedTargets.map((target, index) =>
+      target.targetKind === 'artifact'
+        ? buildArtifactReviewTargetSummary(
+            {
+              artifactId: target.targetId,
+              displayName: target.displayName,
+            },
+            index,
+          )
+        : buildPackageReviewTargetSummary({
+            packageId: target.targetId,
+            displayName: target.displayName,
+            position: index,
+          }),
+    );
+  }
+
+  async getProcessReviewPackage(args: {
+    processId: string;
+    packageId: string;
+    memberId?: string;
+  }): Promise<PackageReviewTarget | null> {
+    const snapshot = await this.client.query(getPackageSnapshotQuery, {
+      packageSnapshotId: args.packageId,
+    });
+
+    if (snapshot === null || snapshot.processId !== args.processId) {
+      return null;
+    }
+
+    const members = await this.client.query(listPackageSnapshotMembersQuery, {
+      packageSnapshotId: snapshot.packageSnapshotId,
+    });
+
+    if (members.length === 0) {
+      return null;
+    }
+
+    const memberStates = await Promise.all(
+      members.map(async (member) => {
+        const pinnedVersion = await this.client.query(getArtifactVersionQuery, {
+          versionId: member.artifactVersionId,
+        });
+        const displayName = member.displayName;
+        const versionLabel = member.versionLabel;
+        const producingProcess =
+          pinnedVersion === null
+            ? null
+            : await this.client.query(getProcessRecordQuery, {
+                processId: pinnedVersion.createdByProcessId,
+              });
+
+        if (pinnedVersion === null) {
+          return {
+            member: {
+              memberId: member.memberId,
+              position: member.position,
+              artifactId: member.artifactId,
+              displayName,
+              artifactVersionId: member.artifactVersionId,
+              versionLabel,
+              status: 'unavailable' as const,
+            },
+            review: null,
+          };
+        }
+
+        const currentVersion = await this.client.query(getLatestArtifactVersionQuery, {
+          artifactId: member.artifactId,
+        });
+        const currentVersionId = currentVersion?.versionId ?? null;
+        const currentVersionLabel = currentVersion?.versionLabel ?? null;
+        const contentUrl = await this.client.query(getArtifactVersionContentUrlQuery, {
+          versionId: pinnedVersion.versionId,
+        });
+        const selectedVersion = await this.buildArtifactVersionDetail({
+          version: pinnedVersion,
+          contentUrl,
+          producedByProcessDisplayLabel: producingProcess?.displayLabel ?? null,
+        });
+
+        return {
+          member: {
+            memberId: member.memberId,
+            position: member.position,
+            artifactId: member.artifactId,
+            displayName,
+            artifactVersionId: member.artifactVersionId,
+            versionLabel,
+            status: 'ready' as const,
+          },
+          review: artifactReviewTargetSchema.parse({
+            artifactId: member.artifactId,
+            displayName,
+            currentVersionId,
+            currentVersionLabel,
+            selectedVersionId: pinnedVersion.versionId,
+            versions: [
+              {
+                versionId: pinnedVersion.versionId,
+                versionLabel,
+                isCurrent: currentVersionId === pinnedVersion.versionId,
+                createdAt: pinnedVersion.createdAt,
+                producedByProcessId: pinnedVersion.createdByProcessId,
+                producedByProcessDisplayLabel: producingProcess?.displayLabel ?? null,
+              },
+            ],
+            selectedVersion,
+          }),
+        };
+      }),
+    );
+
+    const selectedReadyMember =
+      (args.memberId === undefined
+        ? memberStates.find((entry) => entry.member.status === 'ready')
+        : memberStates.find(
+            (entry) => entry.member.memberId === args.memberId && entry.member.status === 'ready',
+          )) ?? null;
+    const selectedUnavailableMember =
+      args.memberId === undefined
+        ? null
+        : memberStates.find(
+            (entry) =>
+              entry.member.memberId === args.memberId && entry.member.status === 'unavailable',
+          ) ?? null;
+
+    if (selectedReadyMember === null && selectedUnavailableMember === null) {
+      return null;
+    }
+
+    const selectedMemberId =
+      selectedReadyMember?.member.memberId ?? selectedUnavailableMember?.member.memberId ?? null;
+
+    return packageReviewTargetSchema.parse({
+      packageId: snapshot.packageSnapshotId,
+      displayName: snapshot.displayName,
+      packageType: snapshot.packageType,
+      members: memberStates
+        .map((entry) => entry.member)
+        .sort((left, right) => left.position - right.position),
+      selectedMemberId,
+      selectedMember:
+        selectedReadyMember === null
+          ? null
+          : {
+              memberId: selectedReadyMember.member.memberId,
+              artifactId: selectedReadyMember.member.artifactId,
+              displayName: selectedReadyMember.member.displayName,
+              artifactVersionId: selectedReadyMember.member.artifactVersionId,
+              versionLabel: selectedReadyMember.member.versionLabel,
+              status: 'ready',
+              artifact: selectedReadyMember.review,
+            },
+      exportability: {
+        isExportable: selectedUnavailableMember === null,
+        disabledReason:
+          selectedUnavailableMember === null
+            ? null
+            : 'One or more pinned artifact versions are unavailable for export.',
+      },
+    });
+  }

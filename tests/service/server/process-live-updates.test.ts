@@ -95,9 +95,6 @@ function buildPopulatedStore() {
     displayName: readyProcessMaterialsFixture.currentArtifacts[0]?.displayName ?? 'Artifact',
     currentVersionLabel:
       readyProcessMaterialsFixture.currentArtifacts[0]?.currentVersionLabel ?? null,
-    attachmentScope: 'process' as const,
-    processId: waitingProcessSummary.processId,
-    processDisplayLabel: waitingProcessSummary.displayLabel,
     updatedAt:
       readyProcessMaterialsFixture.currentArtifacts[0]?.updatedAt ??
       waitingProcessSummary.updatedAt,
@@ -136,6 +133,20 @@ function buildPopulatedStore() {
     },
     artifactsByProjectId: {
       [projectSummary.projectId]: [processArtifact],
+    },
+    artifactVersionsByArtifactId: {
+      [processArtifact.artifactId]: [
+        {
+          versionId: 'artifact-version-process-live-001',
+          artifactId: processArtifact.artifactId,
+          versionLabel: processArtifact.currentVersionLabel ?? 'draft-3',
+          contentStorageId: 'storage-artifact-process-live-001',
+          contentKind: 'markdown',
+          bytes: 32,
+          createdAt: processArtifact.updatedAt,
+          createdByProcessId: waitingProcessSummary.processId,
+        },
+      ],
     },
     sourceAttachmentsByProjectId: {
       [projectSummary.projectId]: [processSource],

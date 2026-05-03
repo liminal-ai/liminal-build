@@ -26,6 +26,7 @@ export const getReviewWorkspaceRouteSchema = {
     401: requestErrorSchema,
     403: requestErrorSchema,
     404: requestErrorSchema,
+    409: requestErrorSchema,
   },
 } as const;
 
@@ -41,6 +42,7 @@ export const getReviewArtifactRouteSchema = {
     401: requestErrorSchema,
     403: requestErrorSchema,
     404: requestErrorSchema,
+    409: requestErrorSchema,
   },
 } as const;
 
@@ -56,6 +58,7 @@ export const getReviewPackageRouteSchema = {
     401: requestErrorSchema,
     403: requestErrorSchema,
     404: requestErrorSchema,
+    409: requestErrorSchema,
   },
 } as const;
 

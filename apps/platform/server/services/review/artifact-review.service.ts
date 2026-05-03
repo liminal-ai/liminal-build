@@ -5,10 +5,27 @@ import type {
   ReviewTargetError,
 } from '../../../shared/contracts/index.js';
 import { artifactReviewTargetSchema, reviewTargetSchema } from '../../../shared/contracts/index.js';
-import type { MarkdownRendererService } from '../rendering/markdown-renderer.service.js';
+import { AppError } from '../../errors/app-error.js';
+import { artifactVersionNotFoundErrorCode } from '../../errors/codes.js';
 import type { ArtifactVersionRecord, PlatformStore } from '../projects/platform-store.js';
+import type { MarkdownRendererService } from '../rendering/markdown-renderer.service.js';
+import {
+  DefaultReviewContextService,
+  type ReviewContextService,
+} from './review-context.service.js';
 
 export const ARTIFACT_CONTENT_FETCH_TIMEOUT_MS = 10_000;
+
+function buildArtifactVersionNotFoundError(args: {
+  artifactId: string;
+  versionId: string;
+}): AppError {
+  return new AppError({
+    code: artifactVersionNotFoundErrorCode,
+    message: `Artifact version ${args.versionId} is unavailable for artifact ${args.artifactId}.`,
+    statusCode: 404,
+  });
+}
 
 type ReviewLogger = {
   info(fields: Record<string, unknown>, message?: string): void;
@@ -28,6 +45,11 @@ export interface ArtifactReviewService {
     artifactId: string;
     versionId?: string;
   }): Promise<ArtifactReviewTarget | null>;
+  getArtifactReviewByVersion(args: {
+    projectId: string;
+    artifactId: string;
+    versionId: string;
+  }): Promise<ArtifactReviewTarget | null>;
   getArtifactTarget(args: {
     projectId: string;
     processId: string;
@@ -37,11 +59,17 @@ export interface ArtifactReviewService {
 }
 
 export class DefaultArtifactReviewService implements ArtifactReviewService {
+  private readonly reviewContextService: ReviewContextService;
+
   constructor(
     private readonly platformStore: PlatformStore,
     private readonly markdownRenderer: MarkdownRendererService,
     private readonly logger?: ReviewLogger,
-  ) {}
+    reviewContextService?: ReviewContextService,
+  ) {
+    this.reviewContextService =
+      reviewContextService ?? new DefaultReviewContextService(platformStore);
+  }
 
   async getArtifactReview(args: {
     projectId: string;
@@ -74,26 +102,68 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
     });
   }
 
-  private async readArtifactReviewState(args: {
+  async getArtifactReviewByVersion(args: {
     projectId: string;
-    processId: string;
     artifactId: string;
-    versionId?: string;
-  }): Promise<ArtifactReviewState | null> {
-    const [artifacts, versionRecords] = await Promise.all([
+    versionId: string;
+  }): Promise<ArtifactReviewTarget | null> {
+    const state = await this.readArtifactReviewState(
+      {
+        projectId: args.projectId,
+        processId: '',
+        artifactId: args.artifactId,
+        versionId: args.versionId,
+      },
+      {
+        skipProcessContextCheck: true,
+      },
+    );
+
+    return state?.artifact ?? null;
+  }
+
+  private async readArtifactReviewState(
+    args: {
+      projectId: string;
+      processId: string;
+      artifactId: string;
+      versionId?: string;
+    },
+    options: {
+      skipProcessContextCheck?: boolean;
+    } = {},
+  ): Promise<ArtifactReviewState | null> {
+    const [artifacts, versionRecords, processCanReviewArtifact] = await Promise.all([
       this.platformStore.listProjectArtifacts({
         projectId: args.projectId,
       }),
       this.platformStore.listArtifactVersions({
         artifactId: args.artifactId,
       }),
+      options.skipProcessContextCheck
+        ? Promise.resolve(true)
+        : this.reviewContextService.canReviewArtifact({
+            processId: args.processId,
+            artifactId: args.artifactId,
+          }),
     ]);
 
     const artifact = artifacts.find((candidate) => candidate.artifactId === args.artifactId);
 
-    if (artifact === undefined || artifact.processId !== args.processId) {
+    if (artifact === undefined || !processCanReviewArtifact) {
       return null;
     }
+
+    const processIds = Array.from(
+      new Set(versionRecords.map((version) => version.createdByProcessId)),
+    );
+    const processRecords =
+      (await this.platformStore.listProcessesByIds?.({
+        processIds,
+      })) ?? [];
+    const processDisplayLabelsById = new Map(
+      processRecords.map((processRecord) => [processRecord.processId, processRecord.displayLabel]),
+    );
 
     const currentVersion = versionRecords[0];
     const selectedVersionRecord =
@@ -102,7 +172,10 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
         : versionRecords.find((candidate) => candidate.versionId === args.versionId);
 
     if (args.versionId !== undefined && selectedVersionRecord === undefined) {
-      return null;
+      throw buildArtifactVersionNotFoundError({
+        artifactId: args.artifactId,
+        versionId: args.versionId,
+      });
     }
 
     const versions = versionRecords.map((version, index) => ({
@@ -110,6 +183,9 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
       versionLabel: version.versionLabel,
       isCurrent: index === 0,
       createdAt: version.createdAt,
+      producedByProcessId: version.createdByProcessId,
+      producedByProcessDisplayLabel:
+        processDisplayLabelsById.get(version.createdByProcessId) ?? null,
     }));
 
     const artifactReview = artifactReviewTargetSchema.parse({
@@ -122,7 +198,10 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
       selectedVersion:
         selectedVersionRecord === undefined
           ? undefined
-          : await this.buildArtifactVersionDetail(selectedVersionRecord),
+          : await this.buildArtifactVersionDetail(
+              selectedVersionRecord,
+              processDisplayLabelsById.get(selectedVersionRecord.createdByProcessId) ?? null,
+            ),
     });
 
     if (selectedVersionRecord !== undefined) {
@@ -165,6 +244,7 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
 
   private async buildArtifactVersionDetail(
     version: ArtifactVersionRecord,
+    producedByProcessDisplayLabel: string | null,
   ): Promise<ArtifactVersionDetail> {
     if (version.contentKind === 'unsupported') {
       return {
@@ -172,6 +252,8 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
         versionLabel: version.versionLabel,
         contentKind: 'unsupported',
         createdAt: version.createdAt,
+        producedByProcessId: version.createdByProcessId,
+        producedByProcessDisplayLabel,
       };
     }
 
@@ -182,6 +264,7 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
     if (contentUrl === null) {
       return this.buildArtifactVersionError(
         version,
+        producedByProcessDisplayLabel,
         'This artifact version could not be loaded for review.',
         'missing_content_url',
       );
@@ -197,6 +280,7 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
       if (!response.ok) {
         return this.buildArtifactVersionError(
           version,
+          producedByProcessDisplayLabel,
           'This artifact version could not be loaded for review.',
           `http_${response.status}`,
         );
@@ -210,6 +294,7 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
       ) {
         return this.buildArtifactVersionError(
           version,
+          producedByProcessDisplayLabel,
           'Artifact version loading timed out before review content became available.',
           'timeout',
         );
@@ -217,6 +302,7 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
 
       return this.buildArtifactVersionError(
         version,
+        producedByProcessDisplayLabel,
         'This artifact version could not be loaded for review.',
         'fetch_failed',
       );
@@ -243,11 +329,14 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
             bodyError: rendered.bodyError,
           }),
       createdAt: version.createdAt,
+      producedByProcessId: version.createdByProcessId,
+      producedByProcessDisplayLabel,
     };
   }
 
   private buildArtifactVersionError(
     version: ArtifactVersionRecord,
+    producedByProcessDisplayLabel: string | null,
     message: string,
     reason = 'render_failed',
   ): ArtifactVersionDetail {
@@ -272,6 +361,8 @@ export class DefaultArtifactReviewService implements ArtifactReviewService {
         message,
       },
       createdAt: version.createdAt,
+      producedByProcessId: version.createdByProcessId,
+      producedByProcessDisplayLabel,
     };
   }
 }

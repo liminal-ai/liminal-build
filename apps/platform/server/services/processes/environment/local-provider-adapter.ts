@@ -496,16 +496,17 @@ async function validateCandidateRefs(args: {
   }
 
   for (const candidate of args.artifactCandidates) {
+    const candidateLabel = candidate.artifactId ?? candidate.displayName ?? '<new artifact>';
     const resolved = normalize(candidate.contentsRef);
     if (resolved === null || !isWithinWorkingTree(resolved)) {
       return {
         ok: false,
-        reason: `artifactCheckpointCandidate '${candidate.artifactId}' contentsRef '${candidate.contentsRef}' is outside the working tree.`,
+        reason: `artifactCheckpointCandidate '${candidateLabel}' contentsRef '${candidate.contentsRef}' is outside the working tree.`,
       };
     }
     const exists = await assertExistingFile(
       resolved,
-      `artifactCheckpointCandidate '${candidate.artifactId}' contentsRef '${candidate.contentsRef}'`,
+      `artifactCheckpointCandidate '${candidateLabel}' contentsRef '${candidate.contentsRef}'`,
     );
     if (!exists.ok) {
       return exists;

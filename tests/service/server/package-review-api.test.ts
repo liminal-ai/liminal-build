@@ -15,6 +15,7 @@ import {
   projectSummarySchema,
 } from '../../../apps/platform/shared/contracts/index.js';
 import { buildApp } from '../../utils/build-app.js';
+import { buildPackageSnapshotSeed } from '../../utils/package-snapshot-seed.js';
 
 function createTestAuthSessionService(resolution: SessionResolution) {
   class TestAuthSessionService extends AuthSessionService {
@@ -41,7 +42,7 @@ const projectSummary = projectSummarySchema.parse({
   name: 'Artifact Review',
   ownerDisplayName: 'Lee Moore',
   role: 'owner',
-  processCount: 1,
+  processCount: 2,
   artifactCount: 2,
   sourceAttachmentCount: 0,
   lastUpdatedAt: '2026-04-23T12:00:00.000Z',
@@ -59,12 +60,24 @@ const processSummary = processSummarySchema.parse({
   updatedAt: '2026-04-23T12:00:00.000Z',
 });
 
+const upstreamProcessSummary = processSummarySchema.parse({
+  processId: 'process-package-review-002',
+  displayLabel: 'Feature Implementation #1',
+  processType: 'FeatureImplementation',
+  status: 'completed',
+  phaseLabel: 'Completed',
+  nextActionLabel: 'Review the latest output',
+  availableActions: ['review'],
+  hasEnvironment: false,
+  updatedAt: '2026-04-23T12:03:00.000Z',
+});
+
 const olderReadyMember = packageMemberSchema.parse({
   memberId: 'package-member-001',
   position: 0,
   artifactId: 'artifact-001',
   displayName: 'Feature Specification',
-  versionId: 'artifact-version-001',
+  artifactVersionId: 'artifact-version-001',
   versionLabel: 'spec-v1',
   status: 'ready',
 });
@@ -74,7 +87,7 @@ const newerReadyMember = packageMemberSchema.parse({
   position: 1,
   artifactId: 'artifact-002',
   displayName: 'Implementation Notes',
-  versionId: 'artifact-version-002',
+  artifactVersionId: 'artifact-version-002',
   versionLabel: 'notes-v1',
   status: 'ready',
 });
@@ -84,7 +97,7 @@ const unavailableFirstMember = packageMemberSchema.parse({
   position: 0,
   artifactId: 'artifact-003',
   displayName: 'Architecture Diagram',
-  versionId: 'artifact-version-missing',
+  artifactVersionId: 'artifact-version-missing',
   versionLabel: 'diagram-v1',
   status: 'unavailable',
 });
@@ -102,15 +115,17 @@ function buildBasePackageReviewTarget() {
       artifact: artifactReviewTargetSchema.parse({
         artifactId: olderReadyMember.artifactId,
         displayName: olderReadyMember.displayName,
-        currentVersionId: olderReadyMember.versionId,
+        currentVersionId: olderReadyMember.artifactVersionId,
         currentVersionLabel: olderReadyMember.versionLabel,
-        selectedVersionId: olderReadyMember.versionId,
+        selectedVersionId: olderReadyMember.artifactVersionId,
         versions: [
           {
-            versionId: olderReadyMember.versionId,
+            versionId: olderReadyMember.artifactVersionId,
             versionLabel: olderReadyMember.versionLabel,
             isCurrent: true,
             createdAt: '2026-04-23T12:01:00.000Z',
+            producedByProcessId: processSummary.processId,
+            producedByProcessDisplayLabel: processSummary.displayLabel,
           },
         ],
       }),
@@ -122,6 +137,8 @@ function buildBasePackageReviewTarget() {
 }
 
 function buildStore(reviewPackages = [buildBasePackageReviewTarget()]) {
+  const packageSnapshotSeed = buildPackageSnapshotSeed(processSummary.processId, reviewPackages);
+
   return new InMemoryPlatformStore({
     accessibleProjectsByUserId: {
       'user:workos-user-1': [projectSummary],
@@ -133,7 +150,7 @@ function buildStore(reviewPackages = [buildBasePackageReviewTarget()]) {
       },
     },
     processesByProjectId: {
-      [projectSummary.projectId]: [processSummary],
+      [projectSummary.projectId]: [processSummary, upstreamProcessSummary],
     },
     artifactsByProjectId: {
       [projectSummary.projectId]: [
@@ -141,18 +158,12 @@ function buildStore(reviewPackages = [buildBasePackageReviewTarget()]) {
           artifactId: 'artifact-001',
           displayName: 'Feature Specification',
           currentVersionLabel: 'spec-v2',
-          attachmentScope: 'process',
-          processId: processSummary.processId,
-          processDisplayLabel: processSummary.displayLabel,
           updatedAt: '2026-04-23T12:05:00.000Z',
         },
         {
           artifactId: 'artifact-002',
           displayName: 'Implementation Notes',
           currentVersionLabel: 'notes-v1',
-          attachmentScope: 'process',
-          processId: processSummary.processId,
-          processDisplayLabel: processSummary.displayLabel,
           updatedAt: '2026-04-23T12:03:00.000Z',
         },
       ],
@@ -170,7 +181,7 @@ function buildStore(reviewPackages = [buildBasePackageReviewTarget()]) {
           createdByProcessId: processSummary.processId,
         },
         {
-          versionId: olderReadyMember.versionId,
+          versionId: olderReadyMember.artifactVersionId,
           artifactId: 'artifact-001',
           versionLabel: olderReadyMember.versionLabel,
           contentStorageId: 'storage-spec-v1',
@@ -182,21 +193,21 @@ function buildStore(reviewPackages = [buildBasePackageReviewTarget()]) {
       ],
       'artifact-002': [
         {
-          versionId: newerReadyMember.versionId,
+          versionId: newerReadyMember.artifactVersionId,
           artifactId: 'artifact-002',
           versionLabel: newerReadyMember.versionLabel,
           contentStorageId: 'storage-notes-v1',
           contentKind: 'markdown',
           bytes: 20,
           createdAt: '2026-04-23T12:03:00.000Z',
-          createdByProcessId: processSummary.processId,
+          createdByProcessId: upstreamProcessSummary.processId,
         },
       ],
     },
     artifactContentsByVersionId: {
-      [olderReadyMember.versionId]: '# Feature Specification v1\n\nPinned package body.',
+      [olderReadyMember.artifactVersionId]: '# Feature Specification v1\n\nPinned package body.',
       'artifact-version-002-current': '# Feature Specification v2\n\nLatest artifact body.',
-      [newerReadyMember.versionId]: '# Implementation Notes v1\n\nCurrent notes.',
+      [newerReadyMember.artifactVersionId]: '# Implementation Notes v1\n\nCurrent notes.',
     },
     currentMaterialRefsByProcessId: {
       [processSummary.processId]: {
@@ -204,9 +215,8 @@ function buildStore(reviewPackages = [buildBasePackageReviewTarget()]) {
         sourceAttachmentIds: [],
       },
     },
-    reviewPackagesByProcessId: {
-      [processSummary.processId]: reviewPackages,
-    },
+    packageSnapshotsByProcessId: packageSnapshotSeed.packageSnapshotsByProcessId,
+    packageSnapshotMembersBySnapshotId: packageSnapshotSeed.packageSnapshotMembersBySnapshotId,
   });
 }
 
@@ -227,7 +237,7 @@ function buildTwentyMemberPackageStore() {
       position: index,
       artifactId: `artifact-smoke-${index + 1}`,
       displayName: `Smoke Artifact ${index + 1}`,
-      versionId: `artifact-version-smoke-${index + 1}`,
+      artifactVersionId: `artifact-version-smoke-${index + 1}`,
       versionLabel: `smoke-v${index + 1}`,
       status: 'ready',
     }),
@@ -244,7 +254,7 @@ function buildTwentyMemberPackageStore() {
       member.artifactId,
       [
         {
-          versionId: member.versionId,
+          versionId: member.artifactVersionId,
           artifactId: member.artifactId,
           versionLabel: member.versionLabel,
           contentStorageId: `storage-smoke-${index + 1}`,
@@ -258,7 +268,7 @@ function buildTwentyMemberPackageStore() {
   );
   const artifactContentsByVersionId = Object.fromEntries(
     members.map((member) => [
-      member.versionId,
+      member.artifactVersionId,
       `# ${member.displayName}\n\nSmoke package member body for ${member.versionLabel}.`,
     ]),
   );
@@ -274,15 +284,17 @@ function buildTwentyMemberPackageStore() {
       artifact: artifactReviewTargetSchema.parse({
         artifactId: selectedMember.artifactId,
         displayName: selectedMember.displayName,
-        currentVersionId: selectedMember.versionId,
+        currentVersionId: selectedMember.artifactVersionId,
         currentVersionLabel: selectedMember.versionLabel,
-        selectedVersionId: selectedMember.versionId,
+        selectedVersionId: selectedMember.artifactVersionId,
         versions: [
           {
-            versionId: selectedMember.versionId,
+            versionId: selectedMember.artifactVersionId,
             versionLabel: selectedMember.versionLabel,
             isCurrent: true,
             createdAt: '2026-04-23T12:00:00.000Z',
+            producedByProcessId: smokeProcessSummary.processId,
+            producedByProcessDisplayLabel: smokeProcessSummary.displayLabel,
           },
         ],
       }),
@@ -291,6 +303,9 @@ function buildTwentyMemberPackageStore() {
       available: true,
     },
   });
+  const packageSnapshotSeed = buildPackageSnapshotSeed(smokeProcessSummary.processId, [
+    packageTarget,
+  ]);
 
   return {
     packageId,
@@ -314,9 +329,6 @@ function buildTwentyMemberPackageStore() {
           artifactId: member.artifactId,
           displayName: member.displayName,
           currentVersionLabel: member.versionLabel,
-          attachmentScope: 'process',
-          processId: smokeProcessSummary.processId,
-          processDisplayLabel: smokeProcessSummary.displayLabel,
           updatedAt: `2026-04-23T12:${String(index).padStart(2, '0')}:00.000Z`,
         })),
       },
@@ -328,9 +340,8 @@ function buildTwentyMemberPackageStore() {
           sourceAttachmentIds: [],
         },
       },
-      reviewPackagesByProcessId: {
-        [smokeProcessSummary.processId]: [packageTarget],
-      },
+      packageSnapshotsByProcessId: packageSnapshotSeed.packageSnapshotsByProcessId,
+      packageSnapshotMembersBySnapshotId: packageSnapshotSeed.packageSnapshotMembersBySnapshotId,
     }),
   };
 }
@@ -367,13 +378,13 @@ describe('package review api', () => {
         {
           memberId: olderReadyMember.memberId,
           artifactId: olderReadyMember.artifactId,
-          versionId: olderReadyMember.versionId,
+          artifactVersionId: olderReadyMember.artifactVersionId,
           status: 'ready',
         },
         {
           memberId: newerReadyMember.memberId,
           artifactId: newerReadyMember.artifactId,
-          versionId: newerReadyMember.versionId,
+          artifactVersionId: newerReadyMember.artifactVersionId,
           status: 'ready',
         },
       ],
@@ -383,7 +394,7 @@ describe('package review api', () => {
         status: 'ready',
         artifact: {
           artifactId: olderReadyMember.artifactId,
-          selectedVersionId: olderReadyMember.versionId,
+          selectedVersionId: olderReadyMember.artifactVersionId,
         },
       },
       exportability: {
@@ -419,8 +430,8 @@ describe('package review api', () => {
     const body = response.json();
 
     expect(response.statusCode).toBe(200);
-    expect(body.selectedMember.artifact.currentVersionId).toBe(olderReadyMember.versionId);
-    expect(body.selectedMember.artifact.selectedVersionId).toBe(olderReadyMember.versionId);
+    expect(body.selectedMember.artifact.currentVersionId).toBe(olderReadyMember.artifactVersionId);
+    expect(body.selectedMember.artifact.selectedVersionId).toBe(olderReadyMember.artifactVersionId);
     expect(body.selectedMember.artifact.versions).toHaveLength(1);
     expect(body.selectedMember.artifact.selectedVersion.body).toContain('Pinned package body.');
     expect(body.selectedMember.artifact.selectedVersion.body).not.toContain(
@@ -466,7 +477,13 @@ describe('package review api', () => {
         status: 'ready',
         artifact: {
           artifactId: newerReadyMember.artifactId,
-          selectedVersionId: newerReadyMember.versionId,
+          selectedVersionId: newerReadyMember.artifactVersionId,
+          versions: [
+            expect.objectContaining({
+              producedByProcessId: upstreamProcessSummary.processId,
+              producedByProcessDisplayLabel: upstreamProcessSummary.displayLabel,
+            }),
+          ],
         },
       },
     });
@@ -486,7 +503,7 @@ describe('package review api', () => {
           memberId: unavailableFirstMember.memberId,
           status: 'unavailable',
           error: {
-            code: 'REVIEW_MEMBER_UNAVAILABLE',
+            code: 'PACKAGE_MEMBER_UNAVAILABLE',
             message: 'The pinned package member is currently unavailable.',
           },
         }),
@@ -556,23 +573,11 @@ describe('package review api', () => {
       },
     });
 
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(404);
     expect(response.json()).toMatchObject({
-      packageId: 'package-001',
-      members: expect.arrayContaining([
-        expect.objectContaining({ memberId: olderReadyMember.memberId, status: 'ready' }),
-        expect.objectContaining({ memberId: newerReadyMember.memberId, status: 'ready' }),
-      ]),
-      selectedMemberId: missingMemberId,
-      selectedMember: {
-        memberId: missingMemberId,
-        status: 'unavailable',
-        error: {
-          code: 'REVIEW_MEMBER_UNAVAILABLE',
-        },
-      },
+      code: 'PACKAGE_MEMBER_UNAVAILABLE',
+      status: 404,
     });
-    expect(response.json().selectedMember.artifact).toBeUndefined();
 
     await app.close();
   });
@@ -591,15 +596,17 @@ describe('package review api', () => {
           artifact: artifactReviewTargetSchema.parse({
             artifactId: olderReadyMember.artifactId,
             displayName: olderReadyMember.displayName,
-            currentVersionId: olderReadyMember.versionId,
+            currentVersionId: olderReadyMember.artifactVersionId,
             currentVersionLabel: olderReadyMember.versionLabel,
-            selectedVersionId: olderReadyMember.versionId,
+            selectedVersionId: olderReadyMember.artifactVersionId,
             versions: [
               {
-                versionId: olderReadyMember.versionId,
+                versionId: olderReadyMember.artifactVersionId,
                 versionLabel: olderReadyMember.versionLabel,
                 isCurrent: true,
                 createdAt: '2026-04-23T12:01:00.000Z',
+                producedByProcessId: processSummary.processId,
+                producedByProcessDisplayLabel: processSummary.displayLabel,
               },
             ],
           }),
@@ -625,7 +632,7 @@ describe('package review api', () => {
     });
     const response = await app.inject({
       method: 'GET',
-      url: `/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/review/packages/package-003?memberId=${unavailableFirstMember.memberId}`,
+      url: `/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/review/packages/package-003`,
       cookies: {
         [sessionCookieName]: 'valid-session-cookie',
       },
@@ -644,17 +651,14 @@ describe('package review api', () => {
           status: 'unavailable',
         }),
       ]),
-      selectedMemberId: unavailableFirstMember.memberId,
+      selectedMemberId: olderReadyMember.memberId,
       selectedMember: {
-        memberId: unavailableFirstMember.memberId,
-        status: 'unavailable',
-        error: {
-          code: 'REVIEW_MEMBER_UNAVAILABLE',
-        },
+        memberId: olderReadyMember.memberId,
+        status: 'ready',
       },
       exportability: {
         available: false,
-        reason: 'One or more members are unavailable or unsupported.',
+        reason: 'One or more members are unavailable.',
       },
     });
 

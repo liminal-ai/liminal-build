@@ -241,7 +241,7 @@ describe('platform shell integration', () => {
       const assetResponse = await fetch(`${server.baseUrl}${assetMatch[1]}`);
       const assetBody = await assetResponse.text();
       const builtIndex = await fs.readFile(
-        path.join('/Users/leemoore/code/liminal-build/apps/platform/dist/client/index.html'),
+        path.join(process.cwd(), 'apps/platform/dist/client/index.html'),
         'utf8',
       );
 

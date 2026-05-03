@@ -10,6 +10,7 @@ import {
   processSummarySchema,
   projectSummarySchema,
 } from '../../../apps/platform/shared/contracts/index.js';
+import { buildPackageSnapshotSeed } from '../../utils/package-snapshot-seed.js';
 import { readyArtifactReviewTargetFixture } from '../../fixtures/artifact-versions.js';
 import { exportablePackageFixture } from '../../fixtures/package-snapshots.js';
 import { buildApp } from '../../utils/build-app.js';
@@ -58,6 +59,10 @@ const processSummary = processSummarySchema.parse({
 });
 
 function buildStore(args: { includeArtifact?: boolean; includePackage?: boolean } = {}) {
+  const packageSnapshotSeed = buildPackageSnapshotSeed(processSummary.processId, [
+    exportablePackageFixture,
+  ]);
+
   const platformStore = new InMemoryPlatformStore({
     accessibleProjectsByUserId: {
       'user:workos-user-1': [projectSummary],
@@ -79,9 +84,6 @@ function buildStore(args: { includeArtifact?: boolean; includePackage?: boolean 
               displayName: readyArtifactReviewTargetFixture.displayName,
               currentVersionLabel:
                 readyArtifactReviewTargetFixture.currentVersionLabel ?? 'review-1',
-              attachmentScope: 'process',
-              processId: processSummary.processId,
-              processDisplayLabel: processSummary.displayLabel,
               updatedAt: '2026-04-23T12:00:00.000Z',
             },
           ]
@@ -119,9 +121,12 @@ function buildStore(args: { includeArtifact?: boolean; includePackage?: boolean 
         sourceAttachmentIds: [],
       },
     },
-    reviewPackagesByProcessId: {
-      [processSummary.processId]: args.includePackage ? [exportablePackageFixture] : [],
-    },
+    packageSnapshotsByProcessId: args.includePackage
+      ? packageSnapshotSeed.packageSnapshotsByProcessId
+      : {},
+    packageSnapshotMembersBySnapshotId: args.includePackage
+      ? packageSnapshotSeed.packageSnapshotMembersBySnapshotId
+      : {},
   });
 
   return platformStore;
@@ -307,6 +312,194 @@ describe('review workspace api', () => {
     await app.close();
   });
 
+  it('TC-3.1a includes artifacts pinned in the current package context even when they are no longer current refs', async () => {
+    const producingProcessSummary = processSummarySchema.parse({
+      ...processSummary,
+      processId: 'process-review-author-001',
+      displayLabel: 'Product Definition #1',
+      processType: 'ProductDefinition',
+      updatedAt: '2026-04-23T12:06:00.000Z',
+    });
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectSummary.projectId]: [processSummary, producingProcessSummary],
+      },
+      artifactsByProjectId: {
+        [projectSummary.projectId]: [
+          {
+            artifactId: 'artifact-pinned-001',
+            displayName: 'Pinned Architecture Decision',
+            currentVersionLabel: 'v1',
+            updatedAt: '2026-04-23T12:06:00.000Z',
+          },
+        ],
+      },
+      artifactVersionsByArtifactId: {
+        'artifact-pinned-001': [
+          {
+            versionId: 'artifact-version-pinned-001',
+            artifactId: 'artifact-pinned-001',
+            versionLabel: 'v1',
+            contentStorageId: 'storage-pinned-001',
+            contentKind: 'markdown',
+            bytes: 64,
+            createdAt: '2026-04-23T12:06:00.000Z',
+            createdByProcessId: producingProcessSummary.processId,
+          },
+        ],
+      },
+      artifactContentsByVersionId: {
+        'artifact-version-pinned-001': '# Pinned Architecture Decision',
+      },
+      currentMaterialRefsByProcessId: {
+        [processSummary.processId]: {
+          artifactIds: [],
+          sourceAttachmentIds: [],
+        },
+      },
+      processPackageContextsByProcessId: {
+        [processSummary.processId]: {
+          packageContextId: 'package-context-001',
+          processId: processSummary.processId,
+          displayName: 'Implementation Package Draft',
+          packageType: 'implementation',
+          basePackageSnapshotId: null,
+          updatedAt: '2026-04-23T12:07:00.000Z',
+        },
+      },
+      processPackageContextMembersByContextId: {
+        'package-context-001': [
+          {
+            memberId: 'package-context-member-001',
+            packageContextId: 'package-context-001',
+            position: 0,
+            artifactId: 'artifact-pinned-001',
+            artifactVersionId: 'artifact-version-pinned-001',
+            displayName: 'Pinned Architecture Decision',
+            versionLabel: 'v1',
+            pinnedAt: '2026-04-23T12:07:00.000Z',
+          },
+        ],
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/review`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      process: {
+        processId: processSummary.processId,
+        reviewTargetKind: 'artifact',
+        reviewTargetId: 'artifact-pinned-001',
+      },
+      availableTargets: [
+        {
+          targetKind: 'artifact',
+          targetId: 'artifact-pinned-001',
+          displayName: 'Pinned Architecture Decision',
+        },
+      ],
+      target: {
+        targetKind: 'artifact',
+        displayName: 'Pinned Architecture Decision',
+        status: 'ready',
+      },
+    });
+
+    await app.close();
+  });
+
+  it('TC-3.4a omits zero-version current refs from the default review target list', async () => {
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectSummary.projectId]: [processSummary],
+      },
+      artifactsByProjectId: {
+        [projectSummary.projectId]: [
+          {
+            artifactId: 'artifact-zero-version-001',
+            displayName: 'Empty Review Draft',
+            currentVersionLabel: null,
+            updatedAt: '2026-04-23T12:08:00.000Z',
+          },
+        ],
+      },
+      currentMaterialRefsByProcessId: {
+        [processSummary.processId]: {
+          artifactIds: ['artifact-zero-version-001'],
+          sourceAttachmentIds: [],
+        },
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/review`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      process: {
+        processId: processSummary.processId,
+      },
+      availableTargets: [],
+    });
+    expect(response.json().target).toBeUndefined();
+
+    await app.close();
+  });
+
   it('TC-6.1a reopens artifact review from durable route state after a reload', async () => {
     const platformStore = buildStore({
       includeArtifact: true,
@@ -427,7 +620,7 @@ describe('review workspace api', () => {
         displayName: readyArtifactReviewTargetFixture.displayName,
         status: 'unavailable',
         error: {
-          code: 'REVIEW_TARGET_NOT_FOUND',
+          code: 'ARTIFACT_VERSION_NOT_FOUND',
         },
       },
     });

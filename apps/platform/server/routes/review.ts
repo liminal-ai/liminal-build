@@ -1,10 +1,13 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import {
+  type RequestError,
+  reviewWorkspaceApiPathnamePattern,
+  reviewWorkspaceRoutePathnamePattern,
+} from '../../shared/contracts/index.js';
 import { buildShellBootstrapPayload } from '../config.js';
 import { AppError } from '../errors/app-error.js';
-import { reviewExportFailedErrorCode } from '../errors/codes.js';
-import { sessionCookieName } from '../services/auth/auth-session.service.js';
-import { inspectExportTokenPayload } from '../services/review/export-url-signing.js';
+import { packageMemberUnavailableErrorCode, reviewExportFailedErrorCode } from '../errors/codes.js';
 import {
   getReviewArtifactRouteSchema,
   getReviewExportDownloadRouteSchema,
@@ -13,11 +16,8 @@ import {
   postReviewPackageExportRouteSchema,
   reviewHtmlRouteSchema,
 } from '../schemas/review.js';
-import {
-  reviewWorkspaceApiPathnamePattern,
-  reviewWorkspaceRoutePathnamePattern,
-  type RequestError,
-} from '../../shared/contracts/index.js';
+import { sessionCookieName } from '../services/auth/auth-session.service.js';
+import { inspectExportTokenPayload } from '../services/review/export-url-signing.js';
 
 function buildRequestError(error: AppError): RequestError {
   return {
@@ -35,6 +35,14 @@ function buildReviewTargetNotFoundResponse(): RequestError {
   return {
     code: 'REVIEW_TARGET_NOT_FOUND',
     message: 'The requested review target could not be found.',
+    status: 404,
+  };
+}
+
+function buildPackageMemberUnavailableResponse(message?: string): RequestError {
+  return {
+    code: packageMemberUnavailableErrorCode,
+    message: message ?? 'The requested package member is unavailable.',
     status: 404,
   };
 }
@@ -236,6 +244,8 @@ export async function registerReviewRoutes(app: FastifyInstance): Promise<void> 
               return reply.code(403).send(requestError);
             case 404:
               return reply.code(404).send(requestError);
+            case 409:
+              return reply.code(409).send(requestError);
             default:
               throw error;
           }
@@ -313,6 +323,8 @@ export async function registerReviewRoutes(app: FastifyInstance): Promise<void> 
               return reply.code(403).send(requestError);
             case 404:
               return reply.code(404).send(requestError);
+            case 409:
+              return reply.code(409).send(requestError);
             default:
               throw error;
           }
@@ -378,6 +390,26 @@ export async function registerReviewRoutes(app: FastifyInstance): Promise<void> 
           });
         }
 
+        if (
+          request.query.memberId !== undefined &&
+          packageReview.selectedMember?.status === 'unavailable'
+        ) {
+          app.log.warn(
+            {
+              event: 'review.target.unavailable',
+              targetKind: 'package',
+              targetId: request.params.packageId,
+              reason: packageMemberUnavailableErrorCode,
+            },
+            'Review target unavailable.',
+          );
+          return reply
+            .code(404)
+            .send(
+              buildPackageMemberUnavailableResponse(packageReview.selectedMember.error?.message),
+            );
+        }
+
         return reply.send(packageReview);
       } catch (error) {
         if (error instanceof AppError) {
@@ -390,6 +422,8 @@ export async function registerReviewRoutes(app: FastifyInstance): Promise<void> 
               return reply.code(403).send(requestError);
             case 404:
               return reply.code(404).send(requestError);
+            case 409:
+              return reply.code(409).send(requestError);
             default:
               throw error;
           }

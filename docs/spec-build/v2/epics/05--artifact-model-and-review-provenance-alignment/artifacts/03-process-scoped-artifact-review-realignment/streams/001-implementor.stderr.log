@@ -1,0 +1,11 @@
+Reading additional input from stdin...
+2026-04-26T22:44:16.373716Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /Users/leemoore/code/liminal-build-wt-1/apps/platform/server/services/projects/platform-store.ts:
+const listArtifactsByProducingProcessQuery = makeFunctionReference<
+  'query',
+  { processId: string },
+  string[]
+>('artifacts:listArtifactsByProducingProcess');
+
+const listPackageSnapshotsForProcessQuery = makeFunctionReference<
+  'query',
+  { processId: string },

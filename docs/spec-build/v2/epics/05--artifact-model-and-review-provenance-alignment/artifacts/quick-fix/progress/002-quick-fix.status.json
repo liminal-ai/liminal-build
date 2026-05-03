@@ -1,0 +1,25 @@
+{
+  "command": "quick-fix",
+  "status": "completed",
+  "phase": "finalizing",
+  "startedAt": "2026-04-26T23:35:53.617Z",
+  "updatedAt": "2026-04-26T23:40:05.975Z",
+  "lastOutputAt": "2026-04-26T23:40:05.845Z",
+  "provider": "codex",
+  "pid": 57116,
+  "cwd": "/Users/leemoore/code/liminal-build-wt-1",
+  "timeoutMs": 1800000,
+  "configuredStartupTimeoutMs": 300000,
+  "configuredSilenceTimeoutMs": 300000,
+  "artifactPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/quick-fix/002-quick-fix.json",
+  "streamPaths": {
+    "stdoutPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/quick-fix/streams/002-quick-fix.stdout.log",
+    "stderrPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/quick-fix/streams/002-quick-fix.stderr.log"
+  },
+  "progressPaths": {
+    "statusPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/quick-fix/progress/002-quick-fix.status.json",
+    "progressPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/quick-fix/progress/002-quick-fix.progress.jsonl"
+  },
+  "lastEvent": "completed",
+  "lastEventSummary": "quick-fix completed and is ready for verification."
+}

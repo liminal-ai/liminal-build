@@ -5,14 +5,15 @@ import {
   type SessionResolution,
   sessionCookieName,
 } from '../../../apps/platform/server/services/auth/auth-session.service.js';
-import { HmacExportUrlSigner } from '../../../apps/platform/server/services/review/export-url-signing.js';
 import { AuthUserSyncService } from '../../../apps/platform/server/services/auth/auth-user-sync.service.js';
 import { InMemoryPlatformStore } from '../../../apps/platform/server/services/projects/platform-store.js';
+import { HmacExportUrlSigner } from '../../../apps/platform/server/services/review/export-url-signing.js';
 import {
   processSummarySchema,
   projectSummarySchema,
 } from '../../../apps/platform/shared/contracts/index.js';
 import { buildApp } from '../../utils/build-app.js';
+import { buildPackageSnapshotSeed } from '../../utils/package-snapshot-seed.js';
 
 function createTestAuthSessionService(resolution: SessionResolution) {
   class TestAuthSessionService extends AuthSessionService {
@@ -39,7 +40,7 @@ const projectSummary = projectSummarySchema.parse({
   name: 'Artifact Review',
   ownerDisplayName: 'Lee Moore',
   role: 'owner',
-  processCount: 1,
+  processCount: 2,
   artifactCount: 2,
   sourceAttachmentCount: 0,
   lastUpdatedAt: '2026-04-23T12:00:00.000Z',
@@ -57,9 +58,88 @@ const processSummary = processSummarySchema.parse({
   updatedAt: '2026-04-23T12:00:00.000Z',
 });
 
+const upstreamProcessSummary = processSummarySchema.parse({
+  processId: 'process-review-export-002',
+  displayLabel: 'Feature Implementation #1',
+  processType: 'FeatureImplementation',
+  status: 'completed',
+  phaseLabel: 'Completed',
+  nextActionLabel: 'Review the latest output',
+  availableActions: ['review'],
+  hasEnvironment: false,
+  updatedAt: '2026-04-23T12:03:00.000Z',
+});
+
 function buildStore(includeUnavailableMember = false, useCollidingMemberNames = false) {
   const firstMemberDisplayName = useCollidingMemberNames ? 'Spec' : 'Feature Specification';
   const secondMemberDisplayName = useCollidingMemberNames ? 'Spec' : 'Implementation Notes';
+  const packageTarget = {
+    packageId: 'package-001',
+    displayName: 'Feature Specification Package',
+    packageType: 'FeatureSpecificationOutput',
+    members: [
+      {
+        memberId: 'package-member-001',
+        position: 0,
+        artifactId: 'artifact-001',
+        displayName: firstMemberDisplayName,
+        artifactVersionId: 'artifact-version-001-pinned',
+        versionLabel: 'spec-v1',
+        status: 'ready' as const,
+      },
+      {
+        memberId: 'package-member-002',
+        position: 1,
+        artifactId: 'artifact-002',
+        displayName: secondMemberDisplayName,
+        artifactVersionId: 'artifact-version-002-pinned',
+        versionLabel: 'notes-v1',
+        status: includeUnavailableMember ? ('unavailable' as const) : ('ready' as const),
+      },
+    ],
+    selectedMemberId: 'package-member-001',
+    selectedMember: {
+      memberId: 'package-member-001',
+      status: 'ready' as const,
+      artifact: {
+        artifactId: 'artifact-001',
+        displayName: 'Feature Specification',
+        currentVersionId: 'artifact-version-001-pinned',
+        currentVersionLabel: 'spec-v1',
+        selectedVersionId: 'artifact-version-001-pinned',
+        versions: [
+          {
+            versionId: 'artifact-version-001-pinned',
+            versionLabel: 'spec-v1',
+            isCurrent: true,
+            createdAt: '2026-04-23T12:01:00.000Z',
+            producedByProcessId: processSummary.processId,
+            producedByProcessDisplayLabel: processSummary.displayLabel,
+          },
+        ],
+        selectedVersion: {
+          versionId: 'artifact-version-001-pinned',
+          versionLabel: 'spec-v1',
+          contentKind: 'markdown' as const,
+          bodyStatus: 'ready' as const,
+          body: '<h1>Feature Specification v1</h1>',
+          mermaidBlocks: [],
+          createdAt: '2026-04-23T12:01:00.000Z',
+          producedByProcessId: processSummary.processId,
+          producedByProcessDisplayLabel: processSummary.displayLabel,
+        },
+      },
+    },
+    exportability: includeUnavailableMember
+      ? {
+          available: false as const,
+          reason: 'One or more members are unavailable.',
+        }
+      : {
+          available: true as const,
+        },
+  };
+  const packageSnapshotSeed = buildPackageSnapshotSeed(processSummary.processId, [packageTarget]);
 
   return new InMemoryPlatformStore({
     accessibleProjectsByUserId: {
@@ -72,7 +152,7 @@ function buildStore(includeUnavailableMember = false, useCollidingMemberNames = 
       },
     },
     processesByProjectId: {
-      [projectSummary.projectId]: [processSummary],
+      [projectSummary.projectId]: [processSummary, upstreamProcessSummary],
     },
     artifactsByProjectId: {
       [projectSummary.projectId]: [
@@ -80,18 +160,12 @@ function buildStore(includeUnavailableMember = false, useCollidingMemberNames = 
           artifactId: 'artifact-001',
           displayName: 'Feature Specification',
           currentVersionLabel: 'spec-v2',
-          attachmentScope: 'process',
-          processId: processSummary.processId,
-          processDisplayLabel: processSummary.displayLabel,
           updatedAt: '2026-04-23T12:05:00.000Z',
         },
         {
           artifactId: 'artifact-002',
           displayName: 'Implementation Notes',
           currentVersionLabel: 'notes-v1',
-          attachmentScope: 'process',
-          processId: processSummary.processId,
-          processDisplayLabel: processSummary.displayLabel,
           updatedAt: '2026-04-23T12:03:00.000Z',
         },
       ],
@@ -130,7 +204,7 @@ function buildStore(includeUnavailableMember = false, useCollidingMemberNames = 
               contentKind: 'markdown',
               bytes: 41,
               createdAt: '2026-04-23T12:03:00.000Z',
-              createdByProcessId: processSummary.processId,
+              createdByProcessId: upstreamProcessSummary.processId,
             },
           ],
     },
@@ -145,72 +219,8 @@ function buildStore(includeUnavailableMember = false, useCollidingMemberNames = 
         sourceAttachmentIds: [],
       },
     },
-    reviewPackagesByProcessId: {
-      [processSummary.processId]: [
-        {
-          packageId: 'package-001',
-          displayName: 'Feature Specification Package',
-          packageType: 'FeatureSpecificationOutput',
-          members: [
-            {
-              memberId: 'package-member-001',
-              position: 0,
-              artifactId: 'artifact-001',
-              displayName: firstMemberDisplayName,
-              versionId: 'artifact-version-001-pinned',
-              versionLabel: 'spec-v1',
-              status: 'ready',
-            },
-            {
-              memberId: 'package-member-002',
-              position: 1,
-              artifactId: 'artifact-002',
-              displayName: secondMemberDisplayName,
-              versionId: 'artifact-version-002-pinned',
-              versionLabel: 'notes-v1',
-              status: includeUnavailableMember ? 'unavailable' : 'ready',
-            },
-          ],
-          selectedMemberId: 'package-member-001',
-          selectedMember: {
-            memberId: 'package-member-001',
-            status: 'ready',
-            artifact: {
-              artifactId: 'artifact-001',
-              displayName: 'Feature Specification',
-              currentVersionId: 'artifact-version-001-pinned',
-              currentVersionLabel: 'spec-v1',
-              selectedVersionId: 'artifact-version-001-pinned',
-              versions: [
-                {
-                  versionId: 'artifact-version-001-pinned',
-                  versionLabel: 'spec-v1',
-                  isCurrent: true,
-                  createdAt: '2026-04-23T12:01:00.000Z',
-                },
-              ],
-              selectedVersion: {
-                versionId: 'artifact-version-001-pinned',
-                versionLabel: 'spec-v1',
-                contentKind: 'markdown',
-                bodyStatus: 'ready',
-                body: '<h1>Feature Specification v1</h1>',
-                mermaidBlocks: [],
-                createdAt: '2026-04-23T12:01:00.000Z',
-              },
-            },
-          },
-          exportability: includeUnavailableMember
-            ? {
-                available: false,
-                reason: 'One or more members are unavailable.',
-              }
-            : {
-                available: true,
-              },
-        },
-      ],
-    },
+    packageSnapshotsByProcessId: packageSnapshotSeed.packageSnapshotsByProcessId,
+    packageSnapshotMembersBySnapshotId: packageSnapshotSeed.packageSnapshotMembersBySnapshotId,
   });
 }
 

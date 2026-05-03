@@ -16,34 +16,38 @@ function sortByUpdatedAtDesc<T extends { updatedAt: string }>(items: T[]): T[] {
   return [...items].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
-function buildCurrentArtifacts(args: {
+async function buildCurrentArtifacts(args: {
+  platformStore: PlatformStore;
   artifacts: ArtifactSummary[];
   currentMaterialRefs: CurrentProcessMaterialRefs;
   processId: string;
-}): ProcessArtifactReference[] {
+}): Promise<ProcessArtifactReference[]> {
   const currentArtifactIds = new Set(args.currentMaterialRefs.artifactIds);
-
-  return sortByUpdatedAtDesc(
+  const currentArtifacts = sortByUpdatedAtDesc(
     args.artifacts.filter((artifact) => currentArtifactIds.has(artifact.artifactId)),
-  ).map((artifact) => ({
+  );
+  const roleLabelsByArtifactId = new Map(
+    await Promise.all(
+      currentArtifacts.map(async (artifact) => {
+        const versions = await args.platformStore.listArtifactVersions({
+          artifactId: artifact.artifactId,
+        });
+        const roleLabel = versions.some((version) => version.createdByProcessId === args.processId)
+          ? 'Current working artifact'
+          : 'Current referenced artifact';
+
+        return [artifact.artifactId, roleLabel] as const;
+      }),
+    ),
+  );
+
+  return currentArtifacts.map((artifact) => ({
     artifactId: artifact.artifactId,
     displayName: artifact.displayName,
     currentVersionLabel: artifact.currentVersionLabel,
-    roleLabel: resolveArtifactRoleLabel(artifact, args.processId),
+    roleLabel: roleLabelsByArtifactId.get(artifact.artifactId) ?? 'Current referenced artifact',
     updatedAt: artifact.updatedAt,
   }));
-}
-
-function resolveArtifactRoleLabel(artifact: ArtifactSummary, processId: string): string | null {
-  if (artifact.attachmentScope === 'project') {
-    return 'Current shared artifact';
-  }
-
-  if (artifact.processId === processId) {
-    return 'Current working artifact';
-  }
-
-  return 'Current referenced artifact';
 }
 
 function buildCurrentOutputs(args: {
@@ -117,7 +121,8 @@ export class MaterialsSectionReader {
       }),
     ]);
 
-    const currentArtifacts = buildCurrentArtifacts({
+    const currentArtifacts = await buildCurrentArtifacts({
+      platformStore: this.platformStore,
       artifacts,
       currentMaterialRefs,
       processId: args.processId,

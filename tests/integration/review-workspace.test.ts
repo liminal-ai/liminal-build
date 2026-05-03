@@ -19,21 +19,23 @@ import {
   processSummarySchema,
   projectSummarySchema,
 } from '../../apps/platform/shared/contracts/index.js';
+import { listProjectArtifactSummaries } from '../../convex/artifacts.js';
 import {
   getArtifactVersion,
   getArtifactVersionContentUrl,
   getLatestArtifactVersion,
   insertArtifactVersion,
   listArtifactsByProducingProcess,
+  listArtifactVersions,
 } from '../../convex/artifactVersions.js';
-import { listArtifactVersions } from '../../convex/artifactVersions.js';
-import { listProjectArtifactSummaries } from '../../convex/artifacts.js';
 import { listPackageSnapshotMembers } from '../../convex/packageSnapshotMembers.js';
 import {
   getPackageSnapshot,
   listPackageSnapshotsForProcess,
   publishPackageSnapshot,
 } from '../../convex/packageSnapshots.js';
+import { listProcessPackageContextMembers } from '../../convex/processPackageContextMembers.js';
+import { getCurrentProcessPackageContext } from '../../convex/processPackageContexts.js';
 import { getCurrentProcessMaterialRefs, getProcessRecord } from '../../convex/processes.js';
 import { createFakeConvexContext } from '../../convex/test_helpers/fake_convex_context.js';
 import { buildApp } from '../utils/build-app.js';
@@ -322,6 +324,14 @@ function registerReviewWorkspaceHandlers(fixture: ReturnType<typeof createFakeCo
     'processes:getCurrentProcessMaterialRefs',
     getCurrentProcessMaterialRefs,
   );
+  register<{ processId: string }, unknown | null>(
+    'processPackageContexts:getCurrentProcessPackageContext',
+    getCurrentProcessPackageContext,
+  );
+  register<{ packageContextId: string }, unknown[]>(
+    'processPackageContextMembers:listProcessPackageContextMembers',
+    listProcessPackageContextMembers,
+  );
   register<{ projectId: string }, unknown[]>(
     'artifacts:listProjectArtifactSummaries',
     listProjectArtifactSummaries,
@@ -598,6 +608,9 @@ describe('review workspace integration', () => {
   it('resolves a manually-seeded package snapshot through ConvexPlatformStore reads', async () => {
     const fixture = createFakeConvexContext(buildReviewWorkspaceSeed());
     registerReviewWorkspaceHandlers(fixture);
+    await fixture.ctx.db.patch('process-state-review-convex-001', {
+      currentArtifactIds: ['artifact-review-convex-001', 'artifact-review-convex-002'],
+    });
 
     const publishPackageSnapshotHandler = getHandler<
       {
@@ -690,11 +703,11 @@ describe('review workspace integration', () => {
     });
     expect(querySpy.mock.calls.map(([ref]) => readFunctionName(ref))).toEqual(
       expect.arrayContaining([
+        'processPackageContexts:getCurrentProcessPackageContext',
         'packageSnapshots:listPackageSnapshotsForProcess',
         'packageSnapshots:getPackageSnapshot',
         'packageSnapshotMembers:listPackageSnapshotMembers',
         'artifactVersions:getArtifactVersion',
-        'artifactVersions:getLatestArtifactVersion',
       ]),
     );
     expect(actionSpy).not.toHaveBeenCalled();
@@ -705,6 +718,9 @@ describe('review workspace integration', () => {
   it('preserves snapshot-time member display names after the artifact is renamed', async () => {
     const fixture = createFakeConvexContext(buildReviewWorkspaceSeed());
     registerReviewWorkspaceHandlers(fixture);
+    await fixture.ctx.db.patch('process-state-review-convex-001', {
+      currentArtifactIds: ['artifact-review-convex-001'],
+    });
 
     await fixture.ctx.db.patch('artifact-review-convex-001', {
       displayName: 'A-v1',
@@ -803,6 +819,9 @@ describe('review workspace integration', () => {
   it('preserves snapshot-time member version labels after the pinned version becomes unavailable', async () => {
     const fixture = createFakeConvexContext(buildReviewWorkspaceSeed());
     registerReviewWorkspaceHandlers(fixture);
+    await fixture.ctx.db.patch('process-state-review-convex-001', {
+      currentArtifactIds: ['artifact-review-convex-001'],
+    });
 
     await fixture.ctx.db.patch('artifact-version-review-convex-001', {
       versionLabel: 'v1.2',
@@ -867,7 +886,7 @@ describe('review workspace integration', () => {
           members: [
             {
               artifactId: 'artifact-review-convex-001',
-              versionId: 'artifact-version-review-convex-001',
+              artifactVersionId: 'artifact-version-review-convex-001',
               versionLabel: 'v1.2',
               status: 'unavailable',
             },
@@ -875,7 +894,7 @@ describe('review workspace integration', () => {
           selectedMember: {
             status: 'unavailable',
             error: {
-              code: 'REVIEW_MEMBER_UNAVAILABLE',
+              code: 'PACKAGE_MEMBER_UNAVAILABLE',
             },
           },
         },
@@ -974,6 +993,9 @@ describe('review workspace integration', () => {
   it('TC-6.1b reopens package review from durable route state after a reload', async () => {
     const fixture = createFakeConvexContext(buildReviewWorkspaceSeed());
     registerReviewWorkspaceHandlers(fixture);
+    await fixture.ctx.db.patch('process-state-review-convex-001', {
+      currentArtifactIds: ['artifact-review-convex-001'],
+    });
 
     const querySpy = vi
       .spyOn(ConvexHttpClient.prototype, 'query')
@@ -1038,7 +1060,7 @@ describe('review workspace integration', () => {
     }
   });
 
-  it('keeps process-produced artifacts reviewable after current material refs drop them from the working set', async () => {
+  it('keeps package-context-pinned artifacts reviewable after current material refs drop them from the working set', async () => {
     const scopedProjectSummary = projectSummarySchema.parse({
       projectId: 'project-review-scoping-001',
       name: 'Review Scoping',
@@ -1079,27 +1101,18 @@ describe('review workspace integration', () => {
             artifactId: 'artifact-review-scope-001',
             displayName: 'Specification Draft',
             currentVersionLabel: 'spec-v1',
-            attachmentScope: 'process',
-            processId: scopedProcessSummary.processId,
-            processDisplayLabel: scopedProcessSummary.displayLabel,
             updatedAt: '2026-04-23T12:05:00.000Z',
           },
           {
             artifactId: 'artifact-review-scope-002',
             displayName: 'Implementation Plan',
             currentVersionLabel: 'impl-v1',
-            attachmentScope: 'process',
-            processId: scopedProcessSummary.processId,
-            processDisplayLabel: scopedProcessSummary.displayLabel,
             updatedAt: '2026-04-23T12:06:00.000Z',
           },
           {
             artifactId: 'artifact-review-scope-003',
             displayName: 'Launch Checklist',
             currentVersionLabel: 'launch-v1',
-            attachmentScope: 'process',
-            processId: scopedProcessSummary.processId,
-            processDisplayLabel: scopedProcessSummary.displayLabel,
             updatedAt: '2026-04-23T12:07:00.000Z',
           },
         ],
@@ -1152,6 +1165,40 @@ describe('review workspace integration', () => {
           artifactIds: ['artifact-review-scope-001'],
           sourceAttachmentIds: [],
         },
+      },
+      processPackageContextsByProcessId: {
+        [scopedProcessSummary.processId]: {
+          packageContextId: 'package-context-review-scope-001',
+          processId: scopedProcessSummary.processId,
+          displayName: 'Implementation Package Draft',
+          packageType: 'implementation',
+          basePackageSnapshotId: null,
+          updatedAt: '2026-04-23T12:08:00.000Z',
+        },
+      },
+      processPackageContextMembersByContextId: {
+        'package-context-review-scope-001': [
+          {
+            memberId: 'package-context-member-review-scope-001',
+            packageContextId: 'package-context-review-scope-001',
+            position: 0,
+            artifactId: 'artifact-review-scope-003',
+            artifactVersionId: 'artifact-version-review-scope-003',
+            displayName: 'Launch Checklist',
+            versionLabel: 'launch-v1',
+            pinnedAt: '2026-04-23T12:08:00.000Z',
+          },
+          {
+            memberId: 'package-context-member-review-scope-002',
+            packageContextId: 'package-context-review-scope-001',
+            position: 1,
+            artifactId: 'artifact-review-scope-002',
+            artifactVersionId: 'artifact-version-review-scope-002',
+            displayName: 'Implementation Plan',
+            versionLabel: 'impl-v1',
+            pinnedAt: '2026-04-23T12:08:00.000Z',
+          },
+        ],
       },
     });
     const { app, baseUrl } = await startApp({
@@ -1479,6 +1526,16 @@ describe('review workspace integration', () => {
           artifactIds: [],
           sourceAttachmentIds: [],
         },
+      },
+      artifactsByProjectId: {
+        [reviewProjectSummary.projectId]: [
+          {
+            artifactId: checkpointArtifactId,
+            displayName: 'Checkpointed Spec',
+            currentVersionLabel: null,
+            updatedAt: '2026-04-23T12:00:00.000Z',
+          },
+        ],
       },
     });
     const providerAdapter = buildSequentialArtifactCheckpointProvider({

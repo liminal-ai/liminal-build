@@ -78,7 +78,7 @@ export const unavailableReviewWorkspaceFixture = reviewWorkspaceResponseSchema.p
     displayName: unavailablePackageFixture.displayName,
     status: 'unavailable',
     error: {
-      code: 'REVIEW_MEMBER_UNAVAILABLE',
+      code: 'PACKAGE_MEMBER_UNAVAILABLE',
       message: 'One package member is unavailable.',
     },
     package: unavailablePackageFixture,

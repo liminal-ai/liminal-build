@@ -19,6 +19,7 @@ import {
 import type { PackageError } from '../../../packages/markdown-package/src/errors.js';
 import { createPackageStream } from '../../../packages/markdown-package/src/tar/package-io.js';
 import { buildApp } from '../../utils/build-app.js';
+import { buildPackageSnapshotSeed } from '../../utils/package-snapshot-seed.js';
 
 const TWO_SECONDS_MS = 2_000;
 const MAX_ENTRY_BYTES = 64 * 1024 * 1024;
@@ -81,7 +82,7 @@ function buildTwentyMemberStore() {
       position: index,
       artifactId: `artifact-nfr-${index + 1}`,
       displayName: `NFR Artifact ${index + 1}`,
-      versionId: `artifact-version-nfr-${index + 1}`,
+      artifactVersionId: `artifact-version-nfr-${index + 1}`,
       versionLabel: `nfr-v${index + 1}`,
       status: 'ready',
     }),
@@ -104,30 +105,35 @@ function buildTwentyMemberStore() {
       artifact: {
         artifactId: firstMember.artifactId,
         displayName: firstMember.displayName,
-        currentVersionId: firstMember.versionId,
+        currentVersionId: firstMember.artifactVersionId,
         currentVersionLabel: firstMember.versionLabel,
-        selectedVersionId: firstMember.versionId,
+        selectedVersionId: firstMember.artifactVersionId,
         versions: [
           {
-            versionId: firstMember.versionId,
+            versionId: firstMember.artifactVersionId,
             versionLabel: firstMember.versionLabel,
             isCurrent: true,
             createdAt: '2026-04-23T12:00:00.000Z',
+            producedByProcessId: processSummary.processId,
+            producedByProcessDisplayLabel: processSummary.displayLabel,
           },
         ],
         selectedVersion: {
-          versionId: firstMember.versionId,
+          versionId: firstMember.artifactVersionId,
           versionLabel: firstMember.versionLabel,
           contentKind: 'markdown',
           bodyStatus: 'ready',
           body: '<h1>NFR Artifact 1</h1>',
           mermaidBlocks: [],
           createdAt: '2026-04-23T12:00:00.000Z',
+          producedByProcessId: processSummary.processId,
+          producedByProcessDisplayLabel: processSummary.displayLabel,
         },
       },
     }),
     exportability: { available: true },
   });
+  const packageSnapshotSeed = buildPackageSnapshotSeed(processSummary.processId, [packageTarget]);
 
   return new InMemoryPlatformStore({
     accessibleProjectsByUserId: {
@@ -147,9 +153,6 @@ function buildTwentyMemberStore() {
         artifactId: member.artifactId,
         displayName: member.displayName,
         currentVersionLabel: member.versionLabel,
-        attachmentScope: 'process',
-        processId: processSummary.processId,
-        processDisplayLabel: processSummary.displayLabel,
         updatedAt: `2026-04-23T12:${String(index).padStart(2, '0')}:00.000Z`,
       })),
     },
@@ -158,7 +161,7 @@ function buildTwentyMemberStore() {
         member.artifactId,
         [
           {
-            versionId: member.versionId,
+            versionId: member.artifactVersionId,
             artifactId: member.artifactId,
             versionLabel: member.versionLabel,
             contentStorageId: `storage-nfr-${index + 1}`,
@@ -172,7 +175,7 @@ function buildTwentyMemberStore() {
     ),
     artifactContentsByVersionId: Object.fromEntries(
       members.map((member) => [
-        member.versionId,
+        member.artifactVersionId,
         `# ${member.displayName}\n\nNFR package member body for ${member.versionLabel}.`,
       ]),
     ),
@@ -182,9 +185,8 @@ function buildTwentyMemberStore() {
         sourceAttachmentIds: [],
       },
     },
-    reviewPackagesByProcessId: {
-      [processSummary.processId]: [packageTarget],
-    },
+    packageSnapshotsByProcessId: packageSnapshotSeed.packageSnapshotsByProcessId,
+    packageSnapshotMembersBySnapshotId: packageSnapshotSeed.packageSnapshotMembersBySnapshotId,
   });
 }
 
@@ -208,9 +210,6 @@ function buildVersionSwitchStore() {
           artifactId: 'artifact-version-switch-nfr',
           displayName: 'Version Switch Artifact',
           currentVersionLabel: 'v2',
-          attachmentScope: 'process',
-          processId: processSummary.processId,
-          processDisplayLabel: processSummary.displayLabel,
           updatedAt: '2026-04-23T12:02:00.000Z',
         },
       ],

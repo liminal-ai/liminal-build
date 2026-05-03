@@ -1,14 +1,16 @@
 import { defineSchema, defineTable } from 'convex/server';
-import { artifactVersionsTableFields } from './artifactVersions.js';
 import { artifactsTableFields } from './artifacts.js';
+import { artifactVersionsTableFields } from './artifactVersions.js';
 import { packageSnapshotMembersTableFields } from './packageSnapshotMembers.js';
 import { packageSnapshotsTableFields } from './packageSnapshots.js';
-import { processHistoryItemsTableFields } from './processHistoryItems.js';
+import { processEnvironmentStatesTableFields } from './processEnvironmentStates.js';
 import { processesTableFields } from './processes.js';
 import { processFeatureImplementationStateTableFields } from './processFeatureImplementationStates.js';
-import { processEnvironmentStatesTableFields } from './processEnvironmentStates.js';
 import { processFeatureSpecificationStateTableFields } from './processFeatureSpecificationStates.js';
+import { processHistoryItemsTableFields } from './processHistoryItems.js';
 import { processOutputsTableFields } from './processOutputs.js';
+import { processPackageContextMembersTableFields } from './processPackageContextMembers.js';
+import { processPackageContextsTableFields } from './processPackageContexts.js';
 import { processProductDefinitionStateTableFields } from './processProductDefinitionStates.js';
 import { processSideWorkItemsTableFields } from './processSideWorkItems.js';
 import { projectMembersTableFields } from './projectMembers.js';
@@ -43,6 +45,13 @@ export default defineSchema({
     'processId',
     'updatedAt',
   ]),
+  processPackageContexts: defineTable(processPackageContextsTableFields).index('by_processId', [
+    'processId',
+  ]),
+  processPackageContextMembers: defineTable(processPackageContextMembersTableFields).index(
+    'by_packageContextId_position',
+    ['packageContextId', 'position'],
+  ),
   processEnvironmentStates: defineTable(processEnvironmentStatesTableFields)
     .index('by_processId', ['processId'])
     .index('by_environmentId', ['environmentId']),

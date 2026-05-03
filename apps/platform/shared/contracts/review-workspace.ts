@@ -116,6 +116,8 @@ export const artifactVersionSummarySchema = z.object({
   versionLabel: z.string().min(1),
   isCurrent: z.boolean(),
   createdAt: iso8601UtcString,
+  producedByProcessId: z.string().min(1),
+  producedByProcessDisplayLabel: z.string().min(1).nullable(),
 });
 export type ArtifactVersionSummary = z.infer<typeof artifactVersionSummarySchema>;
 
@@ -127,9 +129,11 @@ export type MermaidBlock = z.infer<typeof mermaidBlockSchema>;
 
 export const reviewTargetErrorCodeSchema = z.enum([
   'REVIEW_TARGET_NOT_FOUND',
+  'ARTIFACT_VERSION_NOT_FOUND',
+  'PACKAGE_MEMBER_UNAVAILABLE',
+  'PACKAGE_MEMBER_NOT_ALLOWED',
   'REVIEW_TARGET_UNSUPPORTED',
   'REVIEW_RENDER_FAILED',
-  'REVIEW_MEMBER_UNAVAILABLE',
 ]);
 export type ReviewTargetErrorCode = z.infer<typeof reviewTargetErrorCodeSchema>;
 
@@ -149,6 +153,8 @@ export const artifactVersionDetailSchema = z
     bodyError: reviewTargetErrorSchema.optional(),
     mermaidBlocks: z.array(mermaidBlockSchema).optional(),
     createdAt: iso8601UtcString,
+    producedByProcessId: z.string().min(1),
+    producedByProcessDisplayLabel: z.string().min(1).nullable(),
   })
   .superRefine((value, context) => {
     if (value.contentKind === 'unsupported') {
@@ -258,7 +264,7 @@ export const packageMemberSchema = z.object({
   position: z.number().int().nonnegative(),
   artifactId: z.string().min(1),
   displayName: z.string().min(1),
-  versionId: z.string().min(1),
+  artifactVersionId: z.string().min(1),
   versionLabel: z.string().min(1),
   status: packageMemberStatusSchema,
 });

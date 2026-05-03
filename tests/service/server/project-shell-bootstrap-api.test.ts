@@ -97,6 +97,32 @@ function buildPopulatedStore() {
         processScopedArtifactFixture,
       ],
     },
+    artifactVersionsByArtifactId: {
+      [currentVersionArtifactFixture.artifactId]: [
+        {
+          versionId: 'artifact-version-current-001',
+          artifactId: currentVersionArtifactFixture.artifactId,
+          versionLabel: 'v3',
+          contentStorageId: 'storage-artifact-current-001',
+          contentKind: 'markdown',
+          bytes: 32,
+          createdAt: currentVersionArtifactFixture.updatedAt,
+          createdByProcessId: draftProcessFixture.processId,
+        },
+      ],
+      [processScopedArtifactFixture.artifactId]: [
+        {
+          versionId: 'artifact-version-process-001',
+          artifactId: processScopedArtifactFixture.artifactId,
+          versionLabel: 'draft-1',
+          contentStorageId: 'storage-artifact-process-001',
+          contentKind: 'markdown',
+          bytes: 24,
+          createdAt: processScopedArtifactFixture.updatedAt,
+          createdByProcessId: waitingProcessFixture.processId,
+        },
+      ],
+    },
     sourceAttachmentsByProjectId: {
       [populatedProjectSummary.projectId]: [
         hydratedSourceFixture,
@@ -211,6 +237,159 @@ describe('project shell bootstrap api', () => {
         message: 'Artifact summaries failed to load in test.',
       },
     });
+
+    await app.close();
+  });
+
+  it('returns project artifact summaries without legacy process ownership fields', async () => {
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [populatedProjectSummary],
+      },
+      projectAccessByProjectId: {
+        [populatedProjectSummary.projectId]: {
+          kind: 'accessible',
+          project: populatedProjectSummary,
+        },
+      },
+      artifactsByProjectId: {
+        [populatedProjectSummary.projectId]: [
+          {
+            artifactId: 'artifact-legacy-ownership-001',
+            displayName: 'Legacy Ownership Artifact',
+            currentVersionLabel: null,
+            updatedAt: '2026-04-13T15:00:00.000Z',
+          },
+        ],
+      },
+      artifactVersionsByArtifactId: {
+        'artifact-legacy-ownership-001': [
+          {
+            versionId: 'artifact-version-legacy-ownership-001',
+            artifactId: 'artifact-legacy-ownership-001',
+            versionLabel: 'v4',
+            contentStorageId: 'storage-artifact-legacy-ownership-001',
+            contentKind: 'markdown',
+            bytes: 28,
+            createdAt: '2026-04-13T15:00:00.000Z',
+            createdByProcessId: runningProcessFixture.processId,
+          },
+        ],
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${populatedProjectSummary.projectId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().artifacts.items).toEqual([
+      {
+        artifactId: 'artifact-legacy-ownership-001',
+        displayName: 'Legacy Ownership Artifact',
+        currentVersionLabel: 'v4',
+        updatedAt: '2026-04-13T15:00:00.000Z',
+      },
+    ]);
+
+    await app.close();
+  });
+
+  it('derives project artifact summaries from the latest durable version after a later revision', async () => {
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [populatedProjectSummary],
+      },
+      projectAccessByProjectId: {
+        [populatedProjectSummary.projectId]: {
+          kind: 'accessible',
+          project: populatedProjectSummary,
+        },
+      },
+      processesByProjectId: {
+        [populatedProjectSummary.projectId]: [runningProcessFixture, waitingProcessFixture],
+      },
+      artifactsByProjectId: {
+        [populatedProjectSummary.projectId]: [
+          {
+            artifactId: 'artifact-multi-process-001',
+            displayName: 'Cross-Process Technical Design',
+            currentVersionLabel: 'spec-v1',
+            updatedAt: '2026-04-13T09:00:00.000Z',
+          },
+        ],
+      },
+      artifactVersionsByArtifactId: {
+        'artifact-multi-process-001': [
+          {
+            versionId: 'artifact-version-multi-process-002',
+            artifactId: 'artifact-multi-process-001',
+            versionLabel: 'impl-v2',
+            contentStorageId: 'storage-version-2',
+            contentKind: 'markdown',
+            bytes: 42,
+            createdAt: '2026-04-13T15:30:00.000Z',
+            createdByProcessId: waitingProcessFixture.processId,
+          },
+          {
+            versionId: 'artifact-version-multi-process-001',
+            artifactId: 'artifact-multi-process-001',
+            versionLabel: 'spec-v1',
+            contentStorageId: 'storage-version-1',
+            contentKind: 'markdown',
+            bytes: 28,
+            createdAt: '2026-04-13T09:00:00.000Z',
+            createdByProcessId: runningProcessFixture.processId,
+          },
+        ],
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${populatedProjectSummary.projectId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().artifacts.items).toEqual([
+      {
+        artifactId: 'artifact-multi-process-001',
+        displayName: 'Cross-Process Technical Design',
+        currentVersionLabel: 'impl-v2',
+        updatedAt: '2026-04-13T15:30:00.000Z',
+      },
+    ]);
 
     await app.close();
   });

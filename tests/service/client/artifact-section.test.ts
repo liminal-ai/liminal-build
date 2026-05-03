@@ -4,7 +4,6 @@ import { artifactSectionEnvelopeSchema } from '../../../apps/platform/shared/con
 import {
   currentVersionArtifactFixture,
   noCurrentVersionArtifactFixture,
-  processScopedArtifactFixture,
 } from '../../fixtures/artifacts.js';
 
 describe('artifact section', () => {
@@ -25,19 +24,17 @@ describe('artifact section', () => {
     expect(view.textContent).toContain('No current version available.');
   });
 
-  it('TC-3.3c through TC-3.3e render multiple artifacts with process association context', () => {
+  it('renders multiple project-scoped artifact rows without ownership copy', () => {
     const view = renderArtifactSection({
       envelope: artifactSectionEnvelopeSchema.parse({
         status: 'ready',
-        items: [processScopedArtifactFixture, currentVersionArtifactFixture],
+        items: [currentVersionArtifactFixture, noCurrentVersionArtifactFixture],
       }),
       targetDocument: document,
     });
 
     expect(view.querySelectorAll('li')).toHaveLength(2);
-    expect(view.textContent).toContain(
-      `Attached to ${processScopedArtifactFixture.processDisplayLabel}.`,
-    );
-    expect(view.textContent).toContain('Project-scoped artifact.');
+    expect(view.textContent).not.toContain('Attached to');
+    expect(view.textContent).not.toContain('Project-scoped artifact.');
   });
 });

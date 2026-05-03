@@ -36,6 +36,10 @@ import { SideWorkSectionReader } from './readers/side-work-section.reader.js';
 import { EnvironmentSectionReader } from './readers/environment-section.reader.js';
 import { SectionError } from '../../errors/section-error.js';
 import type { ProcessAccessService } from './process-access.service.js';
+import {
+  DefaultReviewContextService,
+  type ReviewContextService,
+} from '../review/review-context.service.js';
 
 export interface ProcessSurfaceProjection {
   process: ProcessSurfaceSummary;
@@ -358,8 +362,11 @@ export async function buildProcessSurfaceSummaryWithReviewability(args: {
   projectId: string;
   process: ProcessSummary;
   environment?: EnvironmentSummary;
+  reviewContextService?: ReviewContextService;
 }): Promise<ProcessSurfaceSummary> {
-  const reviewTargets = await args.platformStore.listProcessReviewTargets({
+  const reviewContextService =
+    args.reviewContextService ?? new DefaultReviewContextService(args.platformStore);
+  const reviewTargets = await reviewContextService.listAvailableTargets({
     projectId: args.projectId,
     processId: args.process.processId,
   });

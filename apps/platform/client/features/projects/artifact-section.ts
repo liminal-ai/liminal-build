@@ -35,7 +35,6 @@ export function renderArtifactSection(args: {
     const item = args.targetDocument.createElement('li');
     const heading = args.targetDocument.createElement('strong');
     const revision = args.targetDocument.createElement('p');
-    const scope = args.targetDocument.createElement('p');
     const updatedAt = args.targetDocument.createElement('p');
 
     heading.textContent = artifact.displayName;
@@ -43,13 +42,9 @@ export function renderArtifactSection(args: {
       artifact.currentVersionLabel === null
         ? 'No current version available.'
         : `Current version: ${artifact.currentVersionLabel}`;
-    scope.textContent =
-      artifact.attachmentScope === 'project'
-        ? 'Project-scoped artifact.'
-        : `Attached to ${artifact.processDisplayLabel ?? artifact.processId ?? 'a process'}.`;
     updatedAt.textContent = `Updated: ${artifact.updatedAt}`;
 
-    item.append(heading, revision, scope, updatedAt);
+    item.append(heading, revision, updatedAt);
     list.append(item);
   }
 

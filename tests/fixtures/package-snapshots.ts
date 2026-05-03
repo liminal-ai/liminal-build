@@ -12,7 +12,7 @@ export const readyPackageMemberFixture = packageMemberSchema.parse({
   position: 0,
   artifactId: 'artifact-001',
   displayName: 'Feature Specification',
-  versionId: 'artifact-version-001',
+  artifactVersionId: 'artifact-version-001',
   versionLabel: 'checkpoint-20260422120000',
   status: 'ready',
 });
@@ -22,13 +22,13 @@ export const unavailablePackageMemberFixture = packageMemberSchema.parse({
   position: 1,
   artifactId: 'artifact-002',
   displayName: 'Implementation Notes',
-  versionId: 'artifact-version-002',
+  artifactVersionId: 'artifact-version-002',
   versionLabel: 'checkpoint-20260422121000',
   status: 'unavailable',
 });
 
 export const unavailablePackageMemberErrorFixture = reviewTargetErrorSchema.parse({
-  code: 'REVIEW_MEMBER_UNAVAILABLE',
+  code: 'PACKAGE_MEMBER_UNAVAILABLE',
   message: 'The pinned package member is currently unavailable.',
 });
 

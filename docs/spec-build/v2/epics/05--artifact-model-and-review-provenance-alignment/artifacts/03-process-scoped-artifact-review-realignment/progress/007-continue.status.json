@@ -1,0 +1,27 @@
+{
+  "command": "story-continue",
+  "status": "completed",
+  "phase": "finalizing",
+  "startedAt": "2026-04-26T23:03:36.217Z",
+  "updatedAt": "2026-04-26T23:07:18.349Z",
+  "lastOutputAt": "2026-04-26T23:07:18.248Z",
+  "provider": "codex",
+  "pid": 9587,
+  "cwd": "/Users/leemoore/code/liminal-build-wt-1",
+  "timeoutMs": 7200000,
+  "configuredStartupTimeoutMs": 300000,
+  "configuredSilenceTimeoutMs": 600000,
+  "artifactPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/03-process-scoped-artifact-review-realignment/007-continue.json",
+  "streamPaths": {
+    "stdoutPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/03-process-scoped-artifact-review-realignment/streams/007-continue.stdout.log",
+    "stderrPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/03-process-scoped-artifact-review-realignment/streams/007-continue.stderr.log"
+  },
+  "progressPaths": {
+    "statusPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/03-process-scoped-artifact-review-realignment/progress/007-continue.status.json",
+    "progressPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/03-process-scoped-artifact-review-realignment/progress/007-continue.progress.jsonl"
+  },
+  "lastEvent": "completed",
+  "lastEventSummary": "story-continue completed for 03-process-scoped-artifact-review-realignment with outcome ready-for-verification.",
+  "selfReviewPassesCompleted": 0,
+  "selfReviewPassesPlanned": 0
+}

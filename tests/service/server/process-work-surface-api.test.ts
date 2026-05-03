@@ -125,9 +125,6 @@ function buildPopulatedStore() {
     displayName: readyProcessMaterialsFixture.currentArtifacts[0]?.displayName ?? 'Artifact',
     currentVersionLabel:
       readyProcessMaterialsFixture.currentArtifacts[0]?.currentVersionLabel ?? null,
-    attachmentScope: 'process' as const,
-    processId: waitingProcessSummary.processId,
-    processDisplayLabel: waitingProcessSummary.displayLabel,
     updatedAt:
       readyProcessMaterialsFixture.currentArtifacts[0]?.updatedAt ??
       waitingProcessSummary.updatedAt,
@@ -166,6 +163,20 @@ function buildPopulatedStore() {
     },
     artifactsByProjectId: {
       [projectSummary.projectId]: [processArtifact],
+    },
+    artifactVersionsByArtifactId: {
+      [processArtifact.artifactId]: [
+        {
+          versionId: 'artifact-version-process-surface-001',
+          artifactId: processArtifact.artifactId,
+          versionLabel: processArtifact.currentVersionLabel ?? 'draft-3',
+          contentStorageId: 'storage-artifact-process-surface-001',
+          contentKind: 'markdown',
+          bytes: 32,
+          createdAt: processArtifact.updatedAt,
+          createdByProcessId: waitingProcessSummary.processId,
+        },
+      ],
     },
     sourceAttachmentsByProjectId: {
       [projectSummary.projectId]: [processSource],
@@ -501,18 +512,12 @@ describe('process work surface api', () => {
       artifactId: 'artifact-stale-process-001',
       displayName: 'Old Discovery Notes',
       currentVersionLabel: 'v1',
-      attachmentScope: 'process' as const,
-      processId: waitingProcessSummary.processId,
-      processDisplayLabel: waitingProcessSummary.displayLabel,
       updatedAt: '2026-04-13T12:09:00.000Z',
     };
     const sharedCurrentArtifact = {
       artifactId: 'artifact-shared-current-001',
       displayName: 'Shared Architecture Notes',
       currentVersionLabel: 'v3',
-      attachmentScope: 'project' as const,
-      processId: null,
-      processDisplayLabel: null,
       updatedAt: '2026-04-13T12:30:00.000Z',
     };
     const staleSource = {
@@ -556,6 +561,20 @@ describe('process work surface api', () => {
       },
       artifactsByProjectId: {
         [projectSummary.projectId]: [staleArtifact, sharedCurrentArtifact],
+      },
+      artifactVersionsByArtifactId: {
+        [sharedCurrentArtifact.artifactId]: [
+          {
+            versionId: 'artifact-version-shared-current-001',
+            artifactId: sharedCurrentArtifact.artifactId,
+            versionLabel: 'v3',
+            contentStorageId: 'storage-shared-current-001',
+            contentKind: 'markdown',
+            bytes: 28,
+            createdAt: sharedCurrentArtifact.updatedAt,
+            createdByProcessId: 'process-earlier-architecture-001',
+          },
+        ],
       },
       sourceAttachmentsByProjectId: {
         [projectSummary.projectId]: [staleSource, sharedCurrentSource],
@@ -605,7 +624,7 @@ describe('process work surface api', () => {
           artifactId: sharedCurrentArtifact.artifactId,
           displayName: sharedCurrentArtifact.displayName,
           currentVersionLabel: sharedCurrentArtifact.currentVersionLabel,
-          roleLabel: 'Current shared artifact',
+          roleLabel: 'Current referenced artifact',
           updatedAt: sharedCurrentArtifact.updatedAt,
         },
       ],
@@ -632,9 +651,6 @@ describe('process work surface api', () => {
       artifactId: 'artifact-current-001',
       displayName: 'Feature Specification Draft',
       currentVersionLabel: 'draft-7',
-      attachmentScope: 'process' as const,
-      processId: waitingProcessSummary.processId,
-      processDisplayLabel: waitingProcessSummary.displayLabel,
       updatedAt: '2026-04-13T12:20:00.000Z',
     };
     const linkedPublishedOutput = {
@@ -668,6 +684,20 @@ describe('process work surface api', () => {
       },
       artifactsByProjectId: {
         [projectSummary.projectId]: [currentArtifact],
+      },
+      artifactVersionsByArtifactId: {
+        [currentArtifact.artifactId]: [
+          {
+            versionId: 'artifact-version-current-001',
+            artifactId: currentArtifact.artifactId,
+            versionLabel: currentArtifact.currentVersionLabel ?? 'draft-7',
+            contentStorageId: 'storage-current-001',
+            contentKind: 'markdown',
+            bytes: 34,
+            createdAt: currentArtifact.updatedAt,
+            createdByProcessId: waitingProcessSummary.processId,
+          },
+        ],
       },
       currentRequestsByProcessId: {
         [waitingProcessSummary.processId]: currentProcessRequestFixture,
@@ -921,9 +951,6 @@ describe('process work surface api', () => {
             artifactId: reviewArtifactId,
             displayName: 'Running review artifact',
             currentVersionLabel: 'review-1',
-            attachmentScope: 'process',
-            processId: runningProcessSummary.processId,
-            processDisplayLabel: runningProcessSummary.displayLabel,
             updatedAt: '2026-04-13T12:14:00.000Z',
           },
         ],
@@ -999,6 +1026,93 @@ describe('process work surface api', () => {
     await app.close();
   });
 
+  it('offers review when the process currently references an artifact produced by an earlier process', async () => {
+    const runningProcessSummary = processSummarySchema.parse({
+      ...runningProcessFixture,
+      processId: 'process-running-referenced-review-001',
+      updatedAt: '2026-04-13T12:18:00.000Z',
+    });
+    const referencedArtifact = {
+      artifactId: 'artifact-referenced-review-001',
+      displayName: 'Referenced Architecture',
+      currentVersionLabel: 'arch-v2',
+      updatedAt: '2026-04-13T12:17:00.000Z',
+    };
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectSummary.projectId]: [runningProcessSummary],
+      },
+      artifactsByProjectId: {
+        [projectSummary.projectId]: [referencedArtifact],
+      },
+      artifactVersionsByArtifactId: {
+        [referencedArtifact.artifactId]: [
+          {
+            versionId: 'artifact-version-referenced-review-001',
+            artifactId: referencedArtifact.artifactId,
+            versionLabel: referencedArtifact.currentVersionLabel ?? 'arch-v2',
+            contentStorageId: 'storage-referenced-review-001',
+            contentKind: 'markdown',
+            bytes: 31,
+            createdAt: referencedArtifact.updatedAt,
+            createdByProcessId: 'process-earlier-architecture-001',
+          },
+        ],
+      },
+      currentRequestsByProcessId: {
+        [runningProcessSummary.processId]: null,
+      },
+      currentMaterialRefsByProcessId: {
+        [runningProcessSummary.processId]: {
+          artifactIds: [referencedArtifact.artifactId],
+          sourceAttachmentIds: [],
+        },
+      },
+      processHistoryItemsByProcessId: {
+        [runningProcessSummary.processId]: readyProcessHistoryFixture.items,
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${runningProcessSummary.processId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      process: {
+        processId: runningProcessSummary.processId,
+        availableActions: ['review'],
+      },
+    });
+
+    await app.close();
+  });
+
   it('TC-3.4b completed processes omit an active respond action from bootstrap', async () => {
     const completedProcessSummary = processSummarySchema.parse({
       ...completedProcessFixture,
@@ -1025,9 +1139,6 @@ describe('process work surface api', () => {
             artifactId: reviewArtifactId,
             displayName: 'Completed review artifact',
             currentVersionLabel: 'review-2',
-            attachmentScope: 'process',
-            processId: completedProcessSummary.processId,
-            processDisplayLabel: completedProcessSummary.displayLabel,
             updatedAt: '2026-04-13T12:15:00.000Z',
           },
         ],

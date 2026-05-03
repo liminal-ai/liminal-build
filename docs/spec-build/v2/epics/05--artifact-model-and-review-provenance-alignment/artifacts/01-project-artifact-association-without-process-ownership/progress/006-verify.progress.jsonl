@@ -1,0 +1,24 @@
+{"timestamp":"2026-04-26T22:01:32.604Z","command":"story-verify","phase":"verifier-initial","event":"command-started","summary":"story-verify started."}
+{"timestamp":"2026-04-26T22:01:32.605Z","command":"story-verify","phase":"verifier-initial","event":"verifier-started","summary":"Story verifier started for 01-project-artifact-association-without-process-ownership."}
+{"timestamp":"2026-04-26T22:01:32.607Z","command":"story-verify","phase":"verifier-initial","event":"provider-spawned","summary":"Provider spawned with pid 99823.","metadata":{"pid":99823}}
+{"timestamp":"2026-04-26T22:01:32.672Z","command":"story-verify","phase":"verifier-initial","event":"first-output-received","summary":"First provider stderr output received.","metadata":{"stream":"stderr"}}
+{"timestamp":"2026-04-26T22:02:07.277Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:02:40.043Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:03:13.080Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:03:45.233Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:04:19.480Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:04:55.633Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:05:35.318Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:06:06.897Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:06:38.821Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:07:13.414Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:07:53.620Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:08:24.194Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:09:00.278Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:09:35.153Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:10:31.540Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:11:06.021Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:12:51.768Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:12:51.865Z","command":"story-verify","phase":"verifier-initial","event":"provider-exit","summary":"Provider exited with code 0.","metadata":{"exitCode":0,"signal":null,"elapsedMs":679257,"configuredTimeoutMs":3600000}}
+{"timestamp":"2026-04-26T22:12:51.873Z","command":"story-verify","phase":"verifier-initial","event":"verifier-completed","summary":"Story verifier completed for 01-project-artifact-association-without-process-ownership.","metadata":{"outcome":"pass"}}
+{"timestamp":"2026-04-26T22:12:51.873Z","command":"story-verify","phase":"finalizing","event":"completed","summary":"story-verify completed for 01-project-artifact-association-without-process-ownership with outcome pass.","metadata":{"outcome":"pass","verifiersCompleted":1}}

@@ -1016,6 +1016,68 @@ export async function bootstrapApp(
     await loadParsedRoute(route);
   };
 
+  const reloadReviewWorkspaceSelection = async (args: {
+    projectId: string;
+    processId: string;
+    selection: ReviewWorkspaceSelection;
+    requestId: number;
+  }): Promise<boolean> => {
+    const workspace = await getReviewWorkspace({
+      projectId: args.projectId,
+      processId: args.processId,
+      selection: args.selection,
+    });
+    const latestReviewWorkspace = store.get().reviewWorkspace;
+    const latestSelection = latestReviewWorkspace.selection;
+
+    if (
+      args.requestId !== routeLoadId ||
+      latestReviewWorkspace.projectId !== args.projectId ||
+      latestReviewWorkspace.processId !== args.processId ||
+      latestSelection === null ||
+      latestSelection.targetKind !== args.selection.targetKind ||
+      latestSelection.targetId !== args.selection.targetId ||
+      latestSelection.versionId !== args.selection.versionId ||
+      latestSelection.memberId !== args.selection.memberId
+    ) {
+      return false;
+    }
+
+    store.patch('route', {
+      pathname: getRoutePathname({
+        kind: 'review-workspace',
+        projectId: args.projectId,
+        selectedProcessId: null,
+        processId: args.processId,
+        reviewSelection: args.selection,
+      }),
+      projectId: args.projectId,
+      selectedProcessId: null,
+    });
+    store.patch('reviewWorkspace', {
+      ...latestReviewWorkspace,
+      selection: args.selection,
+      project: workspace.project,
+      process: workspace.process,
+      availableTargets: workspace.availableTargets,
+      target: workspace.target ?? null,
+      error: null,
+    });
+    navigateTo(
+      {
+        kind: 'review-workspace',
+        projectId: args.projectId,
+        selectedProcessId: null,
+        processId: args.processId,
+        reviewSelection: args.selection,
+      },
+      {},
+      targetWindow,
+    );
+
+    return true;
+  };
+
   const selectArtifactVersion = async (
     projectId: string,
     processId: string,
@@ -1135,6 +1197,45 @@ export async function bootstrapApp(
           return;
         }
 
+        if (
+          error.payload.code === 'ARTIFACT_VERSION_NOT_FOUND' ||
+          error.payload.code === 'REVIEW_TARGET_NOT_FOUND'
+        ) {
+          try {
+            await reloadReviewWorkspaceSelection({
+              projectId,
+              processId,
+              selection,
+              requestId,
+            });
+            return;
+          } catch (reloadError) {
+            if (reloadError instanceof ApiRequestError) {
+              const reloadedReviewWorkspace = store.get().reviewWorkspace;
+              const reloadedSelection = reloadedReviewWorkspace.selection;
+              if (
+                requestId !== routeLoadId ||
+                reloadedReviewWorkspace.projectId !== projectId ||
+                reloadedReviewWorkspace.processId !== processId ||
+                reloadedSelection === null ||
+                reloadedSelection.targetKind !== selection.targetKind ||
+                reloadedSelection.targetId !== selection.targetId ||
+                reloadedSelection.versionId !== selection.versionId
+              ) {
+                return;
+              }
+
+              store.patch('reviewWorkspace', {
+                ...reloadedReviewWorkspace,
+                error: reloadError.payload,
+              });
+              return;
+            }
+
+            throw reloadError;
+          }
+        }
+
         store.patch('reviewWorkspace', {
           ...latestReviewWorkspace,
           error: error.payload,
@@ -1242,6 +1343,45 @@ export async function bootstrapApp(
           latestSelection.memberId !== selection.memberId
         ) {
           return;
+        }
+
+        if (
+          error.payload.code === 'PACKAGE_MEMBER_UNAVAILABLE' ||
+          error.payload.code === 'REVIEW_TARGET_NOT_FOUND'
+        ) {
+          try {
+            await reloadReviewWorkspaceSelection({
+              projectId,
+              processId,
+              selection,
+              requestId,
+            });
+            return;
+          } catch (reloadError) {
+            if (reloadError instanceof ApiRequestError) {
+              const reloadedReviewWorkspace = store.get().reviewWorkspace;
+              const reloadedSelection = reloadedReviewWorkspace.selection;
+              if (
+                requestId !== routeLoadId ||
+                reloadedReviewWorkspace.projectId !== projectId ||
+                reloadedReviewWorkspace.processId !== processId ||
+                reloadedSelection === null ||
+                reloadedSelection.targetKind !== selection.targetKind ||
+                reloadedSelection.targetId !== selection.targetId ||
+                reloadedSelection.memberId !== selection.memberId
+              ) {
+                return;
+              }
+
+              store.patch('reviewWorkspace', {
+                ...reloadedReviewWorkspace,
+                error: reloadError.payload,
+              });
+              return;
+            }
+
+            throw reloadError;
+          }
         }
 
         store.patch('reviewWorkspace', {

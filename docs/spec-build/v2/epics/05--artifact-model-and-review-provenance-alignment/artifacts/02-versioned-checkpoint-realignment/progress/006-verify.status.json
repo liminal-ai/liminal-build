@@ -1,0 +1,27 @@
+{
+  "command": "story-verify",
+  "status": "completed",
+  "phase": "finalizing",
+  "startedAt": "2026-04-26T22:22:52.940Z",
+  "updatedAt": "2026-04-26T22:31:05.793Z",
+  "lastOutputAt": "2026-04-26T22:31:05.711Z",
+  "provider": "codex",
+  "pid": 39523,
+  "cwd": "/Users/leemoore/code/liminal-build-wt-1",
+  "timeoutMs": 3600000,
+  "configuredStartupTimeoutMs": 300000,
+  "configuredSilenceTimeoutMs": 360000,
+  "artifactPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/02-versioned-checkpoint-realignment/006-verify.json",
+  "streamPaths": {
+    "stdoutPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/02-versioned-checkpoint-realignment/streams/006-verify.stdout.log",
+    "stderrPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/02-versioned-checkpoint-realignment/streams/006-verify.stderr.log"
+  },
+  "progressPaths": {
+    "statusPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/02-versioned-checkpoint-realignment/progress/006-verify.status.json",
+    "progressPath": "/Users/leemoore/code/liminal-build-wt-1/docs/spec-build/v2/epics/05--artifact-model-and-review-provenance-alignment/artifacts/02-versioned-checkpoint-realignment/progress/006-verify.progress.jsonl"
+  },
+  "lastEvent": "completed",
+  "lastEventSummary": "story-verify completed for 02-versioned-checkpoint-realignment with outcome revise.",
+  "verifiersCompleted": 1,
+  "verifiersPlanned": 1
+}

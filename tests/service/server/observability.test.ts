@@ -16,6 +16,7 @@ import {
   projectSummarySchema,
 } from '../../../apps/platform/shared/contracts/index.js';
 import { buildApp } from '../../utils/build-app.js';
+import { buildPackageSnapshotSeed } from '../../utils/package-snapshot-seed.js';
 
 type LogRecord = Record<string, unknown>;
 
@@ -125,7 +126,7 @@ const member = packageMemberSchema.parse({
   position: 0,
   artifactId: 'artifact-observe-001',
   displayName: 'Observed Artifact',
-  versionId: 'artifact-version-observe-001',
+  artifactVersionId: 'artifact-version-observe-001',
   versionLabel: 'observe-v1',
   status: 'ready',
 });
@@ -143,21 +144,24 @@ const packageTarget = packageReviewTargetSchema.parse({
     artifact: artifactReviewTargetSchema.parse({
       artifactId: member.artifactId,
       displayName: member.displayName,
-      currentVersionId: member.versionId,
+      currentVersionId: member.artifactVersionId,
       currentVersionLabel: member.versionLabel,
-      selectedVersionId: member.versionId,
+      selectedVersionId: member.artifactVersionId,
       versions: [
         {
-          versionId: member.versionId,
+          versionId: member.artifactVersionId,
           versionLabel: member.versionLabel,
           isCurrent: true,
           createdAt: '2026-04-23T12:00:00.000Z',
+          producedByProcessId: processSummary.processId,
+          producedByProcessDisplayLabel: processSummary.displayLabel,
         },
       ],
     }),
   }),
   exportability: { available: true },
 });
+const packageSnapshotSeed = buildPackageSnapshotSeed(processSummary.processId, [packageTarget]);
 
 function buildStore(args: { includeContent?: boolean; forbidden?: boolean } = {}) {
   return new InMemoryPlatformStore({
@@ -178,9 +182,6 @@ function buildStore(args: { includeContent?: boolean; forbidden?: boolean } = {}
           artifactId: member.artifactId,
           displayName: member.displayName,
           currentVersionLabel: member.versionLabel,
-          attachmentScope: 'process',
-          processId: processSummary.processId,
-          processDisplayLabel: processSummary.displayLabel,
           updatedAt: '2026-04-23T12:00:00.000Z',
         },
       ],
@@ -188,7 +189,7 @@ function buildStore(args: { includeContent?: boolean; forbidden?: boolean } = {}
     artifactVersionsByArtifactId: {
       [member.artifactId]: [
         {
-          versionId: member.versionId,
+          versionId: member.artifactVersionId,
           artifactId: member.artifactId,
           versionLabel: member.versionLabel,
           contentStorageId: 'storage-observe-001',
@@ -203,7 +204,7 @@ function buildStore(args: { includeContent?: boolean; forbidden?: boolean } = {}
       args.includeContent === false
         ? {}
         : {
-            [member.versionId]: artifactMarkdown,
+            [member.artifactVersionId]: artifactMarkdown,
           },
     currentMaterialRefsByProcessId: {
       [processSummary.processId]: {
@@ -211,9 +212,8 @@ function buildStore(args: { includeContent?: boolean; forbidden?: boolean } = {}
         sourceAttachmentIds: [],
       },
     },
-    reviewPackagesByProcessId: {
-      [processSummary.processId]: [packageTarget],
-    },
+    packageSnapshotsByProcessId: packageSnapshotSeed.packageSnapshotsByProcessId,
+    packageSnapshotMembersBySnapshotId: packageSnapshotSeed.packageSnapshotMembersBySnapshotId,
   });
 }
 
@@ -258,7 +258,7 @@ describe('review workspace observability', () => {
 
     expect(findEvent(logs.records, 'review.artifact.resolved')).toMatchObject({
       artifactId: member.artifactId,
-      selectedVersionId: member.versionId,
+      selectedVersionId: member.artifactVersionId,
       contentKind: 'markdown',
       bodyStatus: 'ready',
     });
@@ -276,7 +276,7 @@ describe('review workspace observability', () => {
 
     expect(findEvent(logs.records, 'review.artifact.content-fetch-failed')).toMatchObject({
       artifactId: member.artifactId,
-      selectedVersionId: member.versionId,
+      selectedVersionId: member.artifactVersionId,
       errorCode: 'REVIEW_RENDER_FAILED',
       reason: 'missing_content_url',
     });
@@ -307,12 +307,12 @@ describe('review workspace observability', () => {
       markdown: '```mermaid\n%%{init: {}}%%\ngraph TD\nA-->B\n```',
       themeId: 'light',
       artifactId: member.artifactId,
-      selectedVersionId: member.versionId,
+      selectedVersionId: member.artifactVersionId,
     });
 
     expect(findEvent(logs.records, 'review.mermaid.directive-stripped')).toMatchObject({
       artifactId: member.artifactId,
-      selectedVersionId: member.versionId,
+      selectedVersionId: member.artifactVersionId,
       blockId: 'mermaid-block-1',
       directive: 'init',
     });

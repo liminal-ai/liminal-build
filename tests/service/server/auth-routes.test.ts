@@ -641,12 +641,6 @@ describe('auth routes', () => {
       async listPackageSnapshotMembers() {
         return [];
       },
-      async listProcessReviewTargets() {
-        return [];
-      },
-      async getProcessReviewPackage() {
-        return null;
-      },
     };
     const app = await buildApp({
       authSessionService: createTestAuthSessionService({

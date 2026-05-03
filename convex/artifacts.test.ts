@@ -132,9 +132,6 @@ const listProjectArtifactSummariesHandler = getHandler<
     artifactId: string;
     displayName: string;
     currentVersionLabel: string | null;
-    attachmentScope: 'project' | 'process';
-    processId: string | null;
-    processDisplayLabel: string | null;
     updatedAt: string;
   }>
 >(listProjectArtifactSummaries);
@@ -185,8 +182,10 @@ function buildArtifactSeed() {
   };
 }
 
-function buildArtifactCtx() {
-  const fixture = createFakeConvexContext(buildArtifactSeed());
+function buildArtifactCtx(
+  seed: Parameters<typeof createFakeConvexContext>[0] = buildArtifactSeed(),
+) {
+  const fixture = createFakeConvexContext(seed);
   // Wire the internal mutation/query/action references used by the public
   // service wrappers so the fake `ctx.runMutation` / `ctx.runQuery` /
   // `ctx.runAction` can resolve them by canonical Convex name.
@@ -245,7 +244,6 @@ describe('convex/artifacts project summaries', () => {
         _id: `artifact-bulk-${index + 1}`,
         _creationTime: 100 + index,
         projectId: 'project-artifacts-1',
-        processId: null,
         displayName: `Bulk Artifact ${index + 1}`,
         createdAt: new Date(createdAtStart + index * 1_000).toISOString(),
       })),
@@ -377,7 +375,6 @@ describe('convex/artifacts checkpoint persistence with file storage', () => {
       processId: 'process-artifacts-1',
       artifacts: [
         {
-          artifactId: 'artifact-ordered-1',
           producedAt: '2026-04-15T12:30:00.000Z',
           contents: '# Checkpoint A',
           targetLabel: 'Ordered Artifact',
@@ -385,6 +382,7 @@ describe('convex/artifacts checkpoint persistence with file storage', () => {
       ],
     });
 
+    const artifactId = (db.list('artifacts')[0] as Record<string, unknown>)._id as string;
     const firstVersion = db.list('artifactVersions')[0] as Record<string, unknown>;
 
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -393,7 +391,7 @@ describe('convex/artifacts checkpoint persistence with file storage', () => {
       processId: 'process-artifacts-1',
       artifacts: [
         {
-          artifactId: 'artifact-ordered-1',
+          artifactId,
           producedAt: '2026-04-15T11:30:00.000Z',
           contents: '# Checkpoint B',
           targetLabel: 'Ordered Artifact',
@@ -478,6 +476,175 @@ describe('convex/artifacts checkpoint persistence with file storage', () => {
     expect((artifactVersionRows[0] as Record<string, unknown>).contentStorageId).toBe(
       contentStorageId,
     );
+  });
+
+  it('keeps one artifact identity while later-process revisions append new version provenance', async () => {
+    const { ctx, db, registry } = createFakeConvexContext({
+      ...buildArtifactSeed(),
+      processes: [
+        ...buildArtifactSeed().processes,
+        {
+          _id: 'process-artifacts-2',
+          _creationTime: 4,
+          projectId: 'project-artifacts-1',
+          processType: 'FeatureImplementation',
+          displayLabel: 'Implementation #1',
+          status: 'running',
+          phaseLabel: 'Working',
+          nextActionLabel: 'Review the latest output',
+          currentRequestHistoryItemId: null,
+          hasEnvironment: true,
+          createdAt: '2026-04-15T12:05:00.000Z',
+          updatedAt: '2026-04-15T12:05:00.000Z',
+        },
+      ],
+      processFeatureImplementationStates: [
+        {
+          _id: 'state-artifacts-2',
+          _creationTime: 5,
+          processId: 'process-artifacts-2',
+          currentArtifactIds: [],
+          currentSourceAttachmentIds: [],
+          createdAt: '2026-04-15T12:05:00.000Z',
+          updatedAt: '2026-04-15T12:05:00.000Z',
+        },
+      ],
+      artifacts: [
+        {
+          _id: 'artifact-shared-1',
+          _creationTime: 6,
+          projectId: 'project-artifacts-1',
+          displayName: 'Shared Spec',
+          createdAt: '2026-04-15T12:00:00.000Z',
+        },
+      ],
+      artifactVersions: [
+        {
+          _id: 'artifact-version-shared-1',
+          _creationTime: 7,
+          artifactId: 'artifact-shared-1',
+          versionLabel: 'checkpoint-20260415120000',
+          contentStorageId: 'storage-existing',
+          contentKind: 'markdown',
+          bytes: 10,
+          createdAt: '2026-04-15T12:00:01.000Z',
+          createdByProcessId: 'process-artifacts-1',
+        },
+      ],
+    });
+    registry.register(
+      'artifactVersions:insertArtifactVersion',
+      getHandler<
+        {
+          artifactId: string;
+          versionLabel: string;
+          contentStorageId: string;
+          contentKind: 'markdown' | 'unsupported';
+          bytes: number;
+          createdByProcessId: string;
+        },
+        string
+      >(insertArtifactVersion) as unknown as (ctx: unknown, args: unknown) => Promise<unknown>,
+    );
+
+    const blob = new Blob(['revised body']);
+    const contentStorageId = await ctx.storage.store(blob);
+
+    await recordCheckpointArtifactsInternalHandler(ctx, {
+      processId: 'process-artifacts-2',
+      artifacts: [
+        {
+          artifactId: 'artifact-shared-1',
+          producedAt: '2026-04-15T11:30:00.000Z',
+          contentStorageId,
+          bytes: blob.size,
+          targetLabel: 'Shared Spec Revised',
+        },
+      ],
+    });
+
+    const artifactRows = db.list('artifacts');
+    const artifactVersionRows = db.list('artifactVersions') as Array<Record<string, unknown>>;
+
+    expect(artifactRows).toHaveLength(1);
+    expect((artifactRows[0] as Record<string, unknown>).displayName).toBe('Shared Spec Revised');
+    expect((artifactRows[0] as Record<string, unknown>).processId).toBeUndefined();
+    expect(artifactVersionRows.map((row) => row.createdByProcessId)).toEqual([
+      'process-artifacts-1',
+      'process-artifacts-2',
+    ]);
+  });
+
+  it('rejects a checkpoint that names a stale artifactId instead of creating a replacement artifact', async () => {
+    const { ctx, db, storage } = buildArtifactCtx();
+
+    await expect(
+      persistCheckpointArtifactsHandler(ctx, {
+        processId: 'process-artifacts-1',
+        artifacts: [
+          {
+            artifactId: 'artifact-missing-1',
+            producedAt: '2026-04-15T12:32:00.000Z',
+            contents: '# Missing Target',
+            targetLabel: 'Missing Target',
+          },
+        ],
+      }),
+    ).rejects.toThrow("Artifact checkpoint target 'artifact-missing-1' was not found.");
+
+    expect(db.list('artifacts')).toHaveLength(0);
+    expect(db.list('artifactVersions')).toHaveLength(0);
+    expect(storage.list()).toHaveLength(0);
+  });
+
+  it('rejects a checkpoint that names an artifact from another project', async () => {
+    const { ctx, db, storage } = buildArtifactCtx({
+      ...buildArtifactSeed(),
+      projects: [
+        ...buildArtifactSeed().projects,
+        {
+          _id: 'project-artifacts-2',
+          _creationTime: 4,
+          name: 'Other Project',
+          ownerUserId: 'user-1',
+          processCount: 0,
+          artifactCount: 1,
+          sourceAttachmentCount: 0,
+          lastUpdatedAt: '2026-04-15T12:10:00.000Z',
+          createdAt: '2026-04-15T12:10:00.000Z',
+          updatedAt: '2026-04-15T12:10:00.000Z',
+        },
+      ],
+      artifacts: [
+        {
+          _id: 'artifact-other-project-1',
+          _creationTime: 5,
+          projectId: 'project-artifacts-2',
+          displayName: 'Other Project Artifact',
+          createdAt: '2026-04-15T12:10:00.000Z',
+        },
+      ],
+    });
+
+    await expect(
+      persistCheckpointArtifactsHandler(ctx, {
+        processId: 'process-artifacts-1',
+        artifacts: [
+          {
+            artifactId: 'artifact-other-project-1',
+            producedAt: '2026-04-15T12:33:00.000Z',
+            contents: '# Cross Project Target',
+            targetLabel: 'Cross Project Target',
+          },
+        ],
+      }),
+    ).rejects.toThrow(
+      "Artifact checkpoint target 'artifact-other-project-1' does not belong to this process project.",
+    );
+
+    expect(db.list('artifacts')).toHaveLength(1);
+    expect(db.list('artifactVersions')).toHaveLength(0);
+    expect(storage.list()).toHaveLength(0);
   });
 
   it('deletes the storage blob when the artifact row is deleted via deleteArtifactWithContent', async () => {

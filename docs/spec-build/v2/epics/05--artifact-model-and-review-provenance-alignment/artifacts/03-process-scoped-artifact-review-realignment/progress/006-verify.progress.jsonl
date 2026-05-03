@@ -1,0 +1,17 @@
+{"timestamp":"2026-04-26T22:54:57.921Z","command":"story-verify","phase":"verifier-initial","event":"command-started","summary":"story-verify started."}
+{"timestamp":"2026-04-26T22:54:57.921Z","command":"story-verify","phase":"verifier-initial","event":"verifier-started","summary":"Story verifier started for 03-process-scoped-artifact-review-realignment."}
+{"timestamp":"2026-04-26T22:54:57.924Z","command":"story-verify","phase":"verifier-initial","event":"provider-spawned","summary":"Provider spawned with pid 97543.","metadata":{"pid":97543}}
+{"timestamp":"2026-04-26T22:54:57.986Z","command":"story-verify","phase":"verifier-initial","event":"first-output-received","summary":"First provider stderr output received.","metadata":{"stream":"stderr"}}
+{"timestamp":"2026-04-26T22:55:36.564Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:56:13.939Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:56:47.581Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:57:24.350Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:58:22.003Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T22:59:05.289Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T23:00:05.388Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T23:00:52.578Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T23:01:57.858Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T23:03:05.819Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-04-26T23:03:05.942Z","command":"story-verify","phase":"verifier-initial","event":"provider-exit","summary":"Provider exited with code 0.","metadata":{"exitCode":0,"signal":null,"elapsedMs":488019,"configuredTimeoutMs":3600000}}
+{"timestamp":"2026-04-26T23:03:05.949Z","command":"story-verify","phase":"verifier-initial","event":"verifier-completed","summary":"Story verifier completed for 03-process-scoped-artifact-review-realignment.","metadata":{"outcome":"revise"}}
+{"timestamp":"2026-04-26T23:03:05.949Z","command":"story-verify","phase":"finalizing","event":"completed","summary":"story-verify completed for 03-process-scoped-artifact-review-realignment with outcome revise.","metadata":{"outcome":"revise","verifiersCompleted":1}}
