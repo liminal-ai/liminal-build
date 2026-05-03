@@ -573,6 +573,7 @@ async function validateRemoteCandidateRefs(args: {
   codeCandidates: ExecutionResult['codeCheckpointCandidates'];
 }): Promise<ValidationResult<true>> {
   for (const candidate of args.artifactCandidates) {
+    const candidateLabel = candidate.artifactId ?? candidate.displayName ?? '<new artifact>';
     if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(candidate.contentsRef)) {
       continue;
     }
@@ -581,7 +582,7 @@ async function validateRemoteCandidateRefs(args: {
     } catch (error) {
       return {
         ok: false,
-        reason: `artifactCheckpointCandidate '${candidate.artifactId}' points to an unreadable path: ${
+        reason: `artifactCheckpointCandidate '${candidateLabel}' points to an unreadable path: ${
           error instanceof Error ? error.message : 'unknown error'
         }`,
       };

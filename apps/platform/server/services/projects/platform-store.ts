@@ -2385,11 +2385,14 @@ export class InMemoryPlatformStore implements PlatformStore {
 
     const existingArtifacts = this.artifactsByProjectId.get(processRecord.projectId) ?? [];
     const existingOutputs = this.processOutputsByProcessId.get(args.processId) ?? [];
-    const checkpointOutputs = args.artifacts.map((artifact, index) => {
+    const existingArtifactsById = new Map(
+      existingArtifacts.map((artifact) => [artifact.artifactId, artifact]),
+    );
+    const validatedArtifacts = args.artifacts.map((artifact, index) => {
       const existingArtifact =
         artifact.artifactId === undefined
           ? undefined
-          : existingArtifacts.find((candidate) => candidate.artifactId === artifact.artifactId);
+          : existingArtifactsById.get(artifact.artifactId);
 
       if (artifact.artifactId !== undefined && existingArtifact === undefined) {
         throw new Error(
@@ -2397,57 +2400,66 @@ export class InMemoryPlatformStore implements PlatformStore {
         );
       }
 
-      const artifactId =
-        artifact.artifactId ??
-        `${args.processId}:checkpoint-artifact-${existingArtifacts.length + index + 1}`;
-      const versionLabel = buildCheckpointVersionLabel(artifact.producedAt);
-      const versionId = `${artifactId}:${versionLabel}:${artifact.producedAt}`;
-      const createdAt = new Date().toISOString();
-      const existingOutput = existingOutputs.find(
-        (output) => output.linkedArtifactId === artifactId,
-      );
-
-      // Retain content in-memory; in-memory has no separate File Storage layer,
-      // but the durability path must not silently drop the contents either.
-      this.artifactContentsByArtifactId.set(artifactId, artifact.contents);
-      this.artifactContentsByVersionId.set(versionId, artifact.contents);
-      const existingVersions = this.artifactVersionsByArtifactId.get(artifactId) ?? [];
-      this.artifactVersionsByArtifactId.set(
-        artifactId,
-        [
-          {
-            versionId,
-            artifactId,
-            versionLabel,
-            contentStorageId: `${artifactId}:content:${versionLabel}`,
-            contentKind: 'markdown' as const,
-            bytes: artifact.contents.length,
-            createdAt,
-            createdByProcessId: args.processId,
-          },
-          ...existingVersions,
-        ].sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
-      );
-
       return {
-        artifact: {
-          artifactId,
-          displayName: artifact.targetLabel,
-          currentVersionLabel: existingArtifact?.currentVersionLabel ?? null,
-          updatedAt: existingArtifact?.updatedAt ?? createdAt,
-        },
-        output: {
-          outputId:
-            existingOutput?.outputId ??
-            `${args.processId}:checkpoint-output-${existingOutputs.length + index + 1}`,
-          linkedArtifactId: artifactId,
-          displayName: artifact.targetLabel,
-          revisionLabel: null,
-          state: 'published_to_artifact',
-          updatedAt: artifact.producedAt,
-        },
+        artifact,
+        artifactId:
+          artifact.artifactId ??
+          `${args.processId}:checkpoint-artifact-${existingArtifacts.length + index + 1}`,
+        existingArtifact,
       };
     });
+
+    const checkpointOutputs = validatedArtifacts.map(
+      ({ artifact, artifactId, existingArtifact }, index) => {
+        const versionLabel = buildCheckpointVersionLabel(artifact.producedAt);
+        const versionId = `${artifactId}:${versionLabel}:${artifact.producedAt}`;
+        const createdAt = new Date().toISOString();
+        const existingOutput = existingOutputs.find(
+          (output) => output.linkedArtifactId === artifactId,
+        );
+
+        // Retain content in-memory; in-memory has no separate File Storage layer,
+        // but the durability path must not silently drop the contents either.
+        this.artifactContentsByArtifactId.set(artifactId, artifact.contents);
+        this.artifactContentsByVersionId.set(versionId, artifact.contents);
+        const existingVersions = this.artifactVersionsByArtifactId.get(artifactId) ?? [];
+        this.artifactVersionsByArtifactId.set(
+          artifactId,
+          [
+            {
+              versionId,
+              artifactId,
+              versionLabel,
+              contentStorageId: `${artifactId}:content:${versionLabel}`,
+              contentKind: 'markdown' as const,
+              bytes: artifact.contents.length,
+              createdAt,
+              createdByProcessId: args.processId,
+            },
+            ...existingVersions,
+          ].sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+        );
+
+        return {
+          artifact: {
+            artifactId,
+            displayName: artifact.targetLabel,
+            currentVersionLabel: existingArtifact?.currentVersionLabel ?? null,
+            updatedAt: existingArtifact?.updatedAt ?? createdAt,
+          },
+          output: {
+            outputId:
+              existingOutput?.outputId ??
+              `${args.processId}:checkpoint-output-${existingOutputs.length + index + 1}`,
+            linkedArtifactId: artifactId,
+            displayName: artifact.targetLabel,
+            revisionLabel: null,
+            state: 'published_to_artifact',
+            updatedAt: artifact.producedAt,
+          },
+        };
+      },
+    );
     const checkpointArtifactIds = new Set(
       checkpointOutputs.map(({ artifact }) => artifact.artifactId),
     );

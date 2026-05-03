@@ -87,7 +87,7 @@ export interface PlatformSideWorkWriteInput {
 }
 
 export interface ArtifactCheckpointCandidate {
-  artifactId: string;
+  artifactId?: string;
   displayName: string;
   revisionLabel: string | null;
   contentsRef: string;
@@ -213,7 +213,6 @@ export class InMemoryProviderAdapter implements ProviderAdapter {
       sideWorkWrites: [],
       artifactCheckpointCandidates: [
         {
-          artifactId: `${processId}:artifact-checkpoint-1`,
           displayName: 'Generated artifact checkpoint',
           revisionLabel: null,
           contentsRef: `mem://${args.environmentId}/${processId}-artifact-1.md`,
