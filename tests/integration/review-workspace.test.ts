@@ -70,6 +70,18 @@ function getHandler<TArgs, TReturn>(
   return (registered as { _handler: (ctx: unknown, args: TArgs) => Promise<TReturn> })._handler;
 }
 
+type PublishPackageSnapshotHandlerArgs = {
+  processId: string;
+  displayName: string;
+  packageType: string;
+  members: Array<{
+    artifactId: string;
+    artifactVersionId: string;
+    position: number;
+  }>;
+  allowedArtifactVersionIds: string[];
+};
+
 function createTestAuthSessionService(resolution: SessionResolution) {
   class TestAuthSessionService extends AuthSessionService {
     constructor() {
@@ -340,19 +352,10 @@ function registerReviewWorkspaceHandlers(fixture: ReturnType<typeof createFakeCo
     'packageSnapshots:listPackageSnapshotsForProcess',
     listPackageSnapshotsForProcess,
   );
-  register<
-    {
-      processId: string;
-      displayName: string;
-      packageType: string;
-      members: Array<{
-        artifactId: string;
-        artifactVersionId: string;
-        position: number;
-      }>;
-    },
-    string
-  >('packageSnapshots:publishPackageSnapshot', publishPackageSnapshot);
+  register<PublishPackageSnapshotHandlerArgs, string>(
+    'packageSnapshots:publishPackageSnapshot',
+    publishPackageSnapshot,
+  );
   register<{ packageSnapshotId: string }, unknown | null>(
     'packageSnapshots:getPackageSnapshot',
     getPackageSnapshot,
@@ -612,19 +615,9 @@ describe('review workspace integration', () => {
       currentArtifactIds: ['artifact-review-convex-001', 'artifact-review-convex-002'],
     });
 
-    const publishPackageSnapshotHandler = getHandler<
-      {
-        processId: string;
-        displayName: string;
-        packageType: string;
-        members: Array<{
-          artifactId: string;
-          artifactVersionId: string;
-          position: number;
-        }>;
-      },
-      string
-    >(publishPackageSnapshot);
+    const publishPackageSnapshotHandler = getHandler<PublishPackageSnapshotHandlerArgs, string>(
+      publishPackageSnapshot,
+    );
     const packageId = await publishPackageSnapshotHandler(fixture.ctx, {
       processId: processSummary.processId,
       displayName: 'Feature Specification Package',
@@ -640,6 +633,10 @@ describe('review workspace integration', () => {
           artifactVersionId: 'artifact-version-review-convex-002',
           position: 1,
         },
+      ],
+      allowedArtifactVersionIds: [
+        'artifact-version-review-convex-001',
+        'artifact-version-review-convex-002',
       ],
     });
 
@@ -1254,19 +1251,9 @@ describe('review workspace integration', () => {
     const fixture = createFakeConvexContext(buildReviewWorkspaceSeed());
     registerReviewWorkspaceHandlers(fixture);
 
-    const publishPackageSnapshotHandler = getHandler<
-      {
-        processId: string;
-        displayName: string;
-        packageType: string;
-        members: Array<{
-          artifactId: string;
-          artifactVersionId: string;
-          position: number;
-        }>;
-      },
-      string
-    >(publishPackageSnapshot);
+    const publishPackageSnapshotHandler = getHandler<PublishPackageSnapshotHandlerArgs, string>(
+      publishPackageSnapshot,
+    );
     await fixture.ctx.db.patch('process-state-review-convex-001', {
       currentArtifactIds: ['artifact-review-convex-001', 'artifact-review-convex-002'],
     });
@@ -1303,6 +1290,7 @@ describe('review workspace integration', () => {
           position: 0,
         },
       ],
+      allowedArtifactVersionIds: ['artifact-version-review-convex-001'],
     });
     const newerPackageId = await publishPackageSnapshotHandler(fixture.ctx, {
       processId: processSummary.processId,
@@ -1315,6 +1303,7 @@ describe('review workspace integration', () => {
           position: 0,
         },
       ],
+      allowedArtifactVersionIds: ['artifact-version-review-convex-002'],
     });
     await fixture.ctx.db.patch(olderPackageId, {
       publishedAt: '2026-04-23T12:05:30.000Z',
