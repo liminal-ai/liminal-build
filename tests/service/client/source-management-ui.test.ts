@@ -214,4 +214,44 @@ describe('source management ui', () => {
       )?.textContent,
     ).toBe('Refresh source');
   });
+
+  it('TC-5.3a unrelated attachments remain after detach', async () => {
+    const onDetachSource = vi.fn().mockResolvedValue(undefined);
+    const attachedView = renderSourceAttachmentSection({
+      envelope: sourceAttachmentSectionEnvelopeSchema.parse({
+        status: 'ready',
+        items: [hydratedSourceFixture, staleSourceFixture],
+      }),
+      targetDocument: document,
+      onDetachSource,
+    });
+
+    (
+      attachedView.querySelector(
+        `[data-source-attachment-detach-submit="${hydratedSourceFixture.sourceAttachmentId}"]`,
+      ) as HTMLButtonElement | null
+    )?.click();
+    await Promise.resolve();
+
+    const detachedView = renderSourceAttachmentSection({
+      envelope: sourceAttachmentSectionEnvelopeSchema.parse({
+        status: 'ready',
+        items: [staleSourceFixture],
+      }),
+      targetDocument: document,
+      onDetachSource,
+    });
+
+    expect(onDetachSource).toHaveBeenCalledWith(hydratedSourceFixture.sourceAttachmentId);
+    expect(
+      detachedView.querySelector(
+        `[data-source-attachment-row="${hydratedSourceFixture.sourceAttachmentId}"]`,
+      ),
+    ).toBeNull();
+    expect(
+      detachedView.querySelector(
+        `[data-source-attachment-row="${staleSourceFixture.sourceAttachmentId}"]`,
+      ),
+    ).not.toBeNull();
+  });
 });

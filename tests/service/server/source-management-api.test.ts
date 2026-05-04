@@ -14,6 +14,8 @@ import {
   InMemoryPlatformStore,
   type ProjectAccessResult,
 } from '../../../apps/platform/server/services/projects/platform-store.js';
+import { SourceSectionReader } from '../../../apps/platform/server/services/projects/readers/source-section.reader.js';
+import { MaterialsSectionReader } from '../../../apps/platform/server/services/processes/readers/materials-section.reader.js';
 import type {
   GitHubRepositoryResolution,
   GitHubRepositoryResolver,
@@ -765,6 +767,111 @@ describe('source-management api', () => {
     });
 
     await unavailableApp.close();
+  });
+
+  it('TC-5.1a detaches a project-scoped source', async () => {
+    const store = buildStore();
+    const sourceAttachment = await store.createProjectSourceAttachment({
+      projectId: projectSummary.projectId,
+      provider: 'github',
+      displayName: 'detachable project source',
+      purpose: 'implementation',
+      accessMode: 'read_only',
+      repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
+      repositoryFullName: 'liminal-ai/liminal-build',
+      targetRef: 'main',
+    });
+    const { app, platformStore } = await buildAuthenticatedApp({ store });
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/projects/${projectSummary.projectId}/source-attachments/${sourceAttachment.sourceAttachmentId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      detached: true,
+      sourceAttachmentId: sourceAttachment.sourceAttachmentId,
+    });
+
+    const detachedAt = response.json().detachedAt as string;
+    expect(
+      await platformStore.getProjectSourceAttachment({
+        projectId: projectSummary.projectId,
+        sourceAttachmentId: sourceAttachment.sourceAttachmentId,
+      }),
+    ).toMatchObject({
+      sourceAttachmentId: sourceAttachment.sourceAttachmentId,
+      detachedAt,
+    });
+
+    const section = await new SourceSectionReader(platformStore).read({
+      actor: {
+        userId: 'workos-user-1',
+        workosUserId: 'workos-user-1',
+        email: 'lee@example.com',
+        displayName: 'Lee Moore',
+      },
+      projectId: projectSummary.projectId,
+    });
+    expect(section).toMatchObject({
+      status: 'empty',
+      items: [],
+    });
+
+    await app.close();
+  });
+
+  it('TC-5.1b detaches a process-scoped source', async () => {
+    const store = buildStore();
+    const sourceAttachment = await store.createProcessSourceAttachment({
+      projectId: projectSummary.projectId,
+      processId: processSummary.processId,
+      provider: 'github',
+      displayName: 'detachable process source',
+      purpose: 'implementation',
+      accessMode: 'read_only',
+      repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
+      repositoryFullName: 'liminal-ai/liminal-build',
+      targetRef: 'main',
+    });
+    const { app, platformStore } = await buildAuthenticatedApp({ store });
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/projects/${projectSummary.projectId}/source-attachments/${sourceAttachment.sourceAttachmentId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      detached: true,
+      sourceAttachmentId: sourceAttachment.sourceAttachmentId,
+    });
+
+    const detachedAt = response.json().detachedAt as string;
+    expect(
+      await platformStore.getProjectSourceAttachment({
+        projectId: projectSummary.projectId,
+        sourceAttachmentId: sourceAttachment.sourceAttachmentId,
+      }),
+    ).toMatchObject({
+      sourceAttachmentId: sourceAttachment.sourceAttachmentId,
+      detachedAt,
+    });
+
+    const materials = await new MaterialsSectionReader(platformStore).read({
+      projectId: projectSummary.projectId,
+      processId: processSummary.processId,
+    });
+    expect(materials.currentSources).toEqual([]);
+
+    await app.close();
   });
 
   it('TC-4.1a returns informing source provenance', async () => {

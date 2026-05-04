@@ -28,6 +28,7 @@ export function renderProjectShellPage(args: {
     input: UpdateSourceAttachmentRequest,
   ) => Promise<void>;
   onRefreshSource?: (sourceAttachmentId: string) => Promise<void>;
+  onDetachSource?: (sourceAttachmentId: string) => Promise<void>;
   onCancelCreateProcess: () => void;
   onOpenCreateProcess: () => void;
 }): HTMLElement {
@@ -108,6 +109,7 @@ export function renderProjectShellPage(args: {
       onAttachSource: args.onAttachSource,
       onUpdateSource: args.onUpdateSource,
       onRefreshSource: args.onRefreshSource,
+      onDetachSource: args.onDetachSource,
     }),
   );
 

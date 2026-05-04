@@ -44,6 +44,7 @@ import {
   attachProjectSource,
   createProcess,
   createProject,
+  detachSourceAttachment,
   getProjectShell,
   listProjects,
   refreshSourceAttachment,
@@ -1899,6 +1900,56 @@ export async function bootstrapApp(
     }
   };
 
+  const submitProjectSourceDetach = async (sourceAttachmentId: string): Promise<void> => {
+    const currentShell = store.get().shell;
+
+    if (currentShell.project === null) {
+      return;
+    }
+
+    try {
+      await detachSourceAttachment({
+        projectId: currentShell.project.projectId,
+        sourceAttachmentId,
+      });
+      const latestShell = store.get().shell;
+
+      if (
+        latestShell.project?.projectId !== currentShell.project.projectId ||
+        latestShell.sourceAttachments === null ||
+        latestShell.sourceAttachments.status !== 'ready'
+      ) {
+        return;
+      }
+
+      store.patch('shell', {
+        ...latestShell,
+        sourceAttachments: {
+          ...latestShell.sourceAttachments,
+          items: latestShell.sourceAttachments.items.filter(
+            (sourceAttachment) => sourceAttachment.sourceAttachmentId !== sourceAttachmentId,
+          ),
+        },
+      });
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        if (error.payload.code === 'UNAUTHENTICATED') {
+          redirectToLogin();
+          return;
+        }
+
+        store.patch('shell', {
+          ...store.get().shell,
+          selectedProcessBanner: error.payload.message,
+          isLoading: false,
+        });
+        return;
+      }
+
+      throw error;
+    }
+  };
+
   const submitProcessSourceAttachment = async (
     projectId: string,
     processId: string,
@@ -2136,6 +2187,7 @@ export async function bootstrapApp(
     onAttachProjectSource: submitProjectSourceAttachment,
     onUpdateProjectSource: submitProjectSourceMetadataUpdate,
     onRefreshProjectSource: submitProjectSourceRefresh,
+    onDetachProjectSource: submitProjectSourceDetach,
     onAttachProcessSource: submitProcessSourceAttachment,
     onRefreshProcessSource: submitProcessSourceRefresh,
     onOpenProject: (projectId: string) => {

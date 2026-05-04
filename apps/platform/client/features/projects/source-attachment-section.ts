@@ -72,6 +72,7 @@ export function renderSourceAttachmentSection(args: {
     input: UpdateSourceAttachmentRequest,
   ) => Promise<void>;
   onRefreshSource?: (sourceAttachmentId: string) => Promise<void>;
+  onDetachSource?: (sourceAttachmentId: string) => Promise<void>;
 }): HTMLElement {
   if (args.envelope === null || args.envelope.status !== 'ready') {
     const section = renderSectionEnvelopeState({
@@ -193,6 +194,16 @@ export function renderSourceAttachmentSection(args: {
           sourceAttachment,
           targetDocument: args.targetDocument,
           onRefreshSource: args.onRefreshSource,
+        }),
+      );
+    }
+
+    if (args.onDetachSource !== undefined) {
+      item.append(
+        renderSourceAttachmentDetachControl({
+          sourceAttachmentId: sourceAttachment.sourceAttachmentId,
+          targetDocument: args.targetDocument,
+          onDetachSource: args.onDetachSource,
         }),
       );
     }
@@ -335,4 +346,27 @@ function renderSourceAttachmentMetadataEditor(args: {
 
   form.append(purposeSelect, accessModeSelect, targetRefInput, submitButton, validation);
   return form;
+}
+
+function renderSourceAttachmentDetachControl(args: {
+  sourceAttachmentId: string;
+  targetDocument: Document;
+  onDetachSource: (sourceAttachmentId: string) => Promise<void>;
+}): HTMLElement {
+  const container = args.targetDocument.createElement('div');
+  const button = args.targetDocument.createElement('button');
+
+  button.type = 'button';
+  button.textContent = 'Detach source';
+  button.setAttribute('data-source-attachment-detach-submit', args.sourceAttachmentId);
+  button.addEventListener('click', () => {
+    button.disabled = true;
+
+    void Promise.resolve(args.onDetachSource(args.sourceAttachmentId)).finally(() => {
+      button.disabled = false;
+    });
+  });
+
+  container.append(button);
+  return container;
 }

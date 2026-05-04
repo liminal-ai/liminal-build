@@ -100,6 +100,12 @@ export type UpdateSourceAttachmentRecord = {
   refreshRequestedAt?: string | null;
 };
 
+export type DetachSourceAttachmentRecord = {
+  projectId: string;
+  sourceAttachmentId: string;
+  detachedByUserId: string;
+};
+
 export type StoredSourceProvenanceRecord = {
   provenanceId: string;
   projectId: string;
@@ -273,6 +279,9 @@ export interface PlatformStore {
     args: CreateSourceAttachmentRecord & { processId: string },
   ): Promise<SourceAttachmentSummary>;
   updateSourceAttachment?(args: UpdateSourceAttachmentRecord): Promise<SourceAttachmentSummary>;
+  detachSourceAttachment?(
+    args: DetachSourceAttachmentRecord,
+  ): Promise<{ detached: true; sourceAttachmentId: string; detachedAt: string }>;
   createSourceProvenance?(
     args: CreateSourceProvenanceRecord,
   ): Promise<StoredSourceProvenanceRecord>;
@@ -617,6 +626,16 @@ const updateSourceAttachmentMutation = makeFunctionReference<
   UpdateSourceAttachmentRecord,
   SourceAttachmentSummary
 >('sourceAttachments:updateSourceAttachment');
+
+const detachSourceAttachmentMutation = makeFunctionReference<
+  'mutation',
+  DetachSourceAttachmentRecord,
+  {
+    detached: true;
+    sourceAttachmentId: string;
+    detachedAt: string;
+  }
+>('sourceAttachments:detachSourceAttachment');
 
 const createSourceProvenanceMutation = makeFunctionReference<
   'mutation',
@@ -1216,6 +1235,18 @@ export class NullPlatformStore implements PlatformStore {
     };
   }
 
+  async detachSourceAttachment(args: DetachSourceAttachmentRecord): Promise<{
+    detached: true;
+    sourceAttachmentId: string;
+    detachedAt: string;
+  }> {
+    return {
+      detached: true,
+      sourceAttachmentId: args.sourceAttachmentId,
+      detachedAt: new Date().toISOString(),
+    };
+  }
+
   async createSourceProvenance(
     args: CreateSourceProvenanceRecord,
   ): Promise<StoredSourceProvenanceRecord> {
@@ -1668,6 +1699,16 @@ export class ConvexPlatformStore implements PlatformStore {
     args: UpdateSourceAttachmentRecord,
   ): Promise<SourceAttachmentSummary> {
     return this.client.mutation(updateSourceAttachmentMutation, args, {
+      skipQueue: true,
+    });
+  }
+
+  async detachSourceAttachment(args: DetachSourceAttachmentRecord): Promise<{
+    detached: true;
+    sourceAttachmentId: string;
+    detachedAt: string;
+  }> {
+    return this.client.mutation(detachSourceAttachmentMutation, args, {
       skipQueue: true,
     });
   }
@@ -2248,7 +2289,10 @@ export class InMemoryPlatformStore implements PlatformStore {
   }
 
   private bumpProjectSourceAttachmentCount(projectId: string): void {
-    const nextCount = this.sourceAttachmentsByProjectId.get(projectId)?.length ?? 0;
+    const nextCount =
+      this.sourceAttachmentsByProjectId
+        .get(projectId)
+        ?.filter((attachment) => attachment.detachedAt == null).length ?? 0;
 
     for (const [userId, projects] of this.projectsByUserId.entries()) {
       const nextProjects = projects.map((project) =>
@@ -2700,6 +2744,54 @@ export class InMemoryPlatformStore implements PlatformStore {
     );
 
     return updatedAttachment;
+  }
+
+  async detachSourceAttachment(args: DetachSourceAttachmentRecord): Promise<{
+    detached: true;
+    sourceAttachmentId: string;
+    detachedAt: string;
+  }> {
+    const existingEntry = [...this.sourceAttachmentsByProjectId.entries()].find(([, attachments]) =>
+      attachments.some((attachment) => attachment.sourceAttachmentId === args.sourceAttachmentId),
+    );
+
+    if (existingEntry === undefined) {
+      throw new Error('SOURCE_ATTACHMENT_NOT_FOUND');
+    }
+
+    const [projectId, attachments] = existingEntry;
+    const existingAttachment = attachments.find(
+      (attachment) => attachment.sourceAttachmentId === args.sourceAttachmentId,
+    );
+
+    if (
+      projectId !== args.projectId ||
+      existingAttachment === undefined ||
+      existingAttachment.detachedAt != null
+    ) {
+      throw new Error('SOURCE_ATTACHMENT_NOT_FOUND');
+    }
+
+    const detachedAt = new Date().toISOString();
+    this.sourceAttachmentsByProjectId.set(
+      projectId,
+      attachments.map((attachment) =>
+        attachment.sourceAttachmentId === args.sourceAttachmentId
+          ? {
+              ...attachment,
+              detachedAt,
+              updatedAt: detachedAt,
+            }
+          : attachment,
+      ),
+    );
+    this.bumpProjectSourceAttachmentCount(projectId);
+
+    return {
+      detached: true,
+      sourceAttachmentId: args.sourceAttachmentId,
+      detachedAt,
+    };
   }
 
   async createSourceProvenance(

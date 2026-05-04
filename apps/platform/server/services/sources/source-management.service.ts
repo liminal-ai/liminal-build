@@ -1,5 +1,6 @@
 import type {
   CreateSourceAttachmentRequest,
+  DetachSourceAttachmentResponse,
   SourceAttachmentSummary,
   UpdateSourceAttachmentRequest,
 } from '../../../shared/contracts/index.js';
@@ -18,6 +19,7 @@ type SourceManagementPlatformStore = PlatformStore & {
   createProjectSourceAttachment: NonNullable<PlatformStore['createProjectSourceAttachment']>;
   createProcessSourceAttachment: NonNullable<PlatformStore['createProcessSourceAttachment']>;
   updateSourceAttachment: NonNullable<PlatformStore['updateSourceAttachment']>;
+  detachSourceAttachment: NonNullable<PlatformStore['detachSourceAttachment']>;
 };
 
 export interface SourceManagementService {
@@ -38,6 +40,11 @@ export interface SourceManagementService {
     sourceAttachmentId: string;
     input: UpdateSourceAttachmentRequest;
   }): Promise<SourceAttachmentSummary>;
+  detachSource(args: {
+    actor: AuthenticatedActor;
+    projectId: string;
+    sourceAttachmentId: string;
+  }): Promise<DetachSourceAttachmentResponse>;
 }
 
 export class DefaultSourceManagementService implements SourceManagementService {
@@ -174,6 +181,44 @@ export class DefaultSourceManagementService implements SourceManagementService {
         });
       }
 
+      if (error instanceof Error && error.message === 'SOURCE_ATTACHMENT_NOT_FOUND') {
+        throw new AppError({
+          code: 'SOURCE_ATTACHMENT_NOT_FOUND',
+          message: 'The requested source attachment was not found in this project.',
+          statusCode: 404,
+        });
+      }
+
+      throw error;
+    }
+  }
+
+  async detachSource(args: {
+    actor: AuthenticatedActor;
+    projectId: string;
+    sourceAttachmentId: string;
+  }): Promise<DetachSourceAttachmentResponse> {
+    void args.actor;
+    const existingAttachment = await this.platformStore.getProjectSourceAttachment({
+      projectId: args.projectId,
+      sourceAttachmentId: args.sourceAttachmentId,
+    });
+
+    if (existingAttachment === null || existingAttachment.detachedAt != null) {
+      throw new AppError({
+        code: 'SOURCE_ATTACHMENT_NOT_FOUND',
+        message: 'The requested source attachment was not found in this project.',
+        statusCode: 404,
+      });
+    }
+
+    try {
+      return await this.platformStore.detachSourceAttachment({
+        projectId: args.projectId,
+        sourceAttachmentId: args.sourceAttachmentId,
+        detachedByUserId: args.actor.userId,
+      });
+    } catch (error) {
       if (error instanceof Error && error.message === 'SOURCE_ATTACHMENT_NOT_FOUND') {
         throw new AppError({
           code: 'SOURCE_ATTACHMENT_NOT_FOUND',

@@ -276,6 +276,48 @@ export const updateSourceAttachment = mutation({
   },
 });
 
+export const detachSourceAttachment = mutation({
+  args: {
+    projectId: v.string(),
+    sourceAttachmentId: v.string(),
+    detachedByUserId: v.string(),
+  },
+  handler: async (ctx: MutationCtx, args) => {
+    const sourceAttachment = await getSourceAttachmentRecord(ctx, args.sourceAttachmentId);
+
+    if (
+      sourceAttachment === null ||
+      sourceAttachment.projectId !== args.projectId ||
+      sourceAttachment.detachedAt !== null
+    ) {
+      throw new Error('SOURCE_ATTACHMENT_NOT_FOUND');
+    }
+
+    const detachedAt = new Date().toISOString();
+    await ctx.db.patch(sourceAttachment._id, {
+      detachedAt,
+      detachedByUserId: args.detachedByUserId,
+      updatedAt: detachedAt,
+    });
+
+    if (sourceAttachment.processId === null) {
+      await touchProject(ctx, sourceAttachment.projectId as Id<'projects'>, detachedAt);
+    } else {
+      const processRecord = await getProcessRecord(ctx, sourceAttachment.processId);
+
+      if (processRecord !== null) {
+        await touchProcessAndProject(ctx, processRecord, detachedAt);
+      }
+    }
+
+    return {
+      detached: true as const,
+      sourceAttachmentId: args.sourceAttachmentId,
+      detachedAt,
+    };
+  },
+});
+
 async function buildSourceAttachmentSummary(
   ctx: QueryCtx | MutationCtx,
   sourceAttachment: Doc<'sourceAttachments'>,

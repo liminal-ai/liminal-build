@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   createProjectSourceAttachment,
+  detachSourceAttachment,
+  getProjectSourceAttachmentSummary,
   listProjectSourceAttachmentSummaries,
   updateSourceAttachment,
 } from './sourceAttachments.js';
@@ -52,6 +54,22 @@ const createProjectSourceAttachmentHandler = getHandler<
   },
   SourceAttachmentSummaryShape
 >(createProjectSourceAttachment);
+const getProjectSourceAttachmentSummaryHandler = getHandler<
+  { projectId: string; sourceAttachmentId: string },
+  SourceAttachmentSummaryShape | null
+>(getProjectSourceAttachmentSummary);
+const detachSourceAttachmentHandler = getHandler<
+  {
+    projectId: string;
+    sourceAttachmentId: string;
+    detachedByUserId: string;
+  },
+  {
+    detached: true;
+    sourceAttachmentId: string;
+    detachedAt: string;
+  }
+>(detachSourceAttachment);
 const updateSourceAttachmentHandler = getHandler<
   {
     projectId: string;
@@ -366,6 +384,36 @@ describe('convex/sourceAttachments summaries', () => {
       targetRef: 'release/next',
       hydrationState: 'stale',
       freshnessReason: 'target_ref_changed',
+    });
+  });
+
+  it('detached rows are excluded from active lookups but still exist durably', async () => {
+    const { ctx, db } = createFakeConvexContext(buildSourceAttachmentsSeed());
+
+    const detached = await detachSourceAttachmentHandler(ctx, {
+      projectId: 'project-sources-1',
+      sourceAttachmentId: 'source-readonly-project-1',
+      detachedByUserId: 'user-1',
+    });
+
+    expect(detached).toMatchObject({
+      detached: true,
+      sourceAttachmentId: 'source-readonly-project-1',
+    });
+
+    await expect(
+      getProjectSourceAttachmentSummaryHandler(ctx, {
+        projectId: 'project-sources-1',
+        sourceAttachmentId: 'source-readonly-project-1',
+      }),
+    ).resolves.toBeNull();
+
+    const storedAttachment = db
+      .list('sourceAttachments')
+      .find((attachment) => attachment._id === 'source-readonly-project-1');
+    expect(storedAttachment).toMatchObject({
+      detachedAt: detached.detachedAt,
+      detachedByUserId: 'user-1',
     });
   });
 });

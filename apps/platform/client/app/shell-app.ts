@@ -26,6 +26,7 @@ export interface ShellAppOptions {
     input: UpdateSourceAttachmentRequest,
   ) => Promise<void>;
   onRefreshProjectSource?: (sourceAttachmentId: string) => Promise<void>;
+  onDetachProjectSource?: (sourceAttachmentId: string) => Promise<void>;
   onAttachProcessSource?: (
     projectId: string,
     processId: string,
@@ -142,6 +143,7 @@ export function createShellApp(options: ShellAppOptions) {
                 onAttachSource: options.onAttachProjectSource,
                 onUpdateSource: options.onUpdateProjectSource,
                 onRefreshSource: options.onRefreshProjectSource,
+                onDetachSource: options.onDetachProjectSource,
                 onCancelCreateProcess: options.onCancelCreateProcess,
                 onOpenCreateProcess: options.onOpenCreateProcess,
               });

@@ -4,6 +4,7 @@ import type { RequestError } from '../../shared/contracts/index.js';
 import {
   createProcessSourceAttachmentRouteSchema,
   createProjectSourceAttachmentRouteSchema,
+  detachSourceAttachmentRouteSchema,
   listProcessSourceProvenanceRouteSchema,
   refreshSourceAttachmentRouteSchema,
   updateSourceAttachmentRouteSchema,
@@ -74,6 +75,58 @@ export async function registerSourceManagementRoutes(app: FastifyInstance): Prom
       } catch (error) {
         if (error instanceof AppError) {
           const statusCode = error.statusCode as 403 | 404 | 409 | 503;
+          return reply.code(statusCode).send(buildRequestError(error, statusCode));
+        }
+
+        throw error;
+      }
+    },
+  );
+
+  typedApp.delete(
+    '/api/projects/:projectId/source-attachments/:sourceAttachmentId',
+    { schema: detachSourceAttachmentRouteSchema },
+    async (request, reply) => {
+      if (request.actor === null) {
+        if (request.authFailureReason === 'invalid_session') {
+          reply.clearCookie(sessionCookieName, { path: '/' });
+        }
+
+        return reply.code(401).send(buildUnauthenticatedResponse());
+      }
+
+      const access = await app.projectAccessService.getProjectAccess({
+        actor: request.actor,
+        projectId: request.params.projectId,
+      });
+
+      if (access.kind === 'forbidden') {
+        return reply.code(403).send({
+          code: 'PROJECT_FORBIDDEN',
+          message: 'The current actor cannot access this project.',
+          status: 403,
+        });
+      }
+
+      if (access.kind === 'not_found') {
+        return reply.code(404).send({
+          code: 'PROJECT_NOT_FOUND',
+          message: 'The requested project was not found.',
+          status: 404,
+        });
+      }
+
+      try {
+        const detached = await app.sourceManagementService.detachSource({
+          actor: request.actor,
+          projectId: request.params.projectId,
+          sourceAttachmentId: request.params.sourceAttachmentId,
+        });
+
+        return reply.code(200).send(detached);
+      } catch (error) {
+        if (error instanceof AppError) {
+          const statusCode = error.statusCode as 403 | 404;
           return reply.code(statusCode).send(buildRequestError(error, statusCode));
         }
 

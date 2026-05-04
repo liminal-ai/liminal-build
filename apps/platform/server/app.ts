@@ -240,6 +240,7 @@ export async function createApp(options: CreateAppOptions = {}) {
         createProjectSourceAttachment: NonNullable<PlatformStore['createProjectSourceAttachment']>;
         createProcessSourceAttachment: NonNullable<PlatformStore['createProcessSourceAttachment']>;
         updateSourceAttachment: NonNullable<PlatformStore['updateSourceAttachment']>;
+        detachSourceAttachment: NonNullable<PlatformStore['detachSourceAttachment']>;
       },
       gitHubRepositoryResolver,
     );

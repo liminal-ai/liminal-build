@@ -49,6 +49,7 @@ export class SourceSectionReader {
     }
 
     const items = [...synchronizedSourceAttachments]
+      .filter((sourceAttachment) => sourceAttachment.detachedAt == null)
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
       .map((sourceAttachment) =>
         buildSourceAttachmentSummary({

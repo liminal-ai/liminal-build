@@ -3,6 +3,7 @@ import type {
   CreateProcessRequest,
   CreateProcessResponse,
   CreateProjectRequest,
+  DetachSourceAttachmentResponse,
   ProjectShellResponse,
   RefreshSourceAttachmentResponse,
   ProjectSummary,
@@ -12,6 +13,7 @@ import type {
 import {
   createSourceAttachmentRequestSchema,
   createProcessResponseSchema,
+  detachSourceAttachmentResponseSchema,
   projectShellResponseSchema,
   projectSummarySchema,
   refreshSourceAttachmentResponseSchema,
@@ -172,4 +174,23 @@ export async function refreshSourceAttachment(args: {
   }
 
   return refreshSourceAttachmentResponseSchema.parse(await response.json());
+}
+
+export async function detachSourceAttachment(args: {
+  projectId: string;
+  sourceAttachmentId: string;
+}): Promise<DetachSourceAttachmentResponse> {
+  const response = await fetch(
+    `/api/projects/${args.projectId}/source-attachments/${args.sourceAttachmentId}`,
+    {
+      method: 'DELETE',
+      credentials: 'include',
+    },
+  );
+
+  if (!response.ok) {
+    throw new ApiRequestError(await parseRequestError(response));
+  }
+
+  return detachSourceAttachmentResponseSchema.parse(await response.json());
 }
