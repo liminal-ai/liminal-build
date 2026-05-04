@@ -34,6 +34,9 @@ export type ProcessAvailableAction = z.infer<typeof processAvailableActionSchema
 export const attachmentScopeSchema = z.enum(['project', 'process']);
 export type AttachmentScope = z.infer<typeof attachmentScopeSchema>;
 
+export const sourceProviderSchema = z.literal('github');
+export type SourceProvider = z.infer<typeof sourceProviderSchema>;
+
 export const sourcePurposeSchema = z.enum(['research', 'review', 'implementation', 'other']);
 export type SourcePurpose = z.infer<typeof sourcePurposeSchema>;
 
@@ -43,12 +46,33 @@ export type SourceAccessMode = z.infer<typeof sourceAccessModeSchema>;
 export const hydrationStateSchema = z.enum(['not_hydrated', 'hydrated', 'stale', 'unavailable']);
 export type HydrationState = z.infer<typeof hydrationStateSchema>;
 
+export const sourceAttachmentRefreshStateSchema = z.enum(['idle', 'pending', 'failed']);
+export type SourceAttachmentRefreshState = z.infer<typeof sourceAttachmentRefreshStateSchema>;
+
+export const sourceRefreshStatusSchema = z.enum(['settled', 'pending', 'failed']);
+export type SourceRefreshStatus = z.infer<typeof sourceRefreshStatusSchema>;
+
+export const sourceProvenanceRelationshipSchema = z.enum(['informed_work', 'received_code_update']);
+export type SourceProvenanceRelationship = z.infer<typeof sourceProvenanceRelationshipSchema>;
+
+export const sourceAttachmentVisibilitySchema = z.enum([
+  'available',
+  'detached',
+  'unavailable',
+  'redacted',
+]);
+export type SourceAttachmentVisibility = z.infer<typeof sourceAttachmentVisibilitySchema>;
+
+export const sourceProvenanceEntryStatusSchema = z.enum(['ready', 'degraded']);
+export type SourceProvenanceEntryStatus = z.infer<typeof sourceProvenanceEntryStatusSchema>;
+
 export const requestErrorCodeSchema = z.enum([
   'NOT_IMPLEMENTED',
   'UNAUTHENTICATED',
   'PROJECT_FORBIDDEN',
   'PROJECT_NOT_FOUND',
   'PROCESS_NOT_FOUND',
+  'PROCESS_FORBIDDEN',
   'REVIEW_TARGET_NOT_FOUND',
   'ARTIFACT_VERSION_NOT_FOUND',
   'PACKAGE_MEMBER_UNAVAILABLE',
@@ -65,6 +89,11 @@ export const requestErrorCodeSchema = z.enum([
   'PROCESS_ENVIRONMENT_UNAVAILABLE',
   'INVALID_PROCESS_RESPONSE',
   'PROCESS_LIVE_UPDATES_UNAVAILABLE',
+  'SOURCE_ATTACHMENT_NOT_FOUND',
+  'SOURCE_ATTACHMENT_CONFLICT',
+  'SOURCE_ATTACHMENT_REFRESH_NOT_AVAILABLE',
+  'INVALID_SOURCE_ATTACHMENT',
+  'SOURCE_ATTACHMENT_UNAVAILABLE',
 ]);
 export type RequestErrorCode = z.infer<typeof requestErrorCodeSchema>;
 
@@ -156,6 +185,7 @@ export type ArtifactSummary = z.infer<typeof artifactSummarySchema>;
 
 export const sourceAttachmentSummarySchema = z.object({
   sourceAttachmentId: z.string().min(1),
+  provider: sourceProviderSchema,
   displayName: z.string().min(1),
   purpose: sourcePurposeSchema,
   accessMode: sourceAccessModeSchema,
@@ -164,11 +194,19 @@ export const sourceAttachmentSummarySchema = z.object({
   // resolve the GitHub `owner/repo` coordinates for direct writes back to the
   // attached writable target ref.
   repositoryUrl: z.string().min(1),
+  repositoryFullName: z.string().min(1),
   targetRef: z.string().min(1).nullable(),
   hydrationState: hydrationStateSchema,
+  lastHydratedAt: z.string().min(1).nullable(),
+  lastHydratedResolvedRef: z.string().min(1).nullable(),
+  lastObservedRemoteResolvedRef: z.string().min(1).nullable(),
+  freshnessReason: z.string().min(1).nullable(),
+  refreshStatus: sourceAttachmentRefreshStateSchema.optional(),
+  refreshRequestedAt: z.string().min(1).nullable().optional(),
   attachmentScope: attachmentScopeSchema,
   processId: z.string().min(1).nullable(),
   processDisplayLabel: z.string().min(1).nullable(),
+  detachedAt: z.string().min(1).nullable().optional(),
   updatedAt: z.string().min(1),
 });
 export type SourceAttachmentSummary = z.infer<typeof sourceAttachmentSummarySchema>;
@@ -272,6 +310,7 @@ const requestErrorStatusByCode = {
   PROJECT_FORBIDDEN: [403],
   PROJECT_NOT_FOUND: [404],
   PROCESS_NOT_FOUND: [404],
+  PROCESS_FORBIDDEN: [403],
   REVIEW_TARGET_NOT_FOUND: [404],
   ARTIFACT_VERSION_NOT_FOUND: [404],
   PACKAGE_MEMBER_UNAVAILABLE: [404],
@@ -288,6 +327,11 @@ const requestErrorStatusByCode = {
   PROCESS_ENVIRONMENT_UNAVAILABLE: [503],
   INVALID_PROCESS_RESPONSE: [422],
   PROCESS_LIVE_UPDATES_UNAVAILABLE: [503],
+  SOURCE_ATTACHMENT_NOT_FOUND: [404],
+  SOURCE_ATTACHMENT_CONFLICT: [409],
+  SOURCE_ATTACHMENT_REFRESH_NOT_AVAILABLE: [409],
+  INVALID_SOURCE_ATTACHMENT: [422],
+  SOURCE_ATTACHMENT_UNAVAILABLE: [503],
 } satisfies Record<RequestErrorCode, readonly number[]>;
 
 export const requestErrorSchema = z

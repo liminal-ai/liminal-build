@@ -29,6 +29,7 @@ import {
   type SourceAttachmentSummary,
 } from '../../../apps/platform/shared/contracts/index.js';
 import { memberProjectSummary, ownerProjectSummary } from '../../fixtures/projects.js';
+import { buildSourceAttachmentSummaryFixture } from '../../fixtures/sources.js';
 import { buildApp } from '../../utils/build-app.js';
 
 function createTestAuthSessionService(resolution: SessionResolution) {
@@ -728,7 +729,7 @@ describe('processes api', () => {
       },
     ]);
     store.sourcesByProjectId.set(projectA.projectId, [
-      {
+      buildSourceAttachmentSummaryFixture({
         sourceAttachmentId: 'source-1',
         displayName: 'repo',
         purpose: 'research',
@@ -740,7 +741,7 @@ describe('processes api', () => {
         processId: null,
         processDisplayLabel: null,
         updatedAt: '2026-04-13T12:00:00.000Z',
-      },
+      }),
     ]);
     const originalArtifacts = await store.listProjectArtifacts({ projectId: projectA.projectId });
     const originalSources = await store.listProjectSourceAttachments({

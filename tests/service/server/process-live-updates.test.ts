@@ -43,6 +43,7 @@ import {
   runningProcessFixture,
 } from '../../fixtures/processes.js';
 import { readySideWorkFixture } from '../../fixtures/side-work.js';
+import { buildSourceAttachmentSummaryFixture } from '../../fixtures/sources.js';
 import { buildApp } from '../../utils/build-app.js';
 
 function createTestAuthSessionService(resolution: SessionResolution) {
@@ -100,7 +101,7 @@ function buildPopulatedStore() {
       waitingProcessSummary.updatedAt,
   };
 
-  const processSource = {
+  const processSource = buildSourceAttachmentSummaryFixture({
     sourceAttachmentId:
       readyProcessMaterialsFixture.currentSources[0]?.sourceAttachmentId ?? 'source-process-001',
     displayName: readyProcessMaterialsFixture.currentSources[0]?.displayName ?? 'liminal-build',
@@ -116,7 +117,7 @@ function buildPopulatedStore() {
     processDisplayLabel: waitingProcessSummary.displayLabel,
     updatedAt:
       readyProcessMaterialsFixture.currentSources[0]?.updatedAt ?? waitingProcessSummary.updatedAt,
-  };
+  });
 
   return new InMemoryPlatformStore({
     accessibleProjectsByUserId: {
@@ -773,7 +774,7 @@ describe('server-driven environment execution', () => {
     updatedAt: '2026-04-15T10:30:00.000Z',
   });
 
-  const executionWritableSource = {
+  const executionWritableSource = buildSourceAttachmentSummaryFixture({
     sourceAttachmentId: `${executionProcessId}:source-checkpoint-1`,
     displayName: 'execution-source',
     purpose: 'implementation' as const,
@@ -785,7 +786,7 @@ describe('server-driven environment execution', () => {
     processId: null,
     processDisplayLabel: null,
     updatedAt: '2026-04-15T10:30:00.000Z',
-  };
+  });
 
   function buildExecutionStore() {
     return new InMemoryPlatformStore({

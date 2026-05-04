@@ -5,6 +5,7 @@ import { type QueryCtx, query } from './_generated/server.js';
 export const sourceAttachmentsTableFields = {
   projectId: v.string(),
   processId: v.union(v.string(), v.null()),
+  provider: v.literal('github'),
   displayName: v.string(),
   purpose: v.union(
     v.literal('research'),
@@ -19,6 +20,7 @@ export const sourceAttachmentsTableFields = {
   // writable target ref. Must be a full URL the underlying tooling can use
   // directly (e.g., `https://github.com/owner/repo`, `https://github.com/owner/repo.git`).
   repositoryUrl: v.string(),
+  repositoryFullName: v.string(),
   targetRef: v.union(v.string(), v.null()),
   hydrationState: v.union(
     v.literal('not_hydrated'),
@@ -26,6 +28,14 @@ export const sourceAttachmentsTableFields = {
     v.literal('stale'),
     v.literal('unavailable'),
   ),
+  lastHydratedAt: v.union(v.string(), v.null()),
+  lastHydratedResolvedRef: v.union(v.string(), v.null()),
+  lastObservedRemoteResolvedRef: v.union(v.string(), v.null()),
+  freshnessReason: v.union(v.string(), v.null()),
+  refreshStatus: v.union(v.literal('idle'), v.literal('pending'), v.literal('failed')),
+  refreshRequestedAt: v.union(v.string(), v.null()),
+  detachedAt: v.union(v.string(), v.null()),
+  detachedByUserId: v.union(v.string(), v.null()),
   updatedAt: v.string(),
 };
 
@@ -51,15 +61,24 @@ export const listProjectSourceAttachmentSummaries = query({
 
         return {
           sourceAttachmentId: sourceAttachment._id,
+          provider: sourceAttachment.provider,
           displayName: sourceAttachment.displayName,
           purpose: sourceAttachment.purpose,
           accessMode: sourceAttachment.accessMode,
           repositoryUrl: sourceAttachment.repositoryUrl,
+          repositoryFullName: sourceAttachment.repositoryFullName,
           targetRef: sourceAttachment.targetRef,
           hydrationState: sourceAttachment.hydrationState,
+          lastHydratedAt: sourceAttachment.lastHydratedAt,
+          lastHydratedResolvedRef: sourceAttachment.lastHydratedResolvedRef,
+          lastObservedRemoteResolvedRef: sourceAttachment.lastObservedRemoteResolvedRef,
+          freshnessReason: sourceAttachment.freshnessReason,
+          refreshStatus: sourceAttachment.refreshStatus,
+          refreshRequestedAt: sourceAttachment.refreshRequestedAt,
           attachmentScope: sourceAttachment.processId === null ? 'project' : 'process',
           processId: sourceAttachment.processId,
           processDisplayLabel: attachedProcess?.displayLabel ?? null,
+          detachedAt: sourceAttachment.detachedAt,
           updatedAt: sourceAttachment.updatedAt,
         };
       }),

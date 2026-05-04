@@ -10,15 +10,24 @@ function getHandler<TArgs, TReturn>(
 
 type SourceAttachmentSummaryShape = {
   sourceAttachmentId: string;
+  provider: 'github';
   displayName: string;
   purpose: 'research' | 'review' | 'implementation' | 'other';
   accessMode: 'read_only' | 'read_write';
   repositoryUrl: string;
+  repositoryFullName: string;
   targetRef: string | null;
   hydrationState: 'not_hydrated' | 'hydrated' | 'stale' | 'unavailable';
+  lastHydratedAt: string | null;
+  lastHydratedResolvedRef: string | null;
+  lastObservedRemoteResolvedRef: string | null;
+  freshnessReason: string | null;
+  refreshStatus?: 'idle' | 'pending' | 'failed';
+  refreshRequestedAt?: string | null;
   attachmentScope: 'project' | 'process';
   processId: string | null;
   processDisplayLabel: string | null;
+  detachedAt?: string | null;
   updatedAt: string;
 };
 
@@ -65,12 +74,22 @@ function buildSourceAttachmentsSeed() {
         _creationTime: 10,
         projectId: 'project-sources-1',
         processId: null,
+        provider: 'github',
         displayName: 'reference-repo',
         purpose: 'research',
         accessMode: 'read_only',
         repositoryUrl: 'https://github.com/liminal-ai/reference-repo',
+        repositoryFullName: 'liminal-ai/reference-repo',
         targetRef: 'main',
         hydrationState: 'hydrated',
+        lastHydratedAt: '2026-04-15T12:01:00.000Z',
+        lastHydratedResolvedRef: 'a'.repeat(40),
+        lastObservedRemoteResolvedRef: 'a'.repeat(40),
+        freshnessReason: null,
+        refreshStatus: 'idle',
+        refreshRequestedAt: null,
+        detachedAt: null,
+        detachedByUserId: null,
         updatedAt: '2026-04-15T12:05:00.000Z',
       },
       {
@@ -78,12 +97,22 @@ function buildSourceAttachmentsSeed() {
         _creationTime: 11,
         projectId: 'project-sources-1',
         processId: 'process-sources-1',
+        provider: 'github',
         displayName: 'liminal-build',
         purpose: 'implementation',
         accessMode: 'read_write',
         repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
+        repositoryFullName: 'liminal-ai/liminal-build',
         targetRef: 'feature/epic-03',
         hydrationState: 'hydrated',
+        lastHydratedAt: '2026-04-15T12:08:00.000Z',
+        lastHydratedResolvedRef: 'b'.repeat(40),
+        lastObservedRemoteResolvedRef: 'b'.repeat(40),
+        freshnessReason: null,
+        refreshStatus: 'idle',
+        refreshRequestedAt: null,
+        detachedAt: null,
+        detachedByUserId: null,
         updatedAt: '2026-04-15T12:10:00.000Z',
       },
       {
@@ -91,12 +120,22 @@ function buildSourceAttachmentsSeed() {
         _creationTime: 12,
         projectId: 'project-sources-1',
         processId: null,
+        provider: 'github',
         displayName: 'stale-branch',
         purpose: 'review',
         accessMode: 'read_only',
         repositoryUrl: 'https://github.com/liminal-ai/stale-branch-repo',
+        repositoryFullName: 'liminal-ai/stale-branch-repo',
         targetRef: 'old-phase',
         hydrationState: 'stale',
+        lastHydratedAt: '2026-04-15T11:55:00.000Z',
+        lastHydratedResolvedRef: 'c'.repeat(40),
+        lastObservedRemoteResolvedRef: 'd'.repeat(40),
+        freshnessReason: 'target_ref_changed',
+        refreshStatus: 'pending',
+        refreshRequestedAt: '2026-04-15T12:04:00.000Z',
+        detachedAt: null,
+        detachedByUserId: null,
         updatedAt: '2026-04-15T12:03:00.000Z',
       },
     ],
@@ -186,6 +225,33 @@ describe('convex/sourceAttachments summaries', () => {
     expect(byId.get('source-readonly-stale-1')?.repositoryUrl).toBe(
       'https://github.com/liminal-ai/stale-branch-repo',
     );
+  });
+
+  it('projects canonical identity and freshness snapshot fields for each source', async () => {
+    const { ctx } = createFakeConvexContext(buildSourceAttachmentsSeed());
+
+    const summaries = await listProjectSourceAttachmentSummariesHandler(ctx, {
+      projectId: 'project-sources-1',
+    });
+    const byId = new Map(summaries.map((summary) => [summary.sourceAttachmentId, summary]));
+
+    expect(byId.get('source-readonly-project-1')).toMatchObject({
+      provider: 'github',
+      repositoryFullName: 'liminal-ai/reference-repo',
+      lastHydratedAt: '2026-04-15T12:01:00.000Z',
+      lastHydratedResolvedRef: 'a'.repeat(40),
+      lastObservedRemoteResolvedRef: 'a'.repeat(40),
+      freshnessReason: null,
+      refreshStatus: 'idle',
+      refreshRequestedAt: null,
+      detachedAt: null,
+    });
+    expect(byId.get('source-readonly-stale-1')).toMatchObject({
+      repositoryFullName: 'liminal-ai/stale-branch-repo',
+      freshnessReason: 'target_ref_changed',
+      refreshStatus: 'pending',
+      refreshRequestedAt: '2026-04-15T12:04:00.000Z',
+    });
   });
 
   it('projects mixed read_only and read_write attachments distinctly', async () => {

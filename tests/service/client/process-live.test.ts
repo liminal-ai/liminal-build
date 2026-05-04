@@ -516,6 +516,65 @@ describe('process live foundation', () => {
         }),
         missingField: '"accessMode"',
       },
+      {
+        name: 'sourceAttachmentSummarySchema missing provider',
+        result: (() => {
+          const { provider: _provider, ...sourceWithoutProvider } = hydratedSourceFixture;
+          return sourceAttachmentSummarySchema.safeParse(sourceWithoutProvider);
+        })(),
+        missingField: '"provider"',
+      },
+      {
+        name: 'sourceAttachmentSummarySchema missing repositoryFullName',
+        result: (() => {
+          const { repositoryFullName: _repositoryFullName, ...sourceWithoutRepositoryFullName } =
+            hydratedSourceFixture;
+          return sourceAttachmentSummarySchema.safeParse(sourceWithoutRepositoryFullName);
+        })(),
+        missingField: '"repositoryFullName"',
+      },
+      {
+        name: 'sourceAttachmentSummarySchema missing lastHydratedAt',
+        result: (() => {
+          const { lastHydratedAt: _lastHydratedAt, ...sourceWithoutLastHydratedAt } =
+            hydratedSourceFixture;
+          return sourceAttachmentSummarySchema.safeParse(sourceWithoutLastHydratedAt);
+        })(),
+        missingField: '"lastHydratedAt"',
+      },
+      {
+        name: 'sourceAttachmentSummarySchema missing lastHydratedResolvedRef',
+        result: (() => {
+          const {
+            lastHydratedResolvedRef: _lastHydratedResolvedRef,
+            ...sourceWithoutLastHydratedResolvedRef
+          } = hydratedSourceFixture;
+          return sourceAttachmentSummarySchema.safeParse(sourceWithoutLastHydratedResolvedRef);
+        })(),
+        missingField: '"lastHydratedResolvedRef"',
+      },
+      {
+        name: 'sourceAttachmentSummarySchema missing lastObservedRemoteResolvedRef',
+        result: (() => {
+          const {
+            lastObservedRemoteResolvedRef: _lastObservedRemoteResolvedRef,
+            ...sourceWithoutLastObservedRemoteResolvedRef
+          } = hydratedSourceFixture;
+          return sourceAttachmentSummarySchema.safeParse(
+            sourceWithoutLastObservedRemoteResolvedRef,
+          );
+        })(),
+        missingField: '"lastObservedRemoteResolvedRef"',
+      },
+      {
+        name: 'sourceAttachmentSummarySchema missing freshnessReason',
+        result: (() => {
+          const { freshnessReason: _freshnessReason, ...sourceWithoutFreshnessReason } =
+            hydratedSourceFixture;
+          return sourceAttachmentSummarySchema.safeParse(sourceWithoutFreshnessReason);
+        })(),
+        missingField: '"freshnessReason"',
+      },
     ];
 
     const actionResponseSchemaCases = [

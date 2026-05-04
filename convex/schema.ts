@@ -16,6 +16,7 @@ import { processSideWorkItemsTableFields } from './processSideWorkItems.js';
 import { projectMembersTableFields } from './projectMembers.js';
 import { projectsTableFields } from './projects.js';
 import { sourceAttachmentsTableFields } from './sourceAttachments.js';
+import { sourceProvenanceTableFields } from './sourceProvenance.js';
 import { usersTableFields } from './users.js';
 
 export default defineSchema({
@@ -86,5 +87,15 @@ export default defineSchema({
   ),
   sourceAttachments: defineTable(sourceAttachmentsTableFields)
     .index('by_projectId', ['projectId'])
-    .index('by_projectId_updatedAt', ['projectId', 'updatedAt']),
+    .index('by_projectId_updatedAt', ['projectId', 'updatedAt'])
+    .index('by_projectId_processId_repositoryFullName_targetRef', [
+      'projectId',
+      'processId',
+      'repositoryFullName',
+      'targetRef',
+    ])
+    .index('by_projectId_detachedAt_updatedAt', ['projectId', 'detachedAt', 'updatedAt']),
+  sourceProvenance: defineTable(sourceProvenanceTableFields)
+    .index('by_processId_recordedAt', ['processId', 'recordedAt'])
+    .index('by_sourceAttachmentId_recordedAt', ['sourceAttachmentId', 'recordedAt']),
 });

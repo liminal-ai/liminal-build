@@ -37,6 +37,7 @@ import {
   runningProcessFixture,
 } from '../../fixtures/processes.js';
 import { readySideWorkFixture } from '../../fixtures/side-work.js';
+import { buildSourceAttachmentSummaryFixture } from '../../fixtures/sources.js';
 import { buildApp } from '../../utils/build-app.js';
 
 function createTestAuthSessionService(resolution: SessionResolution) {
@@ -130,7 +131,7 @@ function buildPopulatedStore() {
       waitingProcessSummary.updatedAt,
   };
 
-  const processSource = {
+  const processSource = buildSourceAttachmentSummaryFixture({
     sourceAttachmentId:
       readyProcessMaterialsFixture.currentSources[0]?.sourceAttachmentId ?? 'source-process-001',
     displayName: readyProcessMaterialsFixture.currentSources[0]?.displayName ?? 'liminal-build',
@@ -146,7 +147,7 @@ function buildPopulatedStore() {
     processDisplayLabel: waitingProcessSummary.displayLabel,
     updatedAt:
       readyProcessMaterialsFixture.currentSources[0]?.updatedAt ?? waitingProcessSummary.updatedAt,
-  };
+  });
 
   return new InMemoryPlatformStore({
     accessibleProjectsByUserId: {
@@ -520,7 +521,7 @@ describe('process work surface api', () => {
       currentVersionLabel: 'v3',
       updatedAt: '2026-04-13T12:30:00.000Z',
     };
-    const staleSource = {
+    const staleSource = buildSourceAttachmentSummaryFixture({
       sourceAttachmentId: 'source-stale-process-001',
       displayName: 'old-branch',
       purpose: 'implementation' as const,
@@ -531,9 +532,10 @@ describe('process work surface api', () => {
       attachmentScope: 'process' as const,
       processId: waitingProcessSummary.processId,
       processDisplayLabel: waitingProcessSummary.displayLabel,
+      freshnessReason: 'target_ref_changed',
       updatedAt: '2026-04-13T12:08:00.000Z',
-    };
-    const sharedCurrentSource = {
+    });
+    const sharedCurrentSource = buildSourceAttachmentSummaryFixture({
       sourceAttachmentId: 'source-shared-current-001',
       displayName: 'shared-research-repo',
       purpose: 'research' as const,
@@ -545,7 +547,7 @@ describe('process work surface api', () => {
       processId: null,
       processDisplayLabel: null,
       updatedAt: '2026-04-13T12:31:00.000Z',
-    };
+    });
     const platformStore = new InMemoryPlatformStore({
       accessibleProjectsByUserId: {
         'user:workos-user-1': [projectSummary],
@@ -1384,7 +1386,7 @@ describe('process work surface api', () => {
   });
 
   it('S2-TC-2.5a: bootstrap exposes read_write accessMode for an attached writable source', async () => {
-    const writableSource = {
+    const writableSource = buildSourceAttachmentSummaryFixture({
       sourceAttachmentId: 'source-writable-impl-001',
       displayName: 'liminal-build',
       purpose: 'implementation' as const,
@@ -1395,8 +1397,11 @@ describe('process work surface api', () => {
       attachmentScope: 'process' as const,
       processId: waitingProcessSummary.processId,
       processDisplayLabel: waitingProcessSummary.displayLabel,
+      lastHydratedAt: null,
+      lastHydratedResolvedRef: null,
+      lastObservedRemoteResolvedRef: null,
       updatedAt: '2026-04-15T10:00:00.000Z',
-    };
+    });
     const platformStore = new InMemoryPlatformStore({
       accessibleProjectsByUserId: { 'user:workos-user-1': [projectSummary] },
       projectAccessByProjectId: {
@@ -1449,7 +1454,7 @@ describe('process work surface api', () => {
   });
 
   it('S2-TC-2.5b: bootstrap exposes read_only accessMode for an attached read-only source', async () => {
-    const readOnlySource = {
+    const readOnlySource = buildSourceAttachmentSummaryFixture({
       sourceAttachmentId: 'source-readonly-research-001',
       displayName: 'research-notes',
       purpose: 'research' as const,
@@ -1461,7 +1466,7 @@ describe('process work surface api', () => {
       processId: null,
       processDisplayLabel: null,
       updatedAt: '2026-04-15T09:00:00.000Z',
-    };
+    });
     const platformStore = new InMemoryPlatformStore({
       accessibleProjectsByUserId: { 'user:workos-user-1': [projectSummary] },
       projectAccessByProjectId: {

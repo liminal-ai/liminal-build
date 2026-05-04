@@ -23,6 +23,7 @@ import {
   waitingProcessFixture,
 } from '../fixtures/processes.js';
 import { currentProcessRequestFixture } from '../fixtures/process-surface.js';
+import { buildSourceAttachmentSummaryFixture } from '../fixtures/sources.js';
 import { buildApp } from '../utils/build-app.js';
 
 function createTestAuthSessionService(resolution: SessionResolution) {
@@ -171,7 +172,7 @@ function buildDurableCheckpointStore(args: {
     },
     sourceAttachmentsByProjectId: {
       [args.projectSummary.projectId]: [
-        {
+        buildSourceAttachmentSummaryFixture({
           sourceAttachmentId: materialSource.sourceAttachmentId,
           displayName: materialSource.displayName,
           purpose: materialSource.purpose,
@@ -183,7 +184,7 @@ function buildDurableCheckpointStore(args: {
           processId: args.processSummary.processId,
           processDisplayLabel: args.processSummary.displayLabel,
           updatedAt: materialSource.updatedAt,
-        },
+        }),
       ],
     },
     processHistoryItemsByProcessId: {
@@ -532,7 +533,7 @@ describe('process work surface integration', () => {
       displayLabel: 'Feature Specification #4',
       updatedAt: '2026-04-15T12:00:00.000Z',
     });
-    const writableSource = {
+    const writableSource = buildSourceAttachmentSummaryFixture({
       sourceAttachmentId: `${draftProcessSummary.processId}:source-checkpoint-1`,
       displayName: 'liminal-build',
       purpose: 'implementation' as const,
@@ -544,7 +545,7 @@ describe('process work surface integration', () => {
       processId: null,
       processDisplayLabel: null,
       updatedAt: '2026-04-15T12:00:00.000Z',
-    };
+    });
     const store = new InMemoryPlatformStore({
       accessibleProjectsByUserId: {
         'user:workos-user-1': [projectSummary],
