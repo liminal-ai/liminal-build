@@ -35,6 +35,34 @@ function formatAccessModeLabel(accessMode: string): string {
   return accessMode.replaceAll('_', ' ');
 }
 
+function formatFreshnessReason(freshnessReason: string | null | undefined): string | null {
+  if (freshnessReason === null || freshnessReason === undefined) {
+    return null;
+  }
+
+  return freshnessReason.replaceAll('_', ' ');
+}
+
+function resolveRefreshLabel(sourceAttachment: SourceAttachmentSummary): string | null {
+  const canRefreshFromProjectShell =
+    sourceAttachment.attachmentScope === 'process' ||
+    sourceAttachment.projectRefreshTargetCount === 1;
+
+  if (!canRefreshFromProjectShell) {
+    return null;
+  }
+
+  if (sourceAttachment.hydrationState === 'stale') {
+    return 'Refresh source';
+  }
+
+  if (sourceAttachment.hydrationState === 'not_hydrated') {
+    return 'Hydrate source';
+  }
+
+  return null;
+}
+
 export function renderSourceAttachmentSection(args: {
   envelope: SourceAttachmentSectionEnvelope | null;
   targetDocument: Document;
@@ -43,6 +71,7 @@ export function renderSourceAttachmentSection(args: {
     sourceAttachmentId: string,
     input: UpdateSourceAttachmentRequest,
   ) => Promise<void>;
+  onRefreshSource?: (sourceAttachmentId: string) => Promise<void>;
 }): HTMLElement {
   if (args.envelope === null || args.envelope.status !== 'ready') {
     const section = renderSectionEnvelopeState({
@@ -103,6 +132,8 @@ export function renderSourceAttachmentSection(args: {
     const accessMode = args.targetDocument.createElement('p');
     const targetRef = args.targetDocument.createElement('p');
     const hydration = args.targetDocument.createElement('p');
+    const lastHydratedAt = args.targetDocument.createElement('p');
+    const freshnessReason = args.targetDocument.createElement('p');
     const scope = args.targetDocument.createElement('p');
     const updatedAt = args.targetDocument.createElement('p');
     item.setAttribute('data-source-attachment-row', sourceAttachment.sourceAttachmentId);
@@ -113,6 +144,8 @@ export function renderSourceAttachmentSection(args: {
     accessMode.textContent = `Access: ${formatAccessModeLabel(sourceAttachment.accessMode)}`;
     targetRef.textContent = `Target ref: ${sourceAttachment.targetRef ?? 'not set'}`;
     hydration.textContent = `Hydration: ${formatHydrationStateLabel(sourceAttachment.hydrationState)}`;
+    lastHydratedAt.textContent = `Last hydrated: ${sourceAttachment.lastHydratedAt ?? 'never'}`;
+    freshnessReason.textContent = `Freshness reason: ${formatFreshnessReason(sourceAttachment.freshnessReason) ?? 'none'}`;
     purpose.setAttribute(
       'data-source-attachment-purpose-display',
       sourceAttachment.sourceAttachmentId,
@@ -138,6 +171,8 @@ export function renderSourceAttachmentSection(args: {
       accessMode,
       targetRef,
       hydration,
+      lastHydratedAt,
+      freshnessReason,
       scope,
       updatedAt,
     );
@@ -152,11 +187,70 @@ export function renderSourceAttachmentSection(args: {
       );
     }
 
+    if (args.onRefreshSource !== undefined) {
+      item.append(
+        renderSourceAttachmentRefreshControl({
+          sourceAttachment,
+          targetDocument: args.targetDocument,
+          onRefreshSource: args.onRefreshSource,
+        }),
+      );
+    }
+
     list.append(item);
   }
 
   section.append(list);
   return section;
+}
+
+function renderSourceAttachmentRefreshControl(args: {
+  sourceAttachment: SourceAttachmentSummary;
+  targetDocument: Document;
+  onRefreshSource: (sourceAttachmentId: string) => Promise<void>;
+}): HTMLElement {
+  const container = args.targetDocument.createElement('div');
+  const refreshLabel = resolveRefreshLabel(args.sourceAttachment);
+  const status = args.targetDocument.createElement('p');
+
+  status.setAttribute(
+    'data-source-attachment-refresh-status',
+    args.sourceAttachment.sourceAttachmentId,
+  );
+
+  if (args.sourceAttachment.refreshStatus === 'pending') {
+    status.textContent = `Refresh in progress since ${args.sourceAttachment.refreshRequestedAt ?? 'just now'}.`;
+  } else if (args.sourceAttachment.refreshStatus === 'failed') {
+    status.textContent = 'The last refresh attempt failed.';
+  }
+
+  container.append(status);
+
+  if (refreshLabel === null) {
+    return container;
+  }
+
+  const button = args.targetDocument.createElement('button');
+  button.type = 'button';
+  button.textContent = refreshLabel;
+  button.disabled = args.sourceAttachment.refreshStatus === 'pending';
+  button.setAttribute(
+    'data-source-attachment-refresh-submit',
+    args.sourceAttachment.sourceAttachmentId,
+  );
+
+  button.addEventListener('click', () => {
+    button.disabled = true;
+
+    void Promise.resolve(args.onRefreshSource(args.sourceAttachment.sourceAttachmentId)).finally(
+      () => {
+        button.disabled = false;
+      },
+    );
+  });
+
+  container.append(button);
+  return container;
 }
 
 function renderSourceAttachmentMetadataEditor(args: {

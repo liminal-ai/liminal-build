@@ -11,6 +11,10 @@ import type {
 } from '../../../apps/platform/server/services/sources/github-repository-resolver.js';
 import { DefaultSourceManagementService } from '../../../apps/platform/server/services/sources/source-management.service.js';
 import {
+  DefaultSourceRefreshService,
+  type SourceHydrationExecutor,
+} from '../../../apps/platform/server/services/sources/source-refresh.service.js';
+import {
   processSummarySchema,
   projectSummarySchema,
 } from '../../../apps/platform/shared/contracts/index.js';
@@ -85,7 +89,36 @@ function buildService(args: {
         targetRef,
         targetRefKind: targetRef === null ? 'none' : 'branch',
         defaultBranch: 'main',
+        resolvedRef: targetRef === null ? null : 'a'.repeat(40),
       })),
+  );
+}
+
+function buildRefreshService(args: {
+  store?: InMemoryPlatformStore;
+  resolver?: GitHubRepositoryResolver;
+  hydrationExecutor?: SourceHydrationExecutor;
+}) {
+  return new DefaultSourceRefreshService(
+    args.store ?? buildStore(),
+    args.resolver ??
+      new StubGitHubRepositoryResolver(({ repositoryUrl, targetRef }) => ({
+        kind: 'resolved',
+        repositoryUrl,
+        repositoryFullName: 'liminal-ai/liminal-build',
+        targetRef,
+        targetRefKind: targetRef === null ? 'none' : 'branch',
+        defaultBranch: 'main',
+        resolvedRef: targetRef === null ? null : 'f'.repeat(40),
+      })),
+    args.hydrationExecutor ?? {
+      async refreshRecoverableSource() {
+        return {
+          kind: 'settled' as const,
+          hydratedAt: new Date().toISOString(),
+        };
+      },
+    },
   );
 }
 
@@ -126,6 +159,7 @@ describe('source-management service', () => {
         targetRef,
         targetRefKind: 'branch',
         defaultBranch: 'main',
+        resolvedRef: 'b'.repeat(40),
       })),
     });
 
@@ -220,6 +254,7 @@ describe('source-management service', () => {
         targetRef,
         targetRefKind: 'tag',
         defaultBranch: 'main',
+        resolvedRef: 'c'.repeat(40),
       })),
     });
     const commitService = buildService({
@@ -230,6 +265,7 @@ describe('source-management service', () => {
         targetRef,
         targetRefKind: 'commit',
         defaultBranch: 'main',
+        resolvedRef: 'd'.repeat(40),
       })),
     });
 
@@ -297,6 +333,7 @@ describe('source-management service', () => {
         targetRef: null,
         targetRefKind: 'none',
         defaultBranch: 'develop',
+        resolvedRef: null,
       })),
     });
 
@@ -364,6 +401,72 @@ describe('source-management service', () => {
     expect(processAttachment.processId).toBe(processSummary.processId);
   });
 
+  it('branch-head movement marks a hydrated source stale using durable resolved-ref snapshot fields', async () => {
+    const store = buildStore();
+    const created = await store.createProjectSourceAttachment({
+      projectId: projectSummary.projectId,
+      provider: 'github',
+      displayName: 'liminal-build',
+      purpose: 'implementation',
+      accessMode: 'read_only',
+      repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
+      repositoryFullName: 'liminal-ai/liminal-build',
+      targetRef: 'main',
+    });
+
+    await store.updateSourceAttachment({
+      projectId: projectSummary.projectId,
+      sourceAttachmentId: created.sourceAttachmentId,
+      purpose: created.purpose,
+      accessMode: created.accessMode,
+      targetRef: created.targetRef,
+      hydrationState: 'hydrated',
+      freshnessReason: null,
+      lastHydratedAt: '2026-05-01T12:00:00.000Z',
+      lastHydratedResolvedRef: 'a'.repeat(40),
+      lastObservedRemoteResolvedRef: 'a'.repeat(40),
+    });
+
+    const refreshService = buildRefreshService({
+      store,
+      resolver: new StubGitHubRepositoryResolver(({ repositoryUrl, targetRef }) => ({
+        kind: 'resolved',
+        repositoryUrl,
+        repositoryFullName: 'liminal-ai/liminal-build',
+        targetRef,
+        targetRefKind: 'branch',
+        defaultBranch: 'main',
+        resolvedRef: 'b'.repeat(40),
+      })),
+    });
+
+    const synchronized = await refreshService.synchronizeProjectSourceAttachments({
+      projectId: projectSummary.projectId,
+      sourceAttachments: await store.listProjectSourceAttachments({
+        projectId: projectSummary.projectId,
+      }),
+    });
+
+    expect(synchronized[0]).toMatchObject({
+      sourceAttachmentId: created.sourceAttachmentId,
+      hydrationState: 'stale',
+      freshnessReason: 'branch_head_moved',
+      lastObservedRemoteResolvedRef: 'b'.repeat(40),
+    });
+
+    await expect(
+      store.getProjectSourceAttachment({
+        projectId: projectSummary.projectId,
+        sourceAttachmentId: created.sourceAttachmentId,
+      }),
+    ).resolves.toMatchObject({
+      sourceAttachmentId: created.sourceAttachmentId,
+      hydrationState: 'stale',
+      freshnessReason: 'branch_head_moved',
+      lastObservedRemoteResolvedRef: 'b'.repeat(40),
+    });
+  });
+
   it('updates by sourceAttachmentId even when the project attachment list is capped before that row', async () => {
     const backingStore = buildStore();
 
@@ -413,6 +516,7 @@ describe('source-management service', () => {
         targetRef,
         targetRefKind: 'branch',
         defaultBranch: 'main',
+        resolvedRef: 'e'.repeat(40),
       })),
     });
 

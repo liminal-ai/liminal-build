@@ -588,6 +588,11 @@ resolution:
 - if the branch/ref cannot be resolved safely, return `unavailable`
 - if the source is `read_only` with a tag/commit ref, keep it `hydrated` unless
   the ref becomes unavailable
+- for project-scoped sources surfaced on the project shell, only offer or accept
+  refresh when exactly one current process working-copy target can be resolved;
+  otherwise the project-shell control should be hidden/disabled and the backend
+  should return request-level refresh-not-available rather than inventing a
+  target
 
 ```mermaid
 sequenceDiagram

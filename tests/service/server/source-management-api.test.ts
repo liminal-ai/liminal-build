@@ -6,6 +6,11 @@ import {
 } from '../../../apps/platform/server/services/auth/auth-session.service.js';
 import { AuthUserSyncService } from '../../../apps/platform/server/services/auth/auth-user-sync.service.js';
 import {
+  InMemoryProviderAdapter,
+  type ProviderAdapter,
+} from '../../../apps/platform/server/services/processes/environment/provider-adapter.js';
+import { SingleAdapterRegistry } from '../../../apps/platform/server/services/processes/environment/provider-adapter-registry.js';
+import {
   InMemoryPlatformStore,
   type ProjectAccessResult,
 } from '../../../apps/platform/server/services/projects/platform-store.js';
@@ -13,6 +18,11 @@ import type {
   GitHubRepositoryResolver,
   GitHubRepositoryResolution,
 } from '../../../apps/platform/server/services/sources/github-repository-resolver.js';
+import {
+  DefaultSourceRefreshService,
+  RuntimeSourceHydrationExecutor,
+  type SourceRefreshService,
+} from '../../../apps/platform/server/services/sources/source-refresh.service.js';
 import {
   processSummarySchema,
   projectSummarySchema,
@@ -52,6 +62,42 @@ class StubGitHubRepositoryResolver implements GitHubRepositoryResolver {
     targetRef: string | null;
   }): Promise<GitHubRepositoryResolution> {
     return this.handler(args);
+  }
+}
+
+class RecordingProviderAdapter extends InMemoryProviderAdapter {
+  ensureCalls = 0;
+  hydrateCalls = 0;
+  rehydrateCalls = 0;
+
+  override async ensureEnvironment(
+    args: Parameters<InMemoryProviderAdapter['ensureEnvironment']>[0],
+  ) {
+    this.ensureCalls += 1;
+    return super.ensureEnvironment(args);
+  }
+
+  override async hydrateEnvironment(
+    args: Parameters<InMemoryProviderAdapter['hydrateEnvironment']>[0],
+  ) {
+    this.hydrateCalls += 1;
+    return super.hydrateEnvironment(args);
+  }
+
+  override async rehydrateEnvironment(
+    args: Parameters<InMemoryProviderAdapter['rehydrateEnvironment']>[0],
+  ) {
+    this.rehydrateCalls += 1;
+    return super.rehydrateEnvironment(args);
+  }
+}
+
+class FailingRefreshProviderAdapter extends RecordingProviderAdapter {
+  override async hydrateEnvironment(
+    _args: Parameters<InMemoryProviderAdapter['hydrateEnvironment']>[0],
+  ): ReturnType<InMemoryProviderAdapter['hydrateEnvironment']> {
+    this.hydrateCalls += 1;
+    throw new Error('Hydration failed in the provider runtime.');
   }
 }
 
@@ -109,6 +155,7 @@ function buildResolver(
         targetRef,
         targetRefKind: targetRef === null ? 'none' : 'branch',
         defaultBranch: 'main',
+        resolvedRef: targetRef === null ? null : 'a'.repeat(40),
       })),
   );
 }
@@ -116,8 +163,13 @@ function buildResolver(
 async function buildAuthenticatedApp(args: {
   store?: InMemoryPlatformStore;
   resolver?: GitHubRepositoryResolver;
+  sourceRefreshService?: SourceRefreshService;
+  providerAdapter?: ProviderAdapter;
 }) {
   const platformStore = args.store ?? buildStore();
+  const resolver = args.resolver ?? buildResolver();
+  const providerAdapter = args.providerAdapter ?? new InMemoryProviderAdapter();
+  const providerAdapterRegistry = new SingleAdapterRegistry(providerAdapter);
   const app = await buildApp({
     authSessionService: createTestAuthSessionService({
       actor: {
@@ -130,7 +182,15 @@ async function buildAuthenticatedApp(args: {
     }),
     authUserSyncService: new AuthUserSyncService(platformStore),
     platformStore,
-    gitHubRepositoryResolver: args.resolver ?? buildResolver(),
+    providerAdapterRegistry,
+    gitHubRepositoryResolver: resolver,
+    sourceRefreshService:
+      args.sourceRefreshService ??
+      new DefaultSourceRefreshService(
+        platformStore,
+        resolver,
+        new RuntimeSourceHydrationExecutor(platformStore, providerAdapterRegistry, 'local'),
+      ),
   });
 
   return {
@@ -365,7 +425,7 @@ describe('source-management api', () => {
 
     const createResponse = await app.inject({
       method: 'POST',
-      url: `/api/projects/${projectSummary.projectId}/source-attachments`,
+      url: `/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/source-attachments`,
       cookies: {
         [sessionCookieName]: 'valid-session-cookie',
       },
@@ -415,5 +475,294 @@ describe('source-management api', () => {
     });
 
     await app.close();
+  });
+
+  it('TC-3.3a refresh updates one source in place', async () => {
+    const { app, platformStore } = await buildAuthenticatedApp({});
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/source-attachments`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+      payload: {
+        provider: 'github',
+        repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
+        displayName: 'liminal-build',
+        purpose: 'implementation',
+        accessMode: 'read_only',
+        targetRef: 'main',
+      },
+    });
+
+    expect(createResponse.statusCode).toBe(201);
+    const createdAttachment = createResponse.json() as { sourceAttachmentId: string };
+
+    const refreshResponse = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/source-attachments/${createdAttachment.sourceAttachmentId}/refresh`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(refreshResponse.statusCode).toBe(200);
+    expect(refreshResponse.json()).toMatchObject({
+      refreshStatus: 'settled',
+      sourceAttachment: {
+        sourceAttachmentId: createdAttachment.sourceAttachmentId,
+        hydrationState: 'hydrated',
+        refreshStatus: 'idle',
+        freshnessReason: null,
+        lastHydratedResolvedRef: 'a'.repeat(40),
+        lastObservedRemoteResolvedRef: 'a'.repeat(40),
+      },
+    });
+
+    const [storedAttachment] = await platformStore.listProjectSourceAttachments({
+      projectId: projectSummary.projectId,
+    });
+    expect(storedAttachment).toMatchObject({
+      sourceAttachmentId: createdAttachment.sourceAttachmentId,
+      hydrationState: 'hydrated',
+      refreshStatus: 'idle',
+    });
+
+    await app.close();
+  });
+
+  it('uses the runtime provider seam for production refresh instead of a fake immediate success path', async () => {
+    const providerAdapter = new RecordingProviderAdapter();
+    const { app } = await buildAuthenticatedApp({
+      providerAdapter,
+    });
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/source-attachments`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+      payload: {
+        provider: 'github',
+        repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
+        displayName: 'liminal-build',
+        purpose: 'implementation',
+        accessMode: 'read_only',
+        targetRef: 'main',
+      },
+    });
+
+    const createdAttachment = createResponse.json() as { sourceAttachmentId: string };
+    const refreshResponse = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/source-attachments/${createdAttachment.sourceAttachmentId}/refresh`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(refreshResponse.statusCode).toBe(200);
+    expect(refreshResponse.json()).toMatchObject({
+      refreshStatus: 'settled',
+      sourceAttachment: {
+        sourceAttachmentId: createdAttachment.sourceAttachmentId,
+        hydrationState: 'hydrated',
+      },
+    });
+    expect(providerAdapter.ensureCalls).toBe(1);
+    expect(providerAdapter.hydrateCalls).toBe(1);
+    expect(providerAdapter.rehydrateCalls).toBe(0);
+
+    await app.close();
+  });
+
+  it('does not record hydrated state when the runtime refresh seam fails', async () => {
+    const providerAdapter = new FailingRefreshProviderAdapter();
+    const { app, platformStore } = await buildAuthenticatedApp({
+      providerAdapter,
+    });
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/source-attachments`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+      payload: {
+        provider: 'github',
+        repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
+        displayName: 'liminal-build',
+        purpose: 'implementation',
+        accessMode: 'read_only',
+        targetRef: 'main',
+      },
+    });
+
+    const createdAttachment = createResponse.json() as { sourceAttachmentId: string };
+    const refreshResponse = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/source-attachments/${createdAttachment.sourceAttachmentId}/refresh`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(refreshResponse.statusCode).toBe(200);
+    expect(refreshResponse.json()).toMatchObject({
+      refreshStatus: 'failed',
+      sourceAttachment: {
+        sourceAttachmentId: createdAttachment.sourceAttachmentId,
+        hydrationState: 'not_hydrated',
+        refreshStatus: 'failed',
+      },
+    });
+    expect(providerAdapter.ensureCalls).toBe(1);
+    expect(providerAdapter.hydrateCalls).toBe(1);
+    expect(providerAdapter.rehydrateCalls).toBe(0);
+    expect(
+      await platformStore.getProjectSourceAttachment({
+        projectId: projectSummary.projectId,
+        sourceAttachmentId: createdAttachment.sourceAttachmentId,
+      }),
+    ).toMatchObject({
+      sourceAttachmentId: createdAttachment.sourceAttachmentId,
+      hydrationState: 'not_hydrated',
+      refreshStatus: 'failed',
+    });
+
+    await app.close();
+  });
+
+  it('request-level refresh errors differ from refreshStatus failed', async () => {
+    const failedRefreshService: SourceRefreshService = {
+      async synchronizeProjectSourceAttachments(args) {
+        return args.sourceAttachments;
+      },
+      async refreshSource() {
+        return {
+          refreshStatus: 'failed',
+          sourceAttachment: {
+            sourceAttachmentId: 'source-failed-refresh-001',
+            provider: 'github',
+            displayName: 'failed refresh source',
+            purpose: 'implementation',
+            accessMode: 'read_only',
+            repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
+            repositoryFullName: 'liminal-ai/liminal-build',
+            targetRef: 'main',
+            hydrationState: 'stale',
+            lastHydratedAt: '2026-05-01T12:00:00.000Z',
+            lastHydratedResolvedRef: 'a'.repeat(40),
+            lastObservedRemoteResolvedRef: 'b'.repeat(40),
+            freshnessReason: 'branch_head_moved',
+            refreshStatus: 'failed',
+            refreshRequestedAt: '2026-05-01T12:05:00.000Z',
+            attachmentScope: 'project',
+            processId: null,
+            processDisplayLabel: null,
+            detachedAt: null,
+            updatedAt: '2026-05-01T12:05:00.000Z',
+          },
+        };
+      },
+    };
+    const { app: failedApp } = await buildAuthenticatedApp({
+      sourceRefreshService: failedRefreshService,
+    });
+
+    const failedResponse = await failedApp.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/source-attachments/source-failed-refresh-001/refresh`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(failedResponse.statusCode).toBe(200);
+    expect(failedResponse.json()).toMatchObject({
+      refreshStatus: 'failed',
+      sourceAttachment: {
+        sourceAttachmentId: 'source-failed-refresh-001',
+        refreshStatus: 'failed',
+      },
+    });
+
+    await failedApp.close();
+
+    const unavailableSource = {
+      sourceAttachmentId: 'source-unavailable-refresh-001',
+      provider: 'github' as const,
+      displayName: 'unavailable source',
+      purpose: 'implementation' as const,
+      accessMode: 'read_only' as const,
+      repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
+      repositoryFullName: 'liminal-ai/liminal-build',
+      targetRef: 'main',
+      hydrationState: 'unavailable' as const,
+      lastHydratedAt: '2026-05-01T12:00:00.000Z',
+      lastHydratedResolvedRef: 'a'.repeat(40),
+      lastObservedRemoteResolvedRef: null,
+      freshnessReason: 'target_ref_unavailable',
+      refreshStatus: 'idle' as const,
+      refreshRequestedAt: null,
+      attachmentScope: 'project' as const,
+      processId: null,
+      processDisplayLabel: null,
+      detachedAt: null,
+      updatedAt: '2026-05-01T12:00:00.000Z',
+    };
+    const seededStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectSummary.projectId]: [processSummary],
+      },
+      sourceAttachmentsByProjectId: {
+        [projectSummary.projectId]: [unavailableSource],
+      },
+    });
+    const { app: unavailableApp, platformStore } = await buildAuthenticatedApp({
+      store: seededStore,
+      resolver: buildResolver(() => ({
+        kind: 'inaccessible',
+        message: 'GitHub branch could not be accessed.',
+      })),
+    });
+
+    const unavailableResponse = await unavailableApp.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/source-attachments/${unavailableSource.sourceAttachmentId}/refresh`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(unavailableResponse.statusCode).toBe(409);
+    expect(unavailableResponse.json()).toEqual({
+      code: 'SOURCE_ATTACHMENT_REFRESH_NOT_AVAILABLE',
+      message: 'Refresh is only available for stale or not-yet-hydrated source attachments.',
+      status: 409,
+    });
+
+    expect(
+      await platformStore.getProjectSourceAttachment({
+        projectId: projectSummary.projectId,
+        sourceAttachmentId: unavailableSource.sourceAttachmentId,
+      }),
+    ).toMatchObject({
+      sourceAttachmentId: unavailableSource.sourceAttachmentId,
+      hydrationState: 'unavailable',
+    });
+
+    await unavailableApp.close();
   });
 });

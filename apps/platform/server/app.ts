@@ -45,6 +45,7 @@ import {
   DefaultProcessWorkSurfaceService,
   type ProcessWorkSurfaceService,
 } from './services/processes/process-work-surface.service.js';
+import { MaterialsSectionReader } from './services/processes/readers/materials-section.reader.js';
 import { MarkdownRendererService } from './services/rendering/markdown-renderer.service.js';
 import { DefaultExportService, type ExportService } from './services/review/export.service.js';
 import { HmacExportUrlSigner } from './services/review/export-url-signing.js';
@@ -71,6 +72,7 @@ import { ProjectAccessService } from './services/projects/project-access.service
 import { ProjectCreateService } from './services/projects/project-create.service.js';
 import { ProjectIndexService } from './services/projects/project-index.service.js';
 import { ProjectShellService } from './services/projects/project-shell.service.js';
+import { SourceSectionReader } from './services/projects/readers/source-section.reader.js';
 import {
   type GitHubRepositoryResolver,
   OctokitGitHubRepositoryResolver,
@@ -79,6 +81,11 @@ import {
   DefaultSourceManagementService,
   type SourceManagementService,
 } from './services/sources/source-management.service.js';
+import {
+  DefaultSourceRefreshService,
+  RuntimeSourceHydrationExecutor,
+  type SourceRefreshService,
+} from './services/sources/source-refresh.service.js';
 
 export interface CreateAppOptions {
   env?: ServerEnv;
@@ -104,6 +111,7 @@ export interface CreateAppOptions {
   processResumeService?: ProcessResumeService;
   gitHubRepositoryResolver?: GitHubRepositoryResolver;
   sourceManagementService?: SourceManagementService;
+  sourceRefreshService?: SourceRefreshService;
   exportService?: ExportService;
   artifactReviewService?: ArtifactReviewService;
   packageReviewService?: PackageReviewService;
@@ -144,6 +152,7 @@ declare module 'fastify' {
     processRegistrationService: ProcessRegistrationService;
     processResumeService: ProcessResumeService;
     sourceManagementService: SourceManagementService;
+    sourceRefreshService: SourceRefreshService;
     exportService: ExportService;
     artifactReviewService: ArtifactReviewService;
     packageReviewService: PackageReviewService;
@@ -186,7 +195,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   const projectCreateService =
     options.projectCreateService ?? new ProjectCreateService(platformStore);
   const projectIndexService = options.projectIndexService ?? new ProjectIndexService(platformStore);
-  const projectShellService = options.projectShellService ?? new ProjectShellService(platformStore);
   const processLiveHub = options.processLiveHub ?? new InMemoryProcessLiveHub();
   if (isProductionRuntime && platformStore instanceof NullPlatformStore) {
     app.log.warn(
@@ -271,6 +279,35 @@ export async function createApp(options: CreateAppOptions = {}) {
       codeCheckpointWriter,
       env.DEFAULT_ENVIRONMENT_PROVIDER_KIND,
     );
+  const sourceRefreshService =
+    options.sourceRefreshService ??
+    new DefaultSourceRefreshService(
+      platformStore as PlatformStore & {
+        getProjectSourceAttachment: NonNullable<PlatformStore['getProjectSourceAttachment']>;
+        updateSourceAttachment: NonNullable<PlatformStore['updateSourceAttachment']>;
+        getCurrentProcessMaterialRefs: PlatformStore['getCurrentProcessMaterialRefs'];
+        getProcessEnvironmentProviderKind: PlatformStore['getProcessEnvironmentProviderKind'];
+        getProcessEnvironmentSummary: PlatformStore['getProcessEnvironmentSummary'];
+        getProcessWorkingSetFingerprint: PlatformStore['getProcessWorkingSetFingerprint'];
+        listProcessOutputs: PlatformStore['listProcessOutputs'];
+        listProjectArtifacts: PlatformStore['listProjectArtifacts'];
+        listProjectProcesses: PlatformStore['listProjectProcesses'];
+        listProjectSourceAttachments: PlatformStore['listProjectSourceAttachments'];
+        setProcessHydrationPlan: PlatformStore['setProcessHydrationPlan'];
+        upsertProcessEnvironmentState: PlatformStore['upsertProcessEnvironmentState'];
+      },
+      gitHubRepositoryResolver,
+      new RuntimeSourceHydrationExecutor(
+        platformStore,
+        providerAdapterRegistry,
+        env.DEFAULT_ENVIRONMENT_PROVIDER_KIND,
+      ),
+    );
+  const projectShellService =
+    options.projectShellService ??
+    new ProjectShellService(platformStore, {
+      sourceSectionReader: new SourceSectionReader(platformStore, sourceRefreshService),
+    });
   const processStartService =
     options.processStartService ??
     new ProcessStartService(
@@ -291,7 +328,9 @@ export async function createApp(options: CreateAppOptions = {}) {
     );
   const processWorkSurfaceService =
     options.processWorkSurfaceService ??
-    new DefaultProcessWorkSurfaceService(platformStore, processAccessService);
+    new DefaultProcessWorkSurfaceService(platformStore, processAccessService, {
+      materialsSectionReader: new MaterialsSectionReader(platformStore, sourceRefreshService),
+    });
   const markdownRenderer = await MarkdownRendererService.create({ logger: app.log });
   const exportUrlSigner = new HmacExportUrlSigner(env.REVIEW_EXPORT_HMAC_SECRET);
   const exportService =
@@ -324,6 +363,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.decorate('processRegistrationService', processRegistrationService);
   app.decorate('processResumeService', processResumeService);
   app.decorate('sourceManagementService', sourceManagementService);
+  app.decorate('sourceRefreshService', sourceRefreshService);
   app.decorate('exportService', exportService);
   app.decorate('artifactReviewService', artifactReviewService);
   app.decorate('packageReviewService', packageReviewService);

@@ -122,6 +122,7 @@ operation metadata.
 - Return `refreshStatus: settled` when freshness check or rehydration completes in the request.
 - Return `refreshStatus: pending` and persist refresh progress metadata when longer work is accepted.
 - Return `refreshStatus: failed` when accepted refresh work resolves into a visible failed result for that attachment.
+- For project-scoped attachments, only accept project-shell refresh when exactly one current process working-copy target can be resolved for that source. If ownership is ambiguous across processes, do not fabricate a target.
 
 #### Client Responsibilities
 
@@ -129,6 +130,7 @@ operation metadata.
 - Show refresh/hydration controls for `stale` and `not_hydrated`.
 - Avoid showing a false recovery control for `unavailable`.
 - Render pending refresh progress for the single source attachment without hiding the rest of the list.
+- Keep the project-shell refresh control truthful for project-scoped rows: if the backend cannot resolve exactly one current process target, hide or disable the project-shell control instead of presenting an action that will immediately fail.
 
 #### Implementation Targets
 
@@ -166,6 +168,7 @@ operation metadata.
 
 - Branch freshness compares current remote resolution with `lastHydratedResolvedRef`.
 - Keep pending refresh as operation metadata, not a hydration-state enum value.
+- Impl-lead ruling: on the project shell, project-scoped refresh/rehydration is only available when there is exactly one unambiguous current process working-copy target for that source.
 
 #### Anti-Shim Requirements
 
