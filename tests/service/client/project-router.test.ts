@@ -8,6 +8,7 @@ import {
   ownerProjectSummary,
   populatedProjectShellResponse,
 } from '../../fixtures/projects.js';
+import { buildSourceAttachmentSummaryFixture } from '../../fixtures/sources.js';
 
 function buildJsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -253,5 +254,129 @@ describe('project router', () => {
     expect(selectedProcess?.textContent).toContain(
       populatedProjectShellResponse.processes.items[1]?.displayLabel ?? '',
     );
+  });
+
+  it('updates source metadata from the project shell via PATCH and rewrites the row in place', async () => {
+    const sourceAttachment = buildSourceAttachmentSummaryFixture({
+      sourceAttachmentId: 'source-editable-001',
+      displayName: 'editable-source',
+      purpose: 'implementation',
+      accessMode: 'read_only',
+      targetRef: 'main',
+    });
+    const updatedSourceAttachment = buildSourceAttachmentSummaryFixture({
+      ...sourceAttachment,
+      purpose: 'review',
+      accessMode: 'read_write',
+      targetRef: 'feature/story-2',
+      updatedAt: '2026-04-13T18:00:00.000Z',
+    });
+    const shellResponse = {
+      ...populatedProjectShellResponse,
+      project: ownerProjectSummary,
+      sourceAttachments: {
+        status: 'ready' as const,
+        items: [sourceAttachment],
+      },
+    };
+
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const rawUrl =
+        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const url = new URL(rawUrl, 'http://localhost:5001');
+      const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+
+      if (url.pathname === '/auth/me') {
+        return buildJsonResponse({
+          user: {
+            id: 'user:workos-user-1',
+            email: 'lee@example.com',
+            displayName: 'Lee Moore',
+          },
+        });
+      }
+
+      if (url.pathname === '/api/projects') {
+        return buildJsonResponse([ownerProjectSummary, memberProjectSummary]);
+      }
+
+      if (method === 'GET' && url.pathname === `/api/projects/${ownerProjectSummary.projectId}`) {
+        return buildJsonResponse(shellResponse);
+      }
+
+      if (
+        method === 'PATCH' &&
+        url.pathname ===
+          `/api/projects/${ownerProjectSummary.projectId}/source-attachments/${sourceAttachment.sourceAttachmentId}`
+      ) {
+        expect(init?.body).toBe(
+          JSON.stringify({
+            purpose: 'review',
+            accessMode: 'read_write',
+            targetRef: 'feature/story-2',
+          }),
+        );
+        return buildJsonResponse(updatedSourceAttachment);
+      }
+
+      throw new Error(`Unexpected fetch request in project-router test: ${method} ${url.pathname}`);
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+    const dom = await renderApp(`http://localhost:5001/projects/${ownerProjectSummary.projectId}`);
+
+    const purposeSelect = dom.window.document.querySelector(
+      `[data-source-attachment-edit-purpose="${sourceAttachment.sourceAttachmentId}"]`,
+    );
+    const accessModeSelect = dom.window.document.querySelector(
+      `[data-source-attachment-edit-access-mode="${sourceAttachment.sourceAttachmentId}"]`,
+    );
+    const targetRefInput = dom.window.document.querySelector(
+      `[data-source-attachment-edit-target-ref="${sourceAttachment.sourceAttachmentId}"]`,
+    );
+    const form = dom.window.document.querySelector(
+      `[data-source-attachment-edit-form="${sourceAttachment.sourceAttachmentId}"]`,
+    );
+
+    if (
+      !(purposeSelect instanceof dom.window.HTMLSelectElement) ||
+      !(accessModeSelect instanceof dom.window.HTMLSelectElement) ||
+      !(targetRefInput instanceof dom.window.HTMLInputElement) ||
+      !(form instanceof dom.window.HTMLFormElement)
+    ) {
+      throw new Error('Expected the project shell to render the source metadata editor.');
+    }
+
+    purposeSelect.value = 'review';
+    accessModeSelect.value = 'read_write';
+    targetRefInput.value = 'feature/story-2';
+    form.requestSubmit();
+    await flush();
+    await flush();
+
+    const purposeDisplay = dom.window.document.querySelector(
+      `[data-source-attachment-purpose-display="${sourceAttachment.sourceAttachmentId}"]`,
+    );
+    const accessModeDisplay = dom.window.document.querySelector(
+      `[data-source-attachment-access-mode-display="${sourceAttachment.sourceAttachmentId}"]`,
+    );
+    const targetRefDisplay = dom.window.document.querySelector(
+      `[data-source-attachment-target-ref-display="${sourceAttachment.sourceAttachmentId}"]`,
+    );
+
+    expect(purposeDisplay?.textContent).toBe('Purpose: review');
+    expect(accessModeDisplay?.textContent).toBe('Access: read write');
+    expect(targetRefDisplay?.textContent).toBe('Target ref: feature/story-2');
+    expect(
+      fetchMock.mock.calls.filter(([input, init]) => {
+        const rawUrl =
+          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        const url = new URL(rawUrl, 'http://localhost:5001');
+        const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+        return (
+          method === 'GET' && url.pathname === `/api/projects/${ownerProjectSummary.projectId}`
+        );
+      }),
+    ).toHaveLength(1);
   });
 });

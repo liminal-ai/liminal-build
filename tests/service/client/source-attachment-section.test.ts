@@ -24,10 +24,29 @@ describe('source attachment section', () => {
       `Repository: ${processScopedSourceFixture.repositoryFullName}`,
     );
     expect(view.textContent).toContain(`Purpose: ${processScopedSourceFixture.purpose}`);
+    expect(view.textContent).toContain(
+      `Access: ${processScopedSourceFixture.accessMode.replaceAll('_', ' ')}`,
+    );
     expect(view.textContent).toContain(`Target ref: ${processScopedSourceFixture.targetRef}`);
     expect(view.textContent).toContain('Hydration: hydrated');
     expect(view.textContent).toContain('Hydration: not hydrated');
-    expect(view.textContent).toContain('Hydration: stale');
+    expect(view.textContent).toContain('Hydration: stale (rehydration required)');
+  });
+
+  it('TC-2.1a displays purpose access mode and target ref', () => {
+    const view = renderSourceAttachmentSection({
+      envelope: sourceAttachmentSectionEnvelopeSchema.parse({
+        status: 'ready',
+        items: [processScopedSourceFixture],
+      }),
+      targetDocument: document,
+    });
+
+    expect(view.textContent).toContain(`Purpose: ${processScopedSourceFixture.purpose}`);
+    expect(view.textContent).toContain(
+      `Access: ${processScopedSourceFixture.accessMode.replaceAll('_', ' ')}`,
+    );
+    expect(view.textContent).toContain(`Target ref: ${processScopedSourceFixture.targetRef}`);
   });
 
   it('renders process association context for process-scoped sources', () => {

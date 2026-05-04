@@ -84,6 +84,16 @@ export type CreateSourceAttachmentRecord = {
   targetRef: string | null;
 };
 
+export type UpdateSourceAttachmentRecord = {
+  sourceAttachmentId: string;
+  projectId: string;
+  purpose: SourceAttachmentSummary['purpose'];
+  accessMode: SourceAttachmentSummary['accessMode'];
+  targetRef: string | null;
+  hydrationState?: SourceAttachmentSummary['hydrationState'];
+  freshnessReason?: string | null;
+};
+
 export interface WorkingSetPlan {
   artifactIds: string[];
   sourceAttachmentIds: string[];
@@ -224,12 +234,17 @@ export interface PlatformStore {
     artifactIds: string[];
   }): Promise<ArtifactSummary[]>;
   listProjectSourceAttachments(args: { projectId: string }): Promise<SourceAttachmentSummary[]>;
+  getProjectSourceAttachment?(args: {
+    projectId: string;
+    sourceAttachmentId: string;
+  }): Promise<SourceAttachmentSummary | null>;
   createProjectSourceAttachment?(
     args: CreateSourceAttachmentRecord,
   ): Promise<SourceAttachmentSummary>;
   createProcessSourceAttachment?(
     args: CreateSourceAttachmentRecord & { processId: string },
   ): Promise<SourceAttachmentSummary>;
+  updateSourceAttachment?(args: UpdateSourceAttachmentRecord): Promise<SourceAttachmentSummary>;
   listProcessHistoryItems(args: { processId: string }): Promise<ProcessHistoryItem[]>;
   appendProcessHistoryItem(args: {
     processId: string;
@@ -545,6 +560,12 @@ const listProjectSourceAttachmentsQuery = makeFunctionReference<
   SourceAttachmentSummary[]
 >('sourceAttachments:listProjectSourceAttachmentSummaries');
 
+const getProjectSourceAttachmentQuery = makeFunctionReference<
+  'query',
+  { projectId: string; sourceAttachmentId: string },
+  SourceAttachmentSummary | null
+>('sourceAttachments:getProjectSourceAttachmentSummary');
+
 const createProjectSourceAttachmentMutation = makeFunctionReference<
   'mutation',
   CreateSourceAttachmentRecord,
@@ -556,6 +577,12 @@ const createProcessSourceAttachmentMutation = makeFunctionReference<
   CreateSourceAttachmentRecord & { processId: string },
   SourceAttachmentSummary
 >('sourceAttachments:createProcessSourceAttachment');
+
+const updateSourceAttachmentMutation = makeFunctionReference<
+  'mutation',
+  UpdateSourceAttachmentRecord,
+  SourceAttachmentSummary
+>('sourceAttachments:updateSourceAttachment');
 
 const listProcessHistoryItemsQuery = makeFunctionReference<
   'query',
@@ -1055,6 +1082,10 @@ export class NullPlatformStore implements PlatformStore {
     return [];
   }
 
+  async getProjectSourceAttachment(): Promise<SourceAttachmentSummary | null> {
+    return null;
+  }
+
   async createProjectSourceAttachment(
     args: CreateSourceAttachmentRecord,
   ): Promise<SourceAttachmentSummary> {
@@ -1105,6 +1136,34 @@ export class NullPlatformStore implements PlatformStore {
       refreshRequestedAt: null,
       attachmentScope: 'process',
       processId: args.processId,
+      processDisplayLabel: null,
+      detachedAt: null,
+      updatedAt: now,
+    };
+  }
+
+  async updateSourceAttachment(
+    args: UpdateSourceAttachmentRecord,
+  ): Promise<SourceAttachmentSummary> {
+    const now = new Date().toISOString();
+    return {
+      sourceAttachmentId: args.sourceAttachmentId,
+      provider: 'github',
+      displayName: 'updated-source',
+      purpose: args.purpose,
+      accessMode: args.accessMode,
+      repositoryUrl: 'https://github.com/placeholder/updated-source',
+      repositoryFullName: 'placeholder/updated-source',
+      targetRef: args.targetRef,
+      hydrationState: args.hydrationState ?? 'not_hydrated',
+      lastHydratedAt: null,
+      lastHydratedResolvedRef: null,
+      lastObservedRemoteResolvedRef: null,
+      freshnessReason: args.freshnessReason ?? null,
+      refreshStatus: 'idle',
+      refreshRequestedAt: null,
+      attachmentScope: 'project',
+      processId: null,
       processDisplayLabel: null,
       detachedAt: null,
       updatedAt: now,
@@ -1513,6 +1572,13 @@ export class ConvexPlatformStore implements PlatformStore {
     return this.client.query(listProjectSourceAttachmentsQuery, args);
   }
 
+  async getProjectSourceAttachment(args: {
+    projectId: string;
+    sourceAttachmentId: string;
+  }): Promise<SourceAttachmentSummary | null> {
+    return this.client.query(getProjectSourceAttachmentQuery, args);
+  }
+
   async createProjectSourceAttachment(
     args: CreateSourceAttachmentRecord,
   ): Promise<SourceAttachmentSummary> {
@@ -1525,6 +1591,14 @@ export class ConvexPlatformStore implements PlatformStore {
     args: CreateSourceAttachmentRecord & { processId: string },
   ): Promise<SourceAttachmentSummary> {
     return this.client.mutation(createProcessSourceAttachmentMutation, args, {
+      skipQueue: true,
+    });
+  }
+
+  async updateSourceAttachment(
+    args: UpdateSourceAttachmentRecord,
+  ): Promise<SourceAttachmentSummary> {
+    return this.client.mutation(updateSourceAttachmentMutation, args, {
       skipQueue: true,
     });
   }
@@ -2410,6 +2484,17 @@ export class InMemoryPlatformStore implements PlatformStore {
     return [...(this.sourceAttachmentsByProjectId.get(args.projectId) ?? [])];
   }
 
+  async getProjectSourceAttachment(args: {
+    projectId: string;
+    sourceAttachmentId: string;
+  }): Promise<SourceAttachmentSummary | null> {
+    const attachments = this.sourceAttachmentsByProjectId.get(args.projectId) ?? [];
+    return (
+      attachments.find((attachment) => attachment.sourceAttachmentId === args.sourceAttachmentId) ??
+      null
+    );
+  }
+
   async createProjectSourceAttachment(
     args: CreateSourceAttachmentRecord,
   ): Promise<SourceAttachmentSummary> {
@@ -2448,6 +2533,68 @@ export class InMemoryPlatformStore implements PlatformStore {
     });
 
     return attachment;
+  }
+
+  async updateSourceAttachment(
+    args: UpdateSourceAttachmentRecord,
+  ): Promise<SourceAttachmentSummary> {
+    const existingEntry = [...this.sourceAttachmentsByProjectId.entries()].find(([, attachments]) =>
+      attachments.some((attachment) => attachment.sourceAttachmentId === args.sourceAttachmentId),
+    );
+
+    if (existingEntry === undefined) {
+      throw new Error('SOURCE_ATTACHMENT_NOT_FOUND');
+    }
+
+    const [projectId, attachments] = existingEntry;
+    const existingAttachment = attachments.find(
+      (attachment) => attachment.sourceAttachmentId === args.sourceAttachmentId,
+    );
+
+    if (
+      projectId !== args.projectId ||
+      existingAttachment === undefined ||
+      existingAttachment.detachedAt != null
+    ) {
+      throw new Error('SOURCE_ATTACHMENT_NOT_FOUND');
+    }
+
+    const duplicate = attachments.some(
+      (attachment) =>
+        attachment.sourceAttachmentId !== existingAttachment.sourceAttachmentId &&
+        attachment.detachedAt == null &&
+        attachment.processId === existingAttachment.processId &&
+        attachment.repositoryFullName === existingAttachment.repositoryFullName &&
+        attachment.targetRef === args.targetRef,
+    );
+
+    if (duplicate) {
+      throw new Error('SOURCE_ATTACHMENT_CONFLICT');
+    }
+
+    const updatedAttachment: SourceAttachmentSummary = {
+      ...existingAttachment,
+      purpose: args.purpose,
+      accessMode: args.accessMode,
+      targetRef: args.targetRef,
+      hydrationState: args.hydrationState ?? existingAttachment.hydrationState,
+      freshnessReason:
+        args.freshnessReason === undefined
+          ? existingAttachment.freshnessReason
+          : args.freshnessReason,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.sourceAttachmentsByProjectId.set(
+      projectId,
+      attachments.map((attachment) =>
+        attachment.sourceAttachmentId === updatedAttachment.sourceAttachmentId
+          ? updatedAttachment
+          : attachment,
+      ),
+    );
+
+    return updatedAttachment;
   }
 
   async listProcessHistoryItems(args: { processId: string }): Promise<ProcessHistoryItem[]> {

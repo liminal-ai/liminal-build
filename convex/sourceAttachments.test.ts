@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createProjectSourceAttachment,
   listProjectSourceAttachmentSummaries,
+  updateSourceAttachment,
 } from './sourceAttachments.js';
 import { createFakeConvexContext } from './test_helpers/fake_convex_context.js';
 
@@ -51,6 +52,18 @@ const createProjectSourceAttachmentHandler = getHandler<
   },
   SourceAttachmentSummaryShape
 >(createProjectSourceAttachment);
+const updateSourceAttachmentHandler = getHandler<
+  {
+    projectId: string;
+    sourceAttachmentId: string;
+    purpose: 'research' | 'review' | 'implementation' | 'other';
+    accessMode: 'read_only' | 'read_write';
+    targetRef: string | null;
+    hydrationState?: 'not_hydrated' | 'hydrated' | 'stale' | 'unavailable';
+    freshnessReason?: string | null;
+  },
+  SourceAttachmentSummaryShape
+>(updateSourceAttachment);
 
 function buildSourceAttachmentsSeed() {
   return {
@@ -324,5 +337,35 @@ describe('convex/sourceAttachments summaries', () => {
       );
 
     expect(duplicates).toHaveLength(1);
+  });
+
+  it('TC-2.4a target-ref change marks a hydrated source stale', async () => {
+    const { ctx, db } = createFakeConvexContext(buildSourceAttachmentsSeed());
+
+    const updated = await updateSourceAttachmentHandler(ctx, {
+      projectId: 'project-sources-1',
+      sourceAttachmentId: 'source-readonly-project-1',
+      purpose: 'research',
+      accessMode: 'read_only',
+      targetRef: 'release/next',
+      hydrationState: 'stale',
+      freshnessReason: 'target_ref_changed',
+    });
+
+    expect(updated).toMatchObject({
+      sourceAttachmentId: 'source-readonly-project-1',
+      targetRef: 'release/next',
+      hydrationState: 'stale',
+      freshnessReason: 'target_ref_changed',
+    });
+
+    const storedAttachment = db
+      .list('sourceAttachments')
+      .find((attachment) => attachment._id === 'source-readonly-project-1');
+    expect(storedAttachment).toMatchObject({
+      targetRef: 'release/next',
+      hydrationState: 'stale',
+      freshnessReason: 'target_ref_changed',
+    });
   });
 });

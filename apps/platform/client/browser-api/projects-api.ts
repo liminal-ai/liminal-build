@@ -6,6 +6,7 @@ import type {
   ProjectShellResponse,
   ProjectSummary,
   SourceAttachmentSummary,
+  UpdateSourceAttachmentRequest,
 } from '../../shared/contracts/index.js';
 import {
   createSourceAttachmentRequestSchema,
@@ -14,6 +15,7 @@ import {
   projectSummarySchema,
   requestErrorSchema,
   sourceAttachmentSummarySchema,
+  updateSourceAttachmentRequestSchema,
 } from '../../shared/contracts/index.js';
 import { ApiRequestError } from './auth-api.js';
 
@@ -118,6 +120,31 @@ export async function attachProjectSource(args: {
     },
     body: JSON.stringify(body),
   });
+
+  if (!response.ok) {
+    throw new ApiRequestError(await parseRequestError(response));
+  }
+
+  return sourceAttachmentSummarySchema.parse(await response.json());
+}
+
+export async function updateSourceAttachment(args: {
+  projectId: string;
+  sourceAttachmentId: string;
+  input: UpdateSourceAttachmentRequest;
+}): Promise<SourceAttachmentSummary> {
+  const body = updateSourceAttachmentRequestSchema.parse(args.input);
+  const response = await fetch(
+    `/api/projects/${args.projectId}/source-attachments/${args.sourceAttachmentId}`,
+    {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    },
+  );
 
   if (!response.ok) {
     throw new ApiRequestError(await parseRequestError(response));

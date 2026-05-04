@@ -359,4 +359,61 @@ describe('source-management api', () => {
 
     await app.close();
   });
+
+  it('TC-2.2a updates source metadata', async () => {
+    const { app, platformStore } = await buildAuthenticatedApp({});
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectSummary.projectId}/source-attachments`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+      payload: {
+        provider: 'github',
+        repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
+        displayName: 'liminal-build',
+        purpose: 'implementation',
+        accessMode: 'read_only',
+        targetRef: 'main',
+      },
+    });
+
+    expect(createResponse.statusCode).toBe(201);
+    const createdAttachment = createResponse.json() as { sourceAttachmentId: string };
+
+    const updateResponse = await app.inject({
+      method: 'PATCH',
+      url: `/api/projects/${projectSummary.projectId}/source-attachments/${createdAttachment.sourceAttachmentId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+      payload: {
+        purpose: 'review',
+        accessMode: 'read_write',
+        targetRef: 'feature/story-2',
+      },
+    });
+
+    expect(updateResponse.statusCode).toBe(200);
+    expect(updateResponse.json()).toMatchObject({
+      sourceAttachmentId: createdAttachment.sourceAttachmentId,
+      purpose: 'review',
+      accessMode: 'read_write',
+      targetRef: 'feature/story-2',
+      hydrationState: 'not_hydrated',
+    });
+
+    const [updatedAttachment] = await platformStore.listProjectSourceAttachments({
+      projectId: projectSummary.projectId,
+    });
+    expect(updatedAttachment).toMatchObject({
+      sourceAttachmentId: createdAttachment.sourceAttachmentId,
+      purpose: 'review',
+      accessMode: 'read_write',
+      targetRef: 'feature/story-2',
+    });
+
+    await app.close();
+  });
 });

@@ -167,6 +167,97 @@ export const createProcessSourceAttachment = mutation({
   },
 });
 
+export const getProjectSourceAttachmentSummary = query({
+  args: {
+    projectId: v.string(),
+    sourceAttachmentId: v.string(),
+  },
+  handler: async (ctx: QueryCtx, args) => {
+    const sourceAttachment = await getSourceAttachmentRecord(ctx, args.sourceAttachmentId);
+
+    if (
+      sourceAttachment === null ||
+      sourceAttachment.projectId !== args.projectId ||
+      sourceAttachment.detachedAt !== null
+    ) {
+      return null;
+    }
+
+    return buildSourceAttachmentSummary(ctx, sourceAttachment);
+  },
+});
+
+export const updateSourceAttachment = mutation({
+  args: {
+    projectId: v.string(),
+    sourceAttachmentId: v.string(),
+    purpose: v.union(
+      v.literal('research'),
+      v.literal('review'),
+      v.literal('implementation'),
+      v.literal('other'),
+    ),
+    accessMode: v.union(v.literal('read_only'), v.literal('read_write')),
+    targetRef: v.union(v.string(), v.null()),
+    hydrationState: v.optional(
+      v.union(
+        v.literal('not_hydrated'),
+        v.literal('hydrated'),
+        v.literal('stale'),
+        v.literal('unavailable'),
+      ),
+    ),
+    freshnessReason: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx: MutationCtx, args) => {
+    const sourceAttachment = await getSourceAttachmentRecord(ctx, args.sourceAttachmentId);
+
+    if (
+      sourceAttachment === null ||
+      sourceAttachment.projectId !== args.projectId ||
+      sourceAttachment.detachedAt !== null
+    ) {
+      throw new Error('SOURCE_ATTACHMENT_NOT_FOUND');
+    }
+
+    await assertNoActiveDuplicate(ctx, {
+      projectId: sourceAttachment.projectId,
+      processId: sourceAttachment.processId,
+      repositoryFullName: sourceAttachment.repositoryFullName,
+      targetRef: args.targetRef,
+      excludeSourceAttachmentId: sourceAttachment._id,
+    });
+
+    const now = new Date().toISOString();
+    await ctx.db.patch(sourceAttachment._id, {
+      purpose: args.purpose,
+      accessMode: args.accessMode,
+      targetRef: args.targetRef,
+      ...(args.hydrationState === undefined ? {} : { hydrationState: args.hydrationState }),
+      ...(args.freshnessReason === undefined ? {} : { freshnessReason: args.freshnessReason }),
+      updatedAt: now,
+    });
+
+    if (sourceAttachment.processId === null) {
+      await touchProject(ctx, sourceAttachment.projectId as Id<'projects'>, now);
+    } else {
+      const processRecord = await getProcessRecord(ctx, sourceAttachment.processId);
+
+      if (processRecord !== null) {
+        await touchProcessAndProject(ctx, processRecord, now);
+      }
+    }
+
+    const updatedSourceAttachment = await ctx.db.get(sourceAttachment._id);
+
+    if (updatedSourceAttachment === null) {
+      throw new Error('Source attachment could not be loaded after update.');
+    }
+
+    return buildSourceAttachmentSummary(ctx, updatedSourceAttachment);
+  },
+});
+
 async function buildSourceAttachmentSummary(
   ctx: QueryCtx | MutationCtx,
   sourceAttachment: Doc<'sourceAttachments'>,
@@ -264,6 +355,7 @@ async function assertNoActiveDuplicate(
     processId: string | null;
     repositoryFullName: string;
     targetRef: string | null;
+    excludeSourceAttachmentId?: Id<'sourceAttachments'>;
   },
 ): Promise<void> {
   const duplicates = await ctx.db
@@ -277,7 +369,12 @@ async function assertNoActiveDuplicate(
     )
     .take(10);
 
-  if (duplicates.some((attachment) => attachment.detachedAt === null)) {
+  if (
+    duplicates.some(
+      (attachment) =>
+        attachment.detachedAt === null && attachment._id !== args.excludeSourceAttachmentId,
+    )
+  ) {
     throw new Error('SOURCE_ATTACHMENT_CONFLICT');
   }
 }
@@ -426,6 +523,17 @@ async function getProcessRecord(
 ): Promise<Doc<'processes'> | null> {
   try {
     return await ctx.db.get(processId as Id<'processes'>);
+  } catch {
+    return null;
+  }
+}
+
+async function getSourceAttachmentRecord(
+  ctx: QueryCtx | MutationCtx,
+  sourceAttachmentId: string,
+): Promise<Doc<'sourceAttachments'> | null> {
+  try {
+    return await ctx.db.get(sourceAttachmentId as Id<'sourceAttachments'>);
   } catch {
     return null;
   }

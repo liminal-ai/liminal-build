@@ -4,6 +4,7 @@ import type { RequestError } from '../../shared/contracts/index.js';
 import {
   createProcessSourceAttachmentRouteSchema,
   createProjectSourceAttachmentRouteSchema,
+  updateSourceAttachmentRouteSchema,
 } from '../schemas/source-management.js';
 import { sessionCookieName } from '../services/auth/auth-session.service.js';
 import { AppError } from '../errors/app-error.js';
@@ -130,6 +131,59 @@ export async function registerSourceManagementRoutes(app: FastifyInstance): Prom
         });
 
         return reply.code(201).send(attachment);
+      } catch (error) {
+        if (error instanceof AppError) {
+          const statusCode = error.statusCode as 403 | 404 | 409 | 422 | 503;
+          return reply.code(statusCode).send(buildRequestError(error, statusCode));
+        }
+
+        throw error;
+      }
+    },
+  );
+
+  typedApp.patch(
+    '/api/projects/:projectId/source-attachments/:sourceAttachmentId',
+    { schema: updateSourceAttachmentRouteSchema },
+    async (request, reply) => {
+      if (request.actor === null) {
+        if (request.authFailureReason === 'invalid_session') {
+          reply.clearCookie(sessionCookieName, { path: '/' });
+        }
+
+        return reply.code(401).send(buildUnauthenticatedResponse());
+      }
+
+      const access = await app.projectAccessService.getProjectAccess({
+        actor: request.actor,
+        projectId: request.params.projectId,
+      });
+
+      if (access.kind === 'forbidden') {
+        return reply.code(403).send({
+          code: 'PROJECT_FORBIDDEN',
+          message: 'The current actor cannot access this project.',
+          status: 403,
+        });
+      }
+
+      if (access.kind === 'not_found') {
+        return reply.code(404).send({
+          code: 'PROJECT_NOT_FOUND',
+          message: 'The requested project was not found.',
+          status: 404,
+        });
+      }
+
+      try {
+        const attachment = await app.sourceManagementService.updateSource({
+          actor: request.actor,
+          projectId: request.params.projectId,
+          sourceAttachmentId: request.params.sourceAttachmentId,
+          input: request.body,
+        });
+
+        return reply.code(200).send(attachment);
       } catch (error) {
         if (error instanceof AppError) {
           const statusCode = error.statusCode as 403 | 404 | 409 | 422 | 503;

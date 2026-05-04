@@ -7,6 +7,7 @@ import type { AppStore } from './store.js';
 import type {
   CreateSourceAttachmentRequest,
   ReviewWorkspaceSelection,
+  UpdateSourceAttachmentRequest,
 } from '../../shared/contracts/index.js';
 
 export interface ShellAppOptions {
@@ -20,6 +21,10 @@ export interface ShellAppOptions {
     processType: 'ProductDefinition' | 'FeatureSpecification' | 'FeatureImplementation',
   ) => Promise<void>;
   onAttachProjectSource?: (input: CreateSourceAttachmentRequest) => Promise<void>;
+  onUpdateProjectSource?: (
+    sourceAttachmentId: string,
+    input: UpdateSourceAttachmentRequest,
+  ) => Promise<void>;
   onAttachProcessSource?: (
     projectId: string,
     processId: string,
@@ -132,6 +137,7 @@ export function createShellApp(options: ShellAppOptions) {
                 onOpenProcess: options.onOpenProcess,
                 onCreateProcess: options.onCreateProcess,
                 onAttachSource: options.onAttachProjectSource,
+                onUpdateSource: options.onUpdateProjectSource,
                 onCancelCreateProcess: options.onCancelCreateProcess,
                 onOpenCreateProcess: options.onOpenCreateProcess,
               });

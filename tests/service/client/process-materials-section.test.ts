@@ -7,7 +7,7 @@ import {
 } from '../../fixtures/materials.js';
 
 describe('process materials section — source accessMode', () => {
-  it('AC-2.5: read_only source renders "Access: read only"', () => {
+  it('TC-2.3a identifies a read-only source', () => {
     const view = renderProcessMaterialsSection({
       envelope: readyProcessMaterialsFixture,
       targetDocument: document,
@@ -18,7 +18,7 @@ describe('process materials section — source accessMode', () => {
     expect(view.textContent).toContain('Access: read only');
   });
 
-  it('AC-2.5: read_write source renders "Access: read write"', () => {
+  it('TC-2.3b identifies a writable source', () => {
     const view = renderProcessMaterialsSection({
       envelope: writableProcessMaterialsFixture,
       targetDocument: document,
@@ -29,7 +29,7 @@ describe('process materials section — source accessMode', () => {
     expect(view.textContent).toContain('Access: read write');
   });
 
-  it('AC-2.5: read_only and read_write sources are distinguishable via data-access-mode attribute', () => {
+  it('keeps read-only and writable rows distinguishable via the data-access-mode attribute', () => {
     const view = renderProcessMaterialsSection({
       envelope: mixedAccessProcessMaterialsFixture,
       targetDocument: document,

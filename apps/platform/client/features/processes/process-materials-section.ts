@@ -31,7 +31,15 @@ function appendSubsection(args: {
 }
 
 function formatHydrationStateLabel(hydrationState: string): string {
+  if (hydrationState === 'stale') {
+    return 'stale (rehydration required)';
+  }
+
   return hydrationState.replaceAll('_', ' ');
+}
+
+function formatAccessModeLabel(accessMode: string): string {
+  return accessMode.replaceAll('_', ' ');
 }
 
 function appendDetail(args: {
@@ -254,7 +262,7 @@ export function renderProcessMaterialsSection(args: {
       appendDetail({
         item,
         label: 'Access',
-        value: source.accessMode.replaceAll('_', ' '),
+        value: formatAccessModeLabel(source.accessMode),
         targetDocument: args.targetDocument,
       });
       appendDetail({
@@ -264,14 +272,12 @@ export function renderProcessMaterialsSection(args: {
         targetDocument: args.targetDocument,
       });
 
-      if (source.targetRef !== null) {
-        appendDetail({
-          item,
-          label: 'Target ref',
-          value: source.targetRef,
-          targetDocument: args.targetDocument,
-        });
-      }
+      appendDetail({
+        item,
+        label: 'Target ref',
+        value: source.targetRef ?? 'not set',
+        targetDocument: args.targetDocument,
+      });
 
       appendDetail({
         item,

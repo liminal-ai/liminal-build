@@ -16,6 +16,7 @@ import type {
   ReviewWorkspaceSelection,
   StartProcessResponse,
   SubmitProcessResponseResponse,
+  UpdateSourceAttachmentRequest,
 } from '../../shared/contracts/index.js';
 import {
   buildReviewWorkspacePath,
@@ -39,6 +40,7 @@ import {
   createProject,
   getProjectShell,
   listProjects,
+  updateSourceAttachment,
 } from '../browser-api/projects-api.js';
 import {
   exportPackage,
@@ -1673,6 +1675,64 @@ export async function bootstrapApp(
     }
   };
 
+  const submitProjectSourceMetadataUpdate = async (
+    sourceAttachmentId: string,
+    input: UpdateSourceAttachmentRequest,
+  ): Promise<void> => {
+    const currentShell = store.get().shell;
+
+    if (currentShell.project === null) {
+      return;
+    }
+
+    try {
+      const updatedAttachment = await updateSourceAttachment({
+        projectId: currentShell.project.projectId,
+        sourceAttachmentId,
+        input,
+      });
+      const latestShell = store.get().shell;
+
+      if (latestShell.project?.projectId !== currentShell.project.projectId) {
+        return;
+      }
+
+      const currentSourceAttachments = latestShell.sourceAttachments;
+
+      if (currentSourceAttachments === null || currentSourceAttachments.status !== 'ready') {
+        return;
+      }
+
+      store.patch('shell', {
+        ...latestShell,
+        sourceAttachments: {
+          ...currentSourceAttachments,
+          items: currentSourceAttachments.items.map((sourceAttachment) =>
+            sourceAttachment.sourceAttachmentId === updatedAttachment.sourceAttachmentId
+              ? updatedAttachment
+              : sourceAttachment,
+          ),
+        },
+      });
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        if (error.payload.code === 'UNAUTHENTICATED') {
+          redirectToLogin();
+          return;
+        }
+
+        store.patch('shell', {
+          ...store.get().shell,
+          selectedProcessBanner: error.payload.message,
+          isLoading: false,
+        });
+        return;
+      }
+
+      throw error;
+    }
+  };
+
   const submitProcessSourceAttachment = async (
     projectId: string,
     processId: string,
@@ -1844,6 +1904,7 @@ export async function bootstrapApp(
       });
     },
     onAttachProjectSource: submitProjectSourceAttachment,
+    onUpdateProjectSource: submitProjectSourceMetadataUpdate,
     onAttachProcessSource: submitProcessSourceAttachment,
     onOpenProject: (projectId: string) => {
       void openProject(projectId);

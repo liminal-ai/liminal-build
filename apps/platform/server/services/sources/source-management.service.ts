@@ -1,16 +1,23 @@
 import type {
   CreateSourceAttachmentRequest,
   SourceAttachmentSummary,
+  UpdateSourceAttachmentRequest,
 } from '../../../shared/contracts/index.js';
 import { AppError } from '../../errors/app-error.js';
 import type { AuthenticatedActor } from '../auth/auth-session.service.js';
-import type { CreateSourceAttachmentRecord, PlatformStore } from '../projects/platform-store.js';
+import type {
+  CreateSourceAttachmentRecord,
+  PlatformStore,
+  UpdateSourceAttachmentRecord,
+} from '../projects/platform-store.js';
 import type { GitHubRepositoryResolver } from './github-repository-resolver.js';
 import { SourceIdentityService } from './source-identity.service.js';
 
 type SourceManagementPlatformStore = PlatformStore & {
+  getProjectSourceAttachment: NonNullable<PlatformStore['getProjectSourceAttachment']>;
   createProjectSourceAttachment: NonNullable<PlatformStore['createProjectSourceAttachment']>;
   createProcessSourceAttachment: NonNullable<PlatformStore['createProcessSourceAttachment']>;
+  updateSourceAttachment: NonNullable<PlatformStore['updateSourceAttachment']>;
 };
 
 export interface SourceManagementService {
@@ -24,6 +31,12 @@ export interface SourceManagementService {
     projectId: string;
     processId: string;
     input: CreateSourceAttachmentRequest;
+  }): Promise<SourceAttachmentSummary>;
+  updateSource(args: {
+    actor: AuthenticatedActor;
+    projectId: string;
+    sourceAttachmentId: string;
+    input: UpdateSourceAttachmentRequest;
   }): Promise<SourceAttachmentSummary>;
 }
 
@@ -68,6 +81,109 @@ export class DefaultSourceManagementService implements SourceManagementService {
         processId: args.processId,
       }),
     );
+  }
+
+  async updateSource(args: {
+    actor: AuthenticatedActor;
+    projectId: string;
+    sourceAttachmentId: string;
+    input: UpdateSourceAttachmentRequest;
+  }): Promise<SourceAttachmentSummary> {
+    void args.actor;
+    const existingAttachment = await this.platformStore.getProjectSourceAttachment({
+      projectId: args.projectId,
+      sourceAttachmentId: args.sourceAttachmentId,
+    });
+
+    if (existingAttachment === null || existingAttachment.detachedAt != null) {
+      throw new AppError({
+        code: 'SOURCE_ATTACHMENT_NOT_FOUND',
+        message: 'The requested source attachment was not found in this project.',
+        statusCode: 404,
+      });
+    }
+
+    const requestedTargetRef =
+      args.input.targetRef === undefined
+        ? existingAttachment.targetRef
+        : this.sourceIdentityService.normalizeTargetRef(args.input.targetRef);
+    const nextAccessMode = args.input.accessMode ?? existingAttachment.accessMode;
+    const repositoryResolution = await this.gitHubRepositoryResolver.resolveRepository({
+      repositoryUrl: existingAttachment.repositoryUrl,
+      targetRef: requestedTargetRef,
+    });
+
+    if (repositoryResolution.kind === 'invalid') {
+      throw new AppError({
+        code: 'INVALID_SOURCE_ATTACHMENT',
+        message: repositoryResolution.message,
+        statusCode: 422,
+      });
+    }
+
+    if (repositoryResolution.kind === 'inaccessible') {
+      throw new AppError({
+        code: 'SOURCE_ATTACHMENT_UNAVAILABLE',
+        message: repositoryResolution.message,
+        statusCode: 503,
+      });
+    }
+
+    const nextTargetRef =
+      nextAccessMode === 'read_write'
+        ? (repositoryResolution.targetRef ?? repositoryResolution.defaultBranch)
+        : repositoryResolution.targetRef;
+    const nextTargetRefKind =
+      repositoryResolution.targetRef === null && nextAccessMode === 'read_write'
+        ? 'branch'
+        : repositoryResolution.targetRefKind;
+
+    if (nextAccessMode === 'read_write' && nextTargetRefKind !== 'branch') {
+      throw new AppError({
+        code: 'SOURCE_ATTACHMENT_CONFLICT',
+        message: 'Writable source attachments must target a branch ref.',
+        statusCode: 409,
+      });
+    }
+
+    const updateRecord: UpdateSourceAttachmentRecord = {
+      sourceAttachmentId: existingAttachment.sourceAttachmentId,
+      projectId: args.projectId,
+      purpose: args.input.purpose ?? existingAttachment.purpose,
+      accessMode: nextAccessMode,
+      targetRef: nextTargetRef,
+    };
+
+    if (
+      existingAttachment.targetRef !== nextTargetRef &&
+      existingAttachment.hydrationState === 'hydrated'
+    ) {
+      updateRecord.hydrationState = 'stale';
+      updateRecord.freshnessReason = 'target_ref_changed';
+    }
+
+    try {
+      return await this.platformStore.updateSourceAttachment(updateRecord);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'SOURCE_ATTACHMENT_CONFLICT') {
+        throw new AppError({
+          code: 'SOURCE_ATTACHMENT_CONFLICT',
+          message:
+            'An active source attachment already exists for this repository, scope, and target ref.',
+          statusCode: 409,
+        });
+      }
+
+      if (error instanceof Error && error.message === 'SOURCE_ATTACHMENT_NOT_FOUND') {
+        throw new AppError({
+          code: 'SOURCE_ATTACHMENT_NOT_FOUND',
+          message: 'The requested source attachment was not found in this project.',
+          statusCode: 404,
+        });
+      }
+
+      throw error;
+    }
   }
 
   private async persistSourceAttachment(

@@ -222,8 +222,10 @@ export async function createApp(options: CreateAppOptions = {}) {
     options.sourceManagementService ??
     new DefaultSourceManagementService(
       platformStore as PlatformStore & {
+        getProjectSourceAttachment: NonNullable<PlatformStore['getProjectSourceAttachment']>;
         createProjectSourceAttachment: NonNullable<PlatformStore['createProjectSourceAttachment']>;
         createProcessSourceAttachment: NonNullable<PlatformStore['createProcessSourceAttachment']>;
+        updateSourceAttachment: NonNullable<PlatformStore['updateSourceAttachment']>;
       },
       gitHubRepositoryResolver,
     );

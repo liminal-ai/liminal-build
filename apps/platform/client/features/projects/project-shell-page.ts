@@ -1,4 +1,7 @@
-import type { CreateSourceAttachmentRequest } from '../../../shared/contracts/index.js';
+import type {
+  CreateSourceAttachmentRequest,
+  UpdateSourceAttachmentRequest,
+} from '../../../shared/contracts/index.js';
 import type { AppStore } from '../../app/store.js';
 import { renderArtifactSection } from './artifact-section.js';
 import { renderCreateProcessModal } from './create-process-modal.js';
@@ -20,6 +23,10 @@ export function renderProjectShellPage(args: {
     processType: 'ProductDefinition' | 'FeatureSpecification' | 'FeatureImplementation',
   ) => Promise<void>;
   onAttachSource?: (input: CreateSourceAttachmentRequest) => Promise<void>;
+  onUpdateSource?: (
+    sourceAttachmentId: string,
+    input: UpdateSourceAttachmentRequest,
+  ) => Promise<void>;
   onCancelCreateProcess: () => void;
   onOpenCreateProcess: () => void;
 }): HTMLElement {
@@ -98,6 +105,7 @@ export function renderProjectShellPage(args: {
       envelope: state.shell.sourceAttachments,
       targetDocument: args.targetDocument,
       onAttachSource: args.onAttachSource,
+      onUpdateSource: args.onUpdateSource,
     }),
   );
 

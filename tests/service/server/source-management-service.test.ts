@@ -3,6 +3,7 @@ import { AppError } from '../../../apps/platform/server/errors/app-error.js';
 import {
   InMemoryPlatformStore,
   type CreateSourceAttachmentRecord,
+  type PlatformStore,
 } from '../../../apps/platform/server/services/projects/platform-store.js';
 import type {
   GitHubRepositoryResolver,
@@ -71,7 +72,7 @@ function buildStore() {
 }
 
 function buildService(args: {
-  store?: InMemoryPlatformStore;
+  store?: ConstructorParameters<typeof DefaultSourceManagementService>[0];
   resolver?: GitHubRepositoryResolver;
 }) {
   return new DefaultSourceManagementService(
@@ -361,5 +362,101 @@ describe('source-management service', () => {
     expect(projectAttachment.attachmentScope).toBe('project');
     expect(processAttachment.attachmentScope).toBe('process');
     expect(processAttachment.processId).toBe(processSummary.processId);
+  });
+
+  it('updates by sourceAttachmentId even when the project attachment list is capped before that row', async () => {
+    const backingStore = buildStore();
+
+    for (let index = 0; index < 205; index += 1) {
+      await backingStore.createProjectSourceAttachment({
+        projectId: projectSummary.projectId,
+        provider: 'github',
+        displayName: `liminal-build-${index}`,
+        purpose: 'implementation',
+        accessMode: 'read_only',
+        repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
+        repositoryFullName: 'liminal-ai/liminal-build',
+        targetRef: `feature/story-${index}`,
+      });
+    }
+
+    const targetAttachment = (
+      await backingStore.listProjectSourceAttachments({
+        projectId: projectSummary.projectId,
+      })
+    ).at(-1);
+
+    if (targetAttachment === undefined) {
+      throw new Error('Expected the seed data to include a source attachment update target.');
+    }
+
+    const cappedStore = {
+      getProjectSourceAttachment: backingStore.getProjectSourceAttachment.bind(backingStore),
+      listProjectSourceAttachments: async (args: { projectId: string }) =>
+        (await backingStore.listProjectSourceAttachments(args)).slice(0, 200),
+      createProjectSourceAttachment: backingStore.createProjectSourceAttachment.bind(backingStore),
+      createProcessSourceAttachment: backingStore.createProcessSourceAttachment.bind(backingStore),
+      updateSourceAttachment: backingStore.updateSourceAttachment.bind(backingStore),
+    } as unknown as PlatformStore & {
+      getProjectSourceAttachment: NonNullable<PlatformStore['getProjectSourceAttachment']>;
+      createProjectSourceAttachment: NonNullable<PlatformStore['createProjectSourceAttachment']>;
+      createProcessSourceAttachment: NonNullable<PlatformStore['createProcessSourceAttachment']>;
+      updateSourceAttachment: NonNullable<PlatformStore['updateSourceAttachment']>;
+    };
+
+    const service = buildService({
+      store: cappedStore,
+      resolver: new StubGitHubRepositoryResolver(({ repositoryUrl, targetRef }) => ({
+        kind: 'resolved',
+        repositoryUrl,
+        repositoryFullName: 'liminal-ai/liminal-build',
+        targetRef,
+        targetRefKind: 'branch',
+        defaultBranch: 'main',
+      })),
+    });
+
+    const updated = await service.updateSource({
+      actor: {
+        userId: 'workos-user-1',
+        workosUserId: 'workos-user-1',
+        email: 'lee@example.com',
+        displayName: 'Lee Moore',
+      },
+      projectId: projectSummary.projectId,
+      sourceAttachmentId: targetAttachment.sourceAttachmentId,
+      input: {
+        purpose: 'review',
+        accessMode: 'read_write',
+        targetRef: 'feature/story-205-updated',
+      },
+    });
+
+    expect(updated).toMatchObject({
+      sourceAttachmentId: targetAttachment.sourceAttachmentId,
+      purpose: 'review',
+      accessMode: 'read_write',
+      targetRef: 'feature/story-205-updated',
+    });
+
+    expect(
+      (
+        await cappedStore.listProjectSourceAttachments({
+          projectId: projectSummary.projectId,
+        })
+      ).some((attachment) => attachment.sourceAttachmentId === targetAttachment.sourceAttachmentId),
+    ).toBe(false);
+
+    await expect(
+      backingStore.getProjectSourceAttachment({
+        projectId: projectSummary.projectId,
+        sourceAttachmentId: targetAttachment.sourceAttachmentId,
+      }),
+    ).resolves.toMatchObject({
+      sourceAttachmentId: targetAttachment.sourceAttachmentId,
+      purpose: 'review',
+      accessMode: 'read_write',
+      targetRef: 'feature/story-205-updated',
+    });
   });
 });
