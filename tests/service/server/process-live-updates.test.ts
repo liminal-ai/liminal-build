@@ -805,6 +805,23 @@ describe('server-driven environment execution', () => {
     });
   }
 
+  class PartiallyFailingCodeCheckpointWriter extends StubCodeCheckpointWriter {
+    override async writeFor(
+      args: Parameters<StubCodeCheckpointWriter['writeFor']>[0],
+    ): ReturnType<StubCodeCheckpointWriter['writeFor']> {
+      if (args.sourceAttachmentId === 'source-execution-writable-002') {
+        return {
+          outcome: 'failed',
+          failureReason: 'second writable target failed',
+        };
+      }
+
+      return {
+        outcome: 'succeeded',
+      };
+    }
+  }
+
   function buildExecutionFailureProvider(reason: string): ProviderAdapter {
     return {
       providerKind: 'local',
@@ -1390,6 +1407,162 @@ describe('server-driven environment execution', () => {
         },
       },
     });
+  });
+
+  it('S4-NT-2 records successful writable provenance even when a sibling code target fails', async () => {
+    const processLiveHub = new InMemoryProcessLiveHub();
+    const executionSecondaryWritableSource = buildSourceAttachmentSummaryFixture({
+      sourceAttachmentId: 'source-execution-writable-002',
+      displayName: 'liminal-build secondary',
+      purpose: 'implementation',
+      accessMode: 'read_write',
+      repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
+      targetRef: 'feature/story-4-secondary',
+      hydrationState: 'hydrated',
+      attachmentScope: 'process',
+      processId: executionProcessId,
+      processDisplayLabel: executionDraftProcess.displayLabel,
+      updatedAt: '2026-04-15T10:30:10.000Z',
+    });
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [executionProject],
+      },
+      projectAccessByProjectId: {
+        [executionProjectId]: { kind: 'accessible', project: executionProject },
+      },
+      processesByProjectId: {
+        [executionProjectId]: [executionDraftProcess],
+      },
+      sourceAttachmentsByProjectId: {
+        [executionProjectId]: [executionWritableSource, executionSecondaryWritableSource],
+      },
+    });
+    const partialFailureProvider: ProviderAdapter = {
+      providerKind: 'local',
+      ensureEnvironment: async ({ processId, providerKind }) => ({
+        providerKind,
+        environmentId: `env-execution-${processId}`,
+        workspaceHandle: `workspace-execution-${processId}`,
+      }),
+      hydrateEnvironment: async ({ environmentId, plan }) => ({
+        environmentId,
+        hydratedAt: '2026-04-15T10:31:00.000Z',
+        fingerprint: plan.fingerprint,
+      }),
+      executeScript: async () => ({
+        processStatus: 'waiting',
+        processHistoryItems: [],
+        outputWrites: [],
+        sideWorkWrites: [],
+        artifactCheckpointCandidates: [],
+        codeCheckpointCandidates: [
+          {
+            sourceAttachmentId: executionWritableSource.sourceAttachmentId,
+            displayName: executionWritableSource.displayName,
+            targetRef: executionWritableSource.targetRef,
+            accessMode: executionWritableSource.accessMode,
+            workspaceRef: 'mem://env-execution-primary/src/primary.ts',
+            filePath: 'src/primary.ts',
+            diff: 'primary diff',
+            commitMessage: 'Update primary target',
+          },
+          {
+            sourceAttachmentId: executionSecondaryWritableSource.sourceAttachmentId,
+            displayName: executionSecondaryWritableSource.displayName,
+            targetRef: executionSecondaryWritableSource.targetRef,
+            accessMode: executionSecondaryWritableSource.accessMode,
+            workspaceRef: 'mem://env-execution-secondary/src/secondary.ts',
+            filePath: 'src/secondary.ts',
+            diff: 'secondary diff',
+            commitMessage: 'Update secondary target',
+          },
+        ],
+      }),
+      rehydrateEnvironment: async ({ environmentId, plan }) => ({
+        environmentId,
+        hydratedAt: '2026-04-15T10:33:00.000Z',
+        fingerprint: plan.fingerprint,
+      }),
+      rebuildEnvironment: async ({ processId, providerKind, plan }) => ({
+        providerKind,
+        environmentId: `env-rebuild-${processId}`,
+        workspaceHandle: `workspace-rebuild-${processId}`,
+        hydratedAt: '2026-04-15T10:34:00.000Z',
+        fingerprint: plan.fingerprint,
+      }),
+      teardownEnvironment: async () => undefined,
+      resolveCandidateContents: async ({ ref }) => ref,
+    };
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+      processLiveHub,
+      providerAdapter: partialFailureProvider,
+      checkpointPlanner: new CheckpointPlanner(),
+      codeCheckpointWriter: new PartiallyFailingCodeCheckpointWriter(),
+    });
+
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const address = app.server.address();
+
+    if (address === null || typeof address === 'string') {
+      throw new Error('Expected an ephemeral address for websocket tests.');
+    }
+
+    const messages: Array<ReturnType<typeof liveProcessUpdateMessageSchema.parse>> = [];
+    const socket = new WebSocket(
+      `ws://127.0.0.1:${address.port}/ws/projects/${executionProjectId}/processes/${executionProcessId}`,
+    );
+
+    socket.addEventListener('message', (event) => {
+      messages.push(liveProcessUpdateMessageSchema.parse(JSON.parse(String(event.data))));
+    });
+
+    await waitFor(() =>
+      messages.some((m) => m.messageType === 'snapshot' && m.entityType === 'process'),
+    );
+
+    const startResponse = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${executionProjectId}/processes/${executionProcessId}/start`,
+      cookies: { [sessionCookieName]: 'valid-session-cookie' },
+    });
+
+    expect(startResponse.statusCode).toBe(200);
+
+    await waitFor(() =>
+      messages.some(
+        (m) =>
+          m.entityType === 'environment' &&
+          m.payload !== null &&
+          (m.payload as { state: string }).state === 'failed',
+      ),
+    );
+
+    const recordedProvenance = await platformStore.listProcessSourceProvenance({
+      processId: executionProcessId,
+    });
+
+    socket.close();
+    await app.close();
+
+    expect(recordedProvenance).toEqual([
+      expect.objectContaining({
+        sourceAttachmentId: executionWritableSource.sourceAttachmentId,
+        relationshipKind: 'received_code_update',
+        targetRef: executionWritableSource.targetRef,
+      }),
+    ]);
   });
 
   it('publishes a rehydrating environment transition with a recomputed process summary when rehydrate is accepted', async () => {

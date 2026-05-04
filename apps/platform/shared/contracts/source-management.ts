@@ -118,3 +118,41 @@ export const listProcessSourceProvenanceResponseSchema = z.object({
 export type ListProcessSourceProvenanceResponse = z.infer<
   typeof listProcessSourceProvenanceResponseSchema
 >;
+
+export const processSourceProvenanceSectionStatusSchema = z.enum(['ready', 'empty', 'error']);
+export type ProcessSourceProvenanceSectionStatus = z.infer<
+  typeof processSourceProvenanceSectionStatusSchema
+>;
+
+export const processSourceProvenanceSectionErrorCodeSchema = z.enum([
+  'PROCESS_SOURCE_PROVENANCE_UNAVAILABLE',
+]);
+export type ProcessSourceProvenanceSectionErrorCode = z.infer<
+  typeof processSourceProvenanceSectionErrorCodeSchema
+>;
+
+export const processSourceProvenanceSectionErrorSchema = z.object({
+  code: processSourceProvenanceSectionErrorCodeSchema,
+  message: z.string().min(1),
+});
+export type ProcessSourceProvenanceSectionError = z.infer<
+  typeof processSourceProvenanceSectionErrorSchema
+>;
+
+export const processSourceProvenanceSectionStateSchema = z
+  .object({
+    status: processSourceProvenanceSectionStatusSchema,
+    entries: z.array(sourceProvenanceEntrySchema),
+    error: processSourceProvenanceSectionErrorSchema.optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.status === 'error' && value.error === undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Source provenance error state requires an error payload.',
+      });
+    }
+  });
+export type ProcessSourceProvenanceSectionState = z.infer<
+  typeof processSourceProvenanceSectionStateSchema
+>;
