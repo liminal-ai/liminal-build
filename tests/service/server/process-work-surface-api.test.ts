@@ -14,6 +14,14 @@ import { EnvironmentSectionReader } from '../../../apps/platform/server/services
 import { InMemoryPlatformStore } from '../../../apps/platform/server/services/projects/platform-store.js';
 import { ProjectAccessService } from '../../../apps/platform/server/services/projects/project-access.service.js';
 import {
+  DefaultSourceRefreshService,
+  type SourceHydrationExecutor,
+} from '../../../apps/platform/server/services/sources/source-refresh.service.js';
+import type {
+  GitHubRepositoryResolution,
+  GitHubRepositoryResolver,
+} from '../../../apps/platform/server/services/sources/github-repository-resolver.js';
+import {
   processSummarySchema,
   projectSummarySchema,
 } from '../../../apps/platform/shared/contracts/index.js';
@@ -59,6 +67,31 @@ function createTestAuthSessionService(resolution: SessionResolution) {
 
   return new TestAuthSessionService();
 }
+
+class StubGitHubRepositoryResolver implements GitHubRepositoryResolver {
+  constructor(
+    private readonly handler: (args: {
+      repositoryUrl: string;
+      targetRef: string | null;
+    }) => Promise<GitHubRepositoryResolution> | GitHubRepositoryResolution,
+  ) {}
+
+  async resolveRepository(args: {
+    repositoryUrl: string;
+    targetRef: string | null;
+  }): Promise<GitHubRepositoryResolution> {
+    return this.handler(args);
+  }
+}
+
+const noOpHydrationExecutor: SourceHydrationExecutor = {
+  async refreshRecoverableSource() {
+    return {
+      kind: 'not_available',
+      message: 'Refresh is not exercised in this reader test.',
+    };
+  },
+};
 
 class ThrowingHistorySectionReader extends HistorySectionReader {
   override async read(): Promise<Awaited<ReturnType<HistorySectionReader['read']>>> {
@@ -504,6 +537,214 @@ describe('process work surface api', () => {
       lastCheckpointAt: codeCheckpointSucceededEnvironmentFixture.lastCheckpointAt,
       lastCheckpointResult: codeCheckpointSucceededEnvironmentFixture.lastCheckpointResult,
     });
+
+    await app.close();
+  });
+
+  it('TC-6.1b reopens process source attachment state', async () => {
+    const platformStore = buildPopulatedStore();
+    const restoredProcessSource = await platformStore.createProcessSourceAttachment({
+      projectId: projectSummary.projectId,
+      processId: waitingProcessSummary.processId,
+      provider: 'github',
+      displayName: 'reopened process source',
+      purpose: 'implementation',
+      accessMode: 'read_only',
+      repositoryUrl: 'https://github.com/liminal-ai/reopened-process-source',
+      repositoryFullName: 'liminal-ai/reopened-process-source',
+      targetRef: 'main',
+    });
+    const staleProcessSource = await platformStore.updateSourceAttachment({
+      projectId: projectSummary.projectId,
+      sourceAttachmentId: restoredProcessSource.sourceAttachmentId,
+      purpose: restoredProcessSource.purpose,
+      accessMode: restoredProcessSource.accessMode,
+      targetRef: restoredProcessSource.targetRef,
+      hydrationState: 'stale',
+      freshnessReason: 'target_ref_changed',
+      lastHydratedAt: restoredProcessSource.lastHydratedAt,
+      lastHydratedResolvedRef: restoredProcessSource.lastHydratedResolvedRef,
+      lastObservedRemoteResolvedRef: restoredProcessSource.lastObservedRemoteResolvedRef,
+      refreshStatus: 'idle',
+      refreshRequestedAt: null,
+    });
+    await platformStore.setCurrentProcessMaterialRefs({
+      processId: waitingProcessSummary.processId,
+      artifactIds: [
+        readyProcessMaterialsFixture.currentArtifacts[0]?.artifactId ?? 'artifact-process-001',
+      ],
+      sourceAttachmentIds: [staleProcessSource.sourceAttachmentId],
+    });
+    const sourceRefreshService = new DefaultSourceRefreshService(
+      platformStore,
+      new StubGitHubRepositoryResolver(({ repositoryUrl, targetRef }) => ({
+        kind: 'resolved',
+        repositoryUrl,
+        repositoryFullName: staleProcessSource.repositoryFullName,
+        targetRef,
+        targetRefKind: targetRef === null ? 'none' : 'branch',
+        defaultBranch: 'main',
+        resolvedRef: targetRef === null ? null : staleProcessSource.lastObservedRemoteResolvedRef,
+      })),
+      noOpHydrationExecutor,
+    );
+
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+      sourceRefreshService,
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      materials: {
+        status: 'ready',
+        currentSources: [
+          expect.objectContaining({
+            sourceAttachmentId: staleProcessSource.sourceAttachmentId,
+            displayName: staleProcessSource.displayName,
+            hydrationState: staleProcessSource.hydrationState,
+            freshnessReason: staleProcessSource.freshnessReason,
+          }),
+        ],
+      },
+    });
+
+    await app.close();
+  });
+
+  it('TC-6.2a redacts unavailable source metadata in the process work-surface read payload', async () => {
+    const healthySource = buildSourceAttachmentSummaryFixture({
+      sourceAttachmentId: 'source-process-healthy-001',
+      displayName: 'healthy process source',
+      purpose: 'implementation',
+      accessMode: 'read_only',
+      repositoryUrl: 'https://github.com/liminal-ai/healthy-process-source',
+      repositoryFullName: 'liminal-ai/healthy-process-source',
+      targetRef: 'main',
+      hydrationState: 'stale',
+      freshnessReason: 'working_copy_missing',
+      refreshStatus: 'failed',
+      refreshRequestedAt: '2026-05-03T12:12:00.000Z',
+      attachmentScope: 'process',
+      processId: waitingProcessSummary.processId,
+      processDisplayLabel: waitingProcessSummary.displayLabel,
+      updatedAt: '2026-05-03T12:15:00.000Z',
+    });
+    const unavailableSource = buildSourceAttachmentSummaryFixture({
+      sourceAttachmentId: 'source-process-unavailable-001',
+      displayName: 'unavailable process source',
+      purpose: 'research',
+      accessMode: 'read_only',
+      repositoryUrl: 'https://github.com/liminal-ai/unavailable-process-source',
+      repositoryFullName: 'liminal-ai/unavailable-process-source',
+      targetRef: 'release',
+      hydrationState: 'unavailable',
+      freshnessReason: 'target_ref_unavailable',
+      refreshStatus: 'failed',
+      refreshRequestedAt: '2026-05-03T12:05:00.000Z',
+      attachmentScope: 'project',
+      processId: null,
+      processDisplayLabel: null,
+      updatedAt: '2026-05-03T12:10:00.000Z',
+    });
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectSummary.projectId]: [waitingProcessSummary],
+      },
+      sourceAttachmentsByProjectId: {
+        [projectSummary.projectId]: [healthySource, unavailableSource],
+      },
+      currentMaterialRefsByProcessId: {
+        [waitingProcessSummary.processId]: {
+          artifactIds: [],
+          sourceAttachmentIds: [
+            healthySource.sourceAttachmentId,
+            unavailableSource.sourceAttachmentId,
+          ],
+        },
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().materials.status).toBe('ready');
+    expect(response.json().materials.currentSources).toHaveLength(2);
+
+    const currentSources = response.json().materials.currentSources as Array<{
+      sourceAttachmentId: string;
+    }>;
+    const healthyItem = currentSources.find(
+      (item) => item.sourceAttachmentId === healthySource.sourceAttachmentId,
+    );
+    const unavailableItem = currentSources.find(
+      (item) => item.sourceAttachmentId === unavailableSource.sourceAttachmentId,
+    );
+
+    expect(healthyItem).toMatchObject({
+      sourceAttachmentId: healthySource.sourceAttachmentId,
+      hydrationState: healthySource.hydrationState,
+      lastHydratedAt: healthySource.lastHydratedAt,
+      freshnessReason: healthySource.freshnessReason,
+      refreshStatus: healthySource.refreshStatus,
+      refreshRequestedAt: healthySource.refreshRequestedAt,
+    });
+    expect(unavailableItem).toMatchObject({
+      sourceAttachmentId: unavailableSource.sourceAttachmentId,
+      hydrationState: 'unavailable',
+    });
+    expect(unavailableItem).not.toHaveProperty('lastHydratedAt');
+    expect(unavailableItem).not.toHaveProperty('freshnessReason');
+    expect(unavailableItem).not.toHaveProperty('refreshStatus');
+    expect(unavailableItem).not.toHaveProperty('refreshRequestedAt');
+    expect(unavailableItem).not.toHaveProperty('lastHydratedResolvedRef');
+    expect(unavailableItem).not.toHaveProperty('lastObservedRemoteResolvedRef');
 
     await app.close();
   });

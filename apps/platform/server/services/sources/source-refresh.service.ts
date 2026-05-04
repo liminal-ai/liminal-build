@@ -380,8 +380,12 @@ export class DefaultSourceRefreshService implements SourceRefreshService {
   }): Promise<SourceAttachmentSummary[]> {
     return Promise.all(
       args.sourceAttachments.map(async (sourceAttachment) => {
-        const evaluation = await this.evaluateSourceAttachment(args.projectId, sourceAttachment);
-        return evaluation.sourceAttachment;
+        try {
+          const evaluation = await this.evaluateSourceAttachment(args.projectId, sourceAttachment);
+          return evaluation.sourceAttachment;
+        } catch {
+          return buildUnavailableSourceAttachment(sourceAttachment);
+        }
       }),
     );
   }
@@ -530,15 +534,21 @@ export class DefaultSourceRefreshService implements SourceRefreshService {
     });
 
     if (repositoryResolution.kind !== 'resolved') {
+      const unavailablePatch = buildUnavailableSourceAttachment(sourceAttachment);
       const unavailableSourceAttachment =
-        sourceAttachment.hydrationState === 'unavailable' &&
-        sourceAttachment.lastObservedRemoteResolvedRef === null &&
-        sourceAttachment.freshnessReason === deriveUnavailableFreshnessReason(sourceAttachment)
+        sourceAttachment.hydrationState === unavailablePatch.hydrationState &&
+        sourceAttachment.lastObservedRemoteResolvedRef ===
+          unavailablePatch.lastObservedRemoteResolvedRef &&
+        sourceAttachment.freshnessReason === unavailablePatch.freshnessReason &&
+        sourceAttachment.refreshStatus === unavailablePatch.refreshStatus &&
+        sourceAttachment.refreshRequestedAt === unavailablePatch.refreshRequestedAt
           ? sourceAttachment
           : await this.persistSourceAttachment(projectId, sourceAttachment, {
-              hydrationState: 'unavailable',
-              freshnessReason: deriveUnavailableFreshnessReason(sourceAttachment),
-              lastObservedRemoteResolvedRef: null,
+              hydrationState: unavailablePatch.hydrationState,
+              freshnessReason: unavailablePatch.freshnessReason,
+              lastObservedRemoteResolvedRef: unavailablePatch.lastObservedRemoteResolvedRef,
+              refreshStatus: unavailablePatch.refreshStatus,
+              refreshRequestedAt: unavailablePatch.refreshRequestedAt,
             });
 
       return {
@@ -614,6 +624,19 @@ export class DefaultSourceRefreshService implements SourceRefreshService {
       refreshRequestedAt: patch.refreshRequestedAt,
     });
   }
+}
+
+function buildUnavailableSourceAttachment(
+  sourceAttachment: SourceAttachmentSummary,
+): SourceAttachmentSummary {
+  return {
+    ...sourceAttachment,
+    hydrationState: 'unavailable',
+    freshnessReason: deriveUnavailableFreshnessReason(sourceAttachment),
+    lastObservedRemoteResolvedRef: null,
+    refreshStatus: 'idle',
+    refreshRequestedAt: null,
+  };
 }
 
 function deriveUnavailableFreshnessReason(sourceAttachment: SourceAttachmentSummary): string {

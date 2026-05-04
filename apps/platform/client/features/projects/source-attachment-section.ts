@@ -63,6 +63,10 @@ function resolveRefreshLabel(sourceAttachment: SourceAttachmentSummary): string 
   return null;
 }
 
+function isUnavailableSourceAttachment(sourceAttachment: SourceAttachmentSummary): boolean {
+  return sourceAttachment.hydrationState === 'unavailable';
+}
+
 export function renderSourceAttachmentSection(args: {
   envelope: SourceAttachmentSectionEnvelope | null;
   targetDocument: Document;
@@ -135,6 +139,7 @@ export function renderSourceAttachmentSection(args: {
     const hydration = args.targetDocument.createElement('p');
     const lastHydratedAt = args.targetDocument.createElement('p');
     const freshnessReason = args.targetDocument.createElement('p');
+    const availability = args.targetDocument.createElement('p');
     const scope = args.targetDocument.createElement('p');
     const updatedAt = args.targetDocument.createElement('p');
     item.setAttribute('data-source-attachment-row', sourceAttachment.sourceAttachmentId);
@@ -147,6 +152,12 @@ export function renderSourceAttachmentSection(args: {
     hydration.textContent = `Hydration: ${formatHydrationStateLabel(sourceAttachment.hydrationState)}`;
     lastHydratedAt.textContent = `Last hydrated: ${sourceAttachment.lastHydratedAt ?? 'never'}`;
     freshnessReason.textContent = `Freshness reason: ${formatFreshnessReason(sourceAttachment.freshnessReason) ?? 'none'}`;
+    availability.textContent =
+      'Source unavailable right now. Reload later or restore access to inspect current details.';
+    availability.setAttribute(
+      'data-source-attachment-unavailable',
+      sourceAttachment.sourceAttachmentId,
+    );
     purpose.setAttribute(
       'data-source-attachment-purpose-display',
       sourceAttachment.sourceAttachmentId,
@@ -172,8 +183,9 @@ export function renderSourceAttachmentSection(args: {
       accessMode,
       targetRef,
       hydration,
-      lastHydratedAt,
-      freshnessReason,
+      ...(isUnavailableSourceAttachment(sourceAttachment)
+        ? [availability]
+        : [lastHydratedAt, freshnessReason]),
       scope,
       updatedAt,
     );

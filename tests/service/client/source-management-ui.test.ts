@@ -140,6 +140,47 @@ describe('source management ui', () => {
     ).toBe('Hydrate source');
   });
 
+  it('TC-6.2a unavailable source shown safely', () => {
+    const projectView = renderSourceAttachmentSection({
+      envelope: sourceAttachmentSectionEnvelopeSchema.parse({
+        status: 'ready',
+        items: [unavailableSourceFixture],
+      }),
+      targetDocument: document,
+      onRefreshSource: async () => undefined,
+    });
+    const processView = renderProcessMaterialsSection({
+      envelope: processMaterialsSectionEnvelopeSchema.parse({
+        status: 'ready',
+        currentArtifacts: [],
+        currentOutputs: [],
+        currentSources: [
+          buildProcessSourceReference(unavailableSourceFixture, { attachmentScope: 'process' }),
+        ],
+      }),
+      targetDocument: document,
+      onRefreshSource: async () => undefined,
+    });
+
+    expect(projectView.textContent).toContain('Hydration: unavailable');
+    expect(projectView.textContent).toContain(
+      'Source unavailable right now. Reload later or restore access to inspect current details.',
+    );
+    expect(projectView.textContent).not.toContain(
+      `Last hydrated: ${unavailableSourceFixture.lastHydratedAt}`,
+    );
+    expect(projectView.textContent).not.toContain('Freshness reason:');
+
+    expect(processView.textContent).toContain('Hydration: unavailable');
+    expect(processView.textContent).toContain(
+      'Availability: Source unavailable right now. Reload later or restore access to inspect current details.',
+    );
+    expect(processView.textContent).not.toContain(
+      `Last hydrated: ${unavailableSourceFixture.lastHydratedAt}`,
+    );
+    expect(processView.textContent).not.toContain('Freshness reason:');
+  });
+
   it('TC-3.3b shows refresh progress while pending without introducing a fifth hydration state', () => {
     const view = renderSourceAttachmentSection({
       envelope: sourceAttachmentSectionEnvelopeSchema.parse({

@@ -9,12 +9,21 @@ import {
   InMemoryPlatformStore,
   type ProjectAccessResult,
 } from '../../../apps/platform/server/services/projects/platform-store.js';
+import type {
+  GitHubRepositoryResolution,
+  GitHubRepositoryResolver,
+} from '../../../apps/platform/server/services/sources/github-repository-resolver.js';
+import {
+  DefaultSourceRefreshService,
+  type SourceHydrationExecutor,
+} from '../../../apps/platform/server/services/sources/source-refresh.service.js';
 import {
   inaccessibleProjectId,
   memberProjectSummary,
   ownerProjectSummary,
   sameNameDifferentOwnerProjectSummaries,
 } from '../../fixtures/projects.js';
+import { buildSourceAttachmentSummaryFixture } from '../../fixtures/sources.js';
 import { buildApp } from '../../utils/build-app.js';
 
 function createTestAuthSessionService(resolution: SessionResolution) {
@@ -36,6 +45,31 @@ function createTestAuthSessionService(resolution: SessionResolution) {
 
   return new TestAuthSessionService();
 }
+
+class StubGitHubRepositoryResolver implements GitHubRepositoryResolver {
+  constructor(
+    private readonly handler: (args: {
+      repositoryUrl: string;
+      targetRef: string | null;
+    }) => Promise<GitHubRepositoryResolution> | GitHubRepositoryResolution,
+  ) {}
+
+  async resolveRepository(args: {
+    repositoryUrl: string;
+    targetRef: string | null;
+  }): Promise<GitHubRepositoryResolution> {
+    return this.handler(args);
+  }
+}
+
+const noOpHydrationExecutor: SourceHydrationExecutor = {
+  async refreshRecoverableSource() {
+    return {
+      kind: 'not_available',
+      message: 'Refresh is not exercised in this reader test.',
+    };
+  },
+};
 
 describe('projects api', () => {
   it('TC-1.2a returns only accessible projects sorted by lastUpdatedAt descending', async () => {
@@ -233,6 +267,247 @@ describe('projects api', () => {
         items: [],
       },
     });
+
+    await app.close();
+  });
+
+  it('TC-6.1a reopens project source attachment state', async () => {
+    const restoredSource = buildSourceAttachmentSummaryFixture({
+      sourceAttachmentId: 'source-project-reopen-001',
+      displayName: 'reopened project source',
+      updatedAt: '2026-05-03T12:00:00.000Z',
+    });
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [ownerProjectSummary],
+      },
+      projectAccessByProjectId: {
+        [ownerProjectSummary.projectId]: {
+          kind: 'accessible',
+          project: ownerProjectSummary,
+        },
+      },
+      sourceAttachmentsByProjectId: {
+        [ownerProjectSummary.projectId]: [restoredSource],
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${ownerProjectSummary.projectId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      sourceAttachments: {
+        status: 'ready',
+        items: [
+          expect.objectContaining({
+            sourceAttachmentId: restoredSource.sourceAttachmentId,
+            displayName: restoredSource.displayName,
+            repositoryFullName: restoredSource.repositoryFullName,
+            hydrationState: restoredSource.hydrationState,
+          }),
+        ],
+      },
+    });
+
+    await app.close();
+  });
+
+  it('TC-6.2a redacts unavailable source metadata in the project shell read payload', async () => {
+    const unavailableSource = buildSourceAttachmentSummaryFixture({
+      sourceAttachmentId: 'source-project-unavailable-001',
+      displayName: 'unavailable project source',
+      hydrationState: 'unavailable',
+      lastHydratedAt: '2026-05-03T11:30:00.000Z',
+      lastHydratedResolvedRef: 'a'.repeat(40),
+      lastObservedRemoteResolvedRef: 'b'.repeat(40),
+      freshnessReason: 'target_ref_unavailable',
+      refreshStatus: 'failed',
+      refreshRequestedAt: '2026-05-03T11:35:00.000Z',
+      updatedAt: '2026-05-03T11:40:00.000Z',
+    });
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [ownerProjectSummary],
+      },
+      projectAccessByProjectId: {
+        [ownerProjectSummary.projectId]: {
+          kind: 'accessible',
+          project: ownerProjectSummary,
+        },
+      },
+      sourceAttachmentsByProjectId: {
+        [ownerProjectSummary.projectId]: [unavailableSource],
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${ownerProjectSummary.projectId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().sourceAttachments).toMatchObject({
+      status: 'ready',
+      items: [
+        {
+          sourceAttachmentId: unavailableSource.sourceAttachmentId,
+          displayName: unavailableSource.displayName,
+          repositoryFullName: unavailableSource.repositoryFullName,
+          hydrationState: 'unavailable',
+          lastHydratedAt: null,
+          lastHydratedResolvedRef: null,
+          lastObservedRemoteResolvedRef: null,
+          freshnessReason: null,
+        },
+      ],
+    });
+    expect(response.json().sourceAttachments.items[0]).not.toHaveProperty('refreshStatus');
+    expect(response.json().sourceAttachments.items[0]).not.toHaveProperty('refreshRequestedAt');
+
+    await app.close();
+  });
+
+  it('TC-6.3a one failing source does not hide healthy sources', async () => {
+    const healthySource = buildSourceAttachmentSummaryFixture({
+      sourceAttachmentId: 'source-project-healthy-001',
+      displayName: 'healthy source',
+      repositoryUrl: 'https://github.com/liminal-ai/healthy-source',
+      repositoryFullName: 'liminal-ai/healthy-source',
+      updatedAt: '2026-05-03T12:10:00.000Z',
+    });
+    const failingSource = buildSourceAttachmentSummaryFixture({
+      sourceAttachmentId: 'source-project-failing-001',
+      displayName: 'failing source',
+      repositoryUrl: 'https://github.com/liminal-ai/failing-source',
+      repositoryFullName: 'liminal-ai/failing-source',
+      updatedAt: '2026-05-03T12:05:00.000Z',
+    });
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [ownerProjectSummary],
+      },
+      projectAccessByProjectId: {
+        [ownerProjectSummary.projectId]: {
+          kind: 'accessible',
+          project: ownerProjectSummary,
+        },
+      },
+      sourceAttachmentsByProjectId: {
+        [ownerProjectSummary.projectId]: [healthySource, failingSource],
+      },
+    });
+    const sourceRefreshService = new DefaultSourceRefreshService(
+      platformStore,
+      new StubGitHubRepositoryResolver(({ repositoryUrl, targetRef }) => {
+        if (repositoryUrl === failingSource.repositoryUrl) {
+          throw new Error('GitHub source lookup failed for one attachment.');
+        }
+
+        return {
+          kind: 'resolved',
+          repositoryUrl,
+          repositoryFullName: healthySource.repositoryFullName,
+          targetRef,
+          targetRefKind: targetRef === null ? 'none' : 'branch',
+          defaultBranch: 'main',
+          resolvedRef: targetRef === null ? null : 'a'.repeat(40),
+        };
+      }),
+      noOpHydrationExecutor,
+    );
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+      sourceRefreshService,
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${ownerProjectSummary.projectId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().sourceAttachments.status).toBe('ready');
+    expect(response.json().sourceAttachments.items).toHaveLength(2);
+
+    const healthyItem = response
+      .json()
+      .sourceAttachments.items.find(
+        (item: { sourceAttachmentId: string }) =>
+          item.sourceAttachmentId === healthySource.sourceAttachmentId,
+      );
+    const unavailableItem = response
+      .json()
+      .sourceAttachments.items.find(
+        (item: { sourceAttachmentId: string }) =>
+          item.sourceAttachmentId === failingSource.sourceAttachmentId,
+      );
+
+    expect(healthyItem).toMatchObject({
+      sourceAttachmentId: healthySource.sourceAttachmentId,
+      hydrationState: 'hydrated',
+      lastHydratedAt: healthySource.lastHydratedAt,
+      lastHydratedResolvedRef: healthySource.lastHydratedResolvedRef,
+      lastObservedRemoteResolvedRef: healthySource.lastObservedRemoteResolvedRef,
+      freshnessReason: healthySource.freshnessReason,
+    });
+    expect(unavailableItem).toMatchObject({
+      sourceAttachmentId: failingSource.sourceAttachmentId,
+      hydrationState: 'unavailable',
+      lastHydratedAt: null,
+      lastHydratedResolvedRef: null,
+      lastObservedRemoteResolvedRef: null,
+      freshnessReason: null,
+    });
+    expect(unavailableItem).not.toHaveProperty('refreshStatus');
+    expect(unavailableItem).not.toHaveProperty('refreshRequestedAt');
 
     await app.close();
   });

@@ -874,6 +874,29 @@ describe('source-management api', () => {
     await app.close();
   });
 
+  it('TC-6.2b revoked access blocks source management', async () => {
+    const { app } = await buildAuthenticatedApp({
+      store: buildStore({ kind: 'forbidden' }),
+    });
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/projects/${projectSummary.projectId}/source-attachments/source-revoked-001`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({
+      code: 'PROJECT_FORBIDDEN',
+      message: 'The current actor cannot access this project.',
+      status: 403,
+    });
+
+    await app.close();
+  });
+
   it('TC-4.1a returns informing source provenance', async () => {
     const store = buildStore();
     const sourceAttachment = await store.createProcessSourceAttachment({

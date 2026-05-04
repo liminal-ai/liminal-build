@@ -42,6 +42,12 @@ function formatAccessModeLabel(accessMode: string): string {
   return accessMode.replaceAll('_', ' ');
 }
 
+function isUnavailableSource(args: {
+  hydrationState: ProcessMaterialsSectionEnvelope['currentSources'][number]['hydrationState'];
+}): boolean {
+  return args.hydrationState === 'unavailable';
+}
+
 function appendDetail(args: {
   item: HTMLElement;
   label: string;
@@ -272,18 +278,28 @@ export function renderProcessMaterialsSection(args: {
         value: formatHydrationStateLabel(source.hydrationState),
         targetDocument: args.targetDocument,
       });
-      appendDetail({
-        item,
-        label: 'Last hydrated',
-        value: source.lastHydratedAt ?? 'never',
-        targetDocument: args.targetDocument,
-      });
-      appendDetail({
-        item,
-        label: 'Freshness reason',
-        value: source.freshnessReason?.replaceAll('_', ' ') ?? 'none',
-        targetDocument: args.targetDocument,
-      });
+      if (isUnavailableSource(source)) {
+        appendDetail({
+          item,
+          label: 'Availability',
+          value:
+            'Source unavailable right now. Reload later or restore access to inspect current details.',
+          targetDocument: args.targetDocument,
+        });
+      } else {
+        appendDetail({
+          item,
+          label: 'Last hydrated',
+          value: source.lastHydratedAt ?? 'never',
+          targetDocument: args.targetDocument,
+        });
+        appendDetail({
+          item,
+          label: 'Freshness reason',
+          value: source.freshnessReason?.replaceAll('_', ' ') ?? 'none',
+          targetDocument: args.targetDocument,
+        });
+      }
 
       appendDetail({
         item,
