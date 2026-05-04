@@ -93,6 +93,8 @@ function buildCurrentSources(args: {
     purpose: sourceAttachment.purpose,
     accessMode: sourceAttachment.accessMode,
     repositoryUrl: sourceAttachment.repositoryUrl,
+    repositoryFullName: sourceAttachment.repositoryFullName,
+    attachmentScope: sourceAttachment.attachmentScope,
     targetRef: sourceAttachment.targetRef,
     hydrationState: sourceAttachment.hydrationState,
     updatedAt: sourceAttachment.updatedAt,

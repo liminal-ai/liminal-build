@@ -13,6 +13,7 @@ import { renderProcessLiveStatus } from './process-live-status.js';
 import { renderProcessMaterialsSection } from './process-materials-section.js';
 import { renderProcessResponseComposer } from './process-response-composer.js';
 import { renderSideWorkSection } from './side-work-section.js';
+import type { CreateSourceAttachmentRequest } from '../../../shared/contracts/index.js';
 
 function formatProcessTypeLabel(processType: string): string {
   return processType.replace(/([a-z])([A-Z])/g, '$1 $2');
@@ -34,6 +35,11 @@ export function renderProcessWorkSurfacePage(args: {
   onRebuildEnvironment?: (projectId: string, processId: string) => void;
   onSubmitProcessResponse?: (projectId: string, processId: string, message: string) => void;
   onRetryLiveSubscription?: (projectId: string, processId: string) => void;
+  onAttachSource?: (
+    projectId: string,
+    processId: string,
+    input: CreateSourceAttachmentRequest,
+  ) => Promise<void>;
 }): HTMLElement {
   const container = args.targetDocument.createElement('section');
   const state = args.store.get();
@@ -213,6 +219,12 @@ export function renderProcessWorkSurfacePage(args: {
     renderProcessMaterialsSection({
       envelope: processSurface.materials,
       targetDocument: args.targetDocument,
+      onAttachSource:
+        args.onAttachSource === undefined
+          ? undefined
+          : async (input) => {
+              await args.onAttachSource?.(activeProject.projectId, activeProcess.processId, input);
+            },
     }),
     renderSideWorkSection({
       envelope: processSurface.sideWork,

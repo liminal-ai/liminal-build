@@ -41,6 +41,7 @@ describe('project shell page', () => {
       targetWindow: window,
       onOpenProcess: () => {},
       onCreateProcess: async () => {},
+      onAttachSource: async () => {},
       onCancelCreateProcess: () => {},
       onOpenCreateProcess: () => {},
     });
@@ -72,6 +73,7 @@ describe('project shell page', () => {
       targetWindow: window,
       onOpenProcess: () => {},
       onCreateProcess: async () => {},
+      onAttachSource: async () => {},
       onCancelCreateProcess: () => {},
       onOpenCreateProcess: () => {},
     });
@@ -110,6 +112,7 @@ describe('project shell page', () => {
       targetWindow: window,
       onOpenProcess: () => {},
       onCreateProcess: async () => {},
+      onAttachSource: async () => {},
       onCancelCreateProcess: () => {},
       onOpenCreateProcess: () => {},
     });
@@ -117,6 +120,63 @@ describe('project shell page', () => {
     expect(view.textContent).toContain('Processes is currently empty.');
     expect(view.textContent).toContain('Artifacts is currently empty.');
     expect(view.textContent).toContain('Source attachments is currently empty.');
+  });
+
+  it('submits the project attach form from the shell', async () => {
+    const store = createAppStore({
+      route: {
+        pathname: `/projects/${emptyProjectShellResponse.project.projectId}`,
+        projectId: emptyProjectShellResponse.project.projectId,
+        selectedProcessId: null,
+      },
+      shell: {
+        project: emptyProjectShellResponse.project,
+        processes: emptyProjectShellResponse.processes,
+        artifacts: emptyProjectShellResponse.artifacts,
+        sourceAttachments: emptyProjectShellResponse.sourceAttachments,
+        selectedProcessBanner: null,
+        isLoading: false,
+        error: null,
+      },
+    });
+    const onAttachSource = vi.fn().mockResolvedValue(undefined);
+    const view = renderProjectShellPage({
+      store,
+      targetDocument: document,
+      targetWindow: window,
+      onOpenProcess: () => {},
+      onCreateProcess: async () => {},
+      onAttachSource,
+      onCancelCreateProcess: () => {},
+      onOpenCreateProcess: () => {},
+    });
+
+    const repositoryUrlInput = view.querySelector('[data-source-attachment-repository-url="true"]');
+    const displayNameInput = view.querySelector('[data-source-attachment-display-name="true"]');
+    const form = view.querySelector('[data-source-attachment-form="true"]');
+
+    if (
+      !(repositoryUrlInput instanceof HTMLInputElement) ||
+      !(displayNameInput instanceof HTMLInputElement) ||
+      !(form instanceof HTMLFormElement)
+    ) {
+      throw new Error('Expected the project shell to render the attach source form.');
+    }
+
+    repositoryUrlInput.value = 'https://github.com/liminal-ai/project-repo';
+    displayNameInput.value = 'project-repo';
+    form.requestSubmit();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(onAttachSource).toHaveBeenCalledWith({
+      provider: 'github',
+      repositoryUrl: 'https://github.com/liminal-ai/project-repo',
+      displayName: 'project-repo',
+      purpose: 'implementation',
+      accessMode: 'read_only',
+      targetRef: null,
+    });
   });
 
   it('TC-3.1c and TC-6.3a render mixed ready, empty, and error section states coherently', () => {
@@ -142,6 +202,7 @@ describe('project shell page', () => {
       targetWindow: window,
       onOpenProcess: () => {},
       onCreateProcess: async () => {},
+      onAttachSource: async () => {},
       onCancelCreateProcess: () => {},
       onOpenCreateProcess: () => {},
     });
@@ -200,6 +261,7 @@ describe('project shell page', () => {
       } as unknown as Window & typeof globalThis,
       onOpenProcess: () => {},
       onCreateProcess: async () => {},
+      onAttachSource: async () => {},
       onCancelCreateProcess: () => {},
       onOpenCreateProcess: () => {},
     });

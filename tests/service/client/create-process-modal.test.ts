@@ -83,10 +83,14 @@ describe('create process modal', () => {
     createProcessButton.click();
     await flush();
 
+    const createProcessModal = [...dom.window.document.querySelectorAll('section')].find(
+      (section) => section.querySelector('h2')?.textContent === 'Create process',
+    );
+
     expect(dom.window.document.body.textContent).toContain('Product Definition');
     expect(dom.window.document.body.textContent).toContain('Feature Specification');
     expect(dom.window.document.body.textContent).toContain('Feature Implementation');
-    expect(dom.window.document.querySelector('input')).toBeNull();
+    expect(createProcessModal?.querySelector('input')).toBeNull();
     expect(dom.window.document.body.textContent).not.toContain('UnsupportedProcess');
   });
 

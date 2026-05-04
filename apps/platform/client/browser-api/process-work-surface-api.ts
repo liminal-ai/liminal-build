@@ -1,4 +1,5 @@
 import type {
+  CreateSourceAttachmentRequest,
   ProcessWorkSurfaceResponse,
   RebuildProcessResponse,
   RehydrateProcessResponse,
@@ -7,14 +8,17 @@ import type {
   StartProcessResponse,
   SubmitProcessResponseRequest,
   SubmitProcessResponseResponse,
+  SourceAttachmentSummary,
 } from '../../shared/contracts/index.js';
 import {
+  createSourceAttachmentRequestSchema,
   buildProcessResponseApiPath,
   buildProcessRebuildApiPath,
   buildProcessRehydrateApiPath,
   buildProcessResumeApiPath,
   buildProcessStartApiPath,
   buildProcessWorkSurfaceApiPath,
+  sourceAttachmentSummarySchema,
   processWorkSurfaceResponseSchema,
   rebuildProcessResponseSchema,
   requestErrorSchema,
@@ -224,4 +228,29 @@ export async function submitProcessResponse(args: {
   }
 
   return submitProcessResponseResponseSchema.parse(await response.json());
+}
+
+export async function attachProcessSource(args: {
+  projectId: string;
+  processId: string;
+  input: CreateSourceAttachmentRequest;
+}): Promise<SourceAttachmentSummary> {
+  const body = createSourceAttachmentRequestSchema.parse(args.input);
+  const response = await fetch(
+    `/api/projects/${args.projectId}/processes/${args.processId}/source-attachments`,
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    },
+  );
+
+  if (!response.ok) {
+    throw new ApiRequestError(await parseRequestError(response));
+  }
+
+  return sourceAttachmentSummarySchema.parse(await response.json());
 }

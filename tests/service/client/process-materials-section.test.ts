@@ -41,4 +41,18 @@ describe('process materials section — source accessMode', () => {
     expect(readOnlyItem).not.toBeNull();
     expect(readWriteItem).not.toBeNull();
   });
+
+  it('TC-1.2a renders repository identity and attachment scope for current sources', () => {
+    const view = renderProcessMaterialsSection({
+      envelope: readyProcessMaterialsFixture,
+      targetDocument: document,
+    });
+
+    expect(view.textContent).toContain(
+      `Repository: ${readyProcessMaterialsFixture.currentSources[0]?.repositoryFullName ?? ''}`,
+    );
+    expect(view.textContent).toContain(
+      `Scope: ${readyProcessMaterialsFixture.currentSources[0]?.attachmentScope ?? ''}`,
+    );
+  });
 });

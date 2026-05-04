@@ -4,7 +4,10 @@ import { renderProjectShellPage } from '../features/projects/project-shell-page.
 import { renderReviewWorkspacePage } from '../features/review/review-workspace-page.js';
 import { clearElement } from './dom.js';
 import type { AppStore } from './store.js';
-import type { ReviewWorkspaceSelection } from '../../shared/contracts/index.js';
+import type {
+  CreateSourceAttachmentRequest,
+  ReviewWorkspaceSelection,
+} from '../../shared/contracts/index.js';
 
 export interface ShellAppOptions {
   root: HTMLElement;
@@ -15,6 +18,12 @@ export interface ShellAppOptions {
   onCancelCreateProject: () => void;
   onCreateProcess: (
     processType: 'ProductDefinition' | 'FeatureSpecification' | 'FeatureImplementation',
+  ) => Promise<void>;
+  onAttachProjectSource?: (input: CreateSourceAttachmentRequest) => Promise<void>;
+  onAttachProcessSource?: (
+    projectId: string,
+    processId: string,
+    input: CreateSourceAttachmentRequest,
   ) => Promise<void>;
   onOpenCreateProcess: () => void;
   onCancelCreateProcess: () => void;
@@ -114,6 +123,7 @@ export function createShellApp(options: ShellAppOptions) {
                 onRetryLiveSubscription: (projectId, processId) => {
                   void options.onRetryLiveSubscription(projectId, processId);
                 },
+                onAttachSource: options.onAttachProcessSource,
               })
             : renderProjectShellPage({
                 store: options.store,
@@ -121,6 +131,7 @@ export function createShellApp(options: ShellAppOptions) {
                 targetWindow: options.targetWindow,
                 onOpenProcess: options.onOpenProcess,
                 onCreateProcess: options.onCreateProcess,
+                onAttachSource: options.onAttachProjectSource,
                 onCancelCreateProcess: options.onCancelCreateProcess,
                 onOpenCreateProcess: options.onOpenCreateProcess,
               });

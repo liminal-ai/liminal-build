@@ -546,7 +546,58 @@ describe('process work surface page', () => {
 
     expect(materialsSection?.textContent).toContain(processSourceReferenceFixture.displayName);
     expect(materialsSection?.textContent).toContain(
+      processSourceReferenceFixture.repositoryFullName,
+    );
+    expect(materialsSection?.textContent).toContain(
+      `Scope: ${processSourceReferenceFixture.attachmentScope}`,
+    );
+    expect(materialsSection?.textContent).toContain(
       `Target ref: ${processSourceReferenceFixture.targetRef}`,
+    );
+  });
+
+  it('submits the process attach form from the work surface', async () => {
+    const store = buildStore();
+    const onAttachSource = vi.fn().mockResolvedValue(undefined);
+    const view = renderProcessWorkSurfacePage({
+      store,
+      targetDocument: document,
+      targetWindow: window,
+      onOpenProject: () => {},
+      onAttachSource,
+    });
+
+    const repositoryUrlInput = view.querySelector('[data-source-attachment-repository-url="true"]');
+    const displayNameInput = view.querySelector('[data-source-attachment-display-name="true"]');
+    const targetRefInput = view.querySelector('[data-source-attachment-target-ref="true"]');
+    const form = view.querySelector('[data-source-attachment-form="true"]');
+
+    if (
+      !(repositoryUrlInput instanceof HTMLInputElement) ||
+      !(displayNameInput instanceof HTMLInputElement) ||
+      !(targetRefInput instanceof HTMLInputElement) ||
+      !(form instanceof HTMLFormElement)
+    ) {
+      throw new Error('Expected the process work surface to render the attach source form.');
+    }
+
+    repositoryUrlInput.value = 'https://github.com/liminal-ai/process-repo';
+    displayNameInput.value = 'process-repo';
+    targetRefInput.value = 'feature/story-1';
+    form.requestSubmit();
+    await flush();
+
+    expect(onAttachSource).toHaveBeenCalledWith(
+      readyProcessWorkSurfaceFixture.project.projectId,
+      readyProcessWorkSurfaceFixture.process.processId,
+      {
+        provider: 'github',
+        repositoryUrl: 'https://github.com/liminal-ai/process-repo',
+        displayName: 'process-repo',
+        purpose: 'implementation',
+        accessMode: 'read_only',
+        targetRef: 'feature/story-1',
+      },
     );
   });
 

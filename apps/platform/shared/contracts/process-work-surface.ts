@@ -1,5 +1,6 @@
 import { z } from 'zod/v4';
 import {
+  attachmentScopeSchema,
   hydrationStateSchema,
   processStatusSchema,
   projectRoleSchema,
@@ -324,6 +325,8 @@ export const processSourceReferenceSchema = z.object({
   // `sourceAttachments` row so the process surface and the orchestrator's
   // checkpoint stage both see the same address the writer will push to.
   repositoryUrl: z.string().min(1),
+  repositoryFullName: z.string().min(1),
+  attachmentScope: attachmentScopeSchema,
   targetRef: z.string().min(1).nullable(),
   hydrationState: hydrationStateSchema,
   updatedAt: z.string().min(1),

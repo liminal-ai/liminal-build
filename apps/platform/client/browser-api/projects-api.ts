@@ -1,15 +1,19 @@
 import type {
+  CreateSourceAttachmentRequest,
   CreateProcessRequest,
   CreateProcessResponse,
   CreateProjectRequest,
   ProjectShellResponse,
   ProjectSummary,
+  SourceAttachmentSummary,
 } from '../../shared/contracts/index.js';
 import {
+  createSourceAttachmentRequestSchema,
   createProcessResponseSchema,
   projectShellResponseSchema,
   projectSummarySchema,
   requestErrorSchema,
+  sourceAttachmentSummarySchema,
 } from '../../shared/contracts/index.js';
 import { ApiRequestError } from './auth-api.js';
 
@@ -99,4 +103,25 @@ export async function createProcess(_args: {
   }
 
   return createProcessResponseSchema.parse(await response.json());
+}
+
+export async function attachProjectSource(args: {
+  projectId: string;
+  input: CreateSourceAttachmentRequest;
+}): Promise<SourceAttachmentSummary> {
+  const body = createSourceAttachmentRequestSchema.parse(args.input);
+  const response = await fetch(`/api/projects/${args.projectId}/source-attachments`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new ApiRequestError(await parseRequestError(response));
+  }
+
+  return sourceAttachmentSummarySchema.parse(await response.json());
 }

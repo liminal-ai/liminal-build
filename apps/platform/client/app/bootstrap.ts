@@ -1,5 +1,6 @@
 import type {
   AppState,
+  CreateSourceAttachmentRequest,
   EnvironmentSummary,
   LiveProcessUpdateMessage,
   ParsedRoute,
@@ -24,6 +25,7 @@ import {
 } from '../../shared/contracts/index.js';
 import { ApiRequestError, getAuthenticatedUser } from '../browser-api/auth-api.js';
 import {
+  attachProcessSource,
   rebuildEnvironment,
   getProcessWorkSurface,
   rehydrateEnvironment,
@@ -32,6 +34,7 @@ import {
   submitProcessResponse,
 } from '../browser-api/process-work-surface-api.js';
 import {
+  attachProjectSource,
   createProcess,
   createProject,
   getProjectShell,
@@ -723,6 +726,23 @@ export async function bootstrapApp(
       selectedProcessBanner: null,
       isLoading: false,
       error: null,
+    });
+  };
+
+  const syncProjectSummaryIntoIndex = (project: ProjectSummary): void => {
+    const currentProjects = store.get().projects.list;
+
+    if (currentProjects === null) {
+      return;
+    }
+
+    store.patch('projects', {
+      ...store.get().projects,
+      list: sortProjects(
+        currentProjects.map((currentProject) =>
+          currentProject.projectId === project.projectId ? project : currentProject,
+        ),
+      ),
     });
   };
 
@@ -1613,6 +1633,95 @@ export async function bootstrapApp(
     }
   };
 
+  const submitProjectSourceAttachment = async (
+    input: CreateSourceAttachmentRequest,
+  ): Promise<void> => {
+    const currentShell = store.get().shell;
+
+    if (currentShell.project === null) {
+      return;
+    }
+
+    try {
+      await attachProjectSource({
+        projectId: currentShell.project.projectId,
+        input,
+      });
+      const refreshedShell = await getProjectShell({
+        projectId: currentShell.project.projectId,
+        selectedProcessId: store.get().route.selectedProcessId,
+      });
+
+      applyShell(refreshedShell);
+      syncProjectSummaryIntoIndex(refreshedShell.project);
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        if (error.payload.code === 'UNAUTHENTICATED') {
+          redirectToLogin();
+          return;
+        }
+
+        store.patch('shell', {
+          ...store.get().shell,
+          selectedProcessBanner: error.payload.message,
+          isLoading: false,
+        });
+        return;
+      }
+
+      throw error;
+    }
+  };
+
+  const submitProcessSourceAttachment = async (
+    projectId: string,
+    processId: string,
+    input: CreateSourceAttachmentRequest,
+  ): Promise<void> => {
+    try {
+      await attachProcessSource({
+        projectId,
+        processId,
+        input,
+      });
+      const refreshedSurface = await getProcessWorkSurface({
+        projectId,
+        processId,
+      });
+      const currentSurface = store.get().processSurface;
+
+      if (currentSurface.projectId !== projectId || currentSurface.processId !== processId) {
+        return;
+      }
+
+      store.patch('processSurface', {
+        ...currentSurface,
+        project: refreshedSurface.project,
+        process: refreshedSurface.process,
+        history: refreshedSurface.history,
+        materials: refreshedSurface.materials,
+        currentRequest: refreshedSurface.currentRequest,
+        sideWork: refreshedSurface.sideWork,
+        environment: refreshedSurface.environment,
+        isLoading: false,
+        error: null,
+        actionError: null,
+      });
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        if (error.payload.code === 'UNAUTHENTICATED') {
+          redirectToLogin();
+          return;
+        }
+
+        setProcessActionError(projectId, processId, error.payload);
+        return;
+      }
+
+      handleUnexpectedProcessActionFailure(projectId, processId);
+    }
+  };
+
   const root = getRequiredRootElement(targetWindow.document);
   const shellApp = createShellApp({
     root,
@@ -1734,6 +1843,8 @@ export async function bootstrapApp(
         createProcessOpen: false,
       });
     },
+    onAttachProjectSource: submitProjectSourceAttachment,
+    onAttachProcessSource: submitProcessSourceAttachment,
     onOpenProject: (projectId: string) => {
       void openProject(projectId);
     },

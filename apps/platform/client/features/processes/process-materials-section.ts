@@ -1,5 +1,7 @@
+import type { CreateSourceAttachmentRequest } from '../../../shared/contracts/index.js';
 import type { ProcessMaterialsSectionEnvelope } from '../../../shared/contracts/index.js';
 import { appendSectionMessage, createSectionElement } from '../projects/section-envelope.js';
+import { renderSourceAttachmentComposer } from '../projects/source-attachment-composer.js';
 
 function appendSubsection(args: {
   section: HTMLElement;
@@ -46,12 +48,26 @@ function appendDetail(args: {
 export function renderProcessMaterialsSection(args: {
   envelope: ProcessMaterialsSectionEnvelope | null;
   targetDocument: Document;
+  onAttachSource?: (input: CreateSourceAttachmentRequest) => Promise<void>;
 }): HTMLElement {
   const section = createSectionElement({
     title: 'Current materials',
     targetDocument: args.targetDocument,
   });
   section.setAttribute('data-process-materials-section', 'true');
+
+  if (args.onAttachSource !== undefined) {
+    section.append(
+      renderSourceAttachmentComposer({
+        title: 'Attach repository',
+        description: 'Attach a GitHub repository directly to this process.',
+        scope: 'process',
+        submitLabel: 'Attach to process',
+        targetDocument: args.targetDocument,
+        onAttachSource: args.onAttachSource,
+      }),
+    );
+  }
 
   if (args.envelope === null) {
     return appendSectionMessage({
@@ -221,6 +237,18 @@ export function renderProcessMaterialsSection(args: {
         item,
         label: 'Purpose',
         value: source.purpose,
+        targetDocument: args.targetDocument,
+      });
+      appendDetail({
+        item,
+        label: 'Repository',
+        value: source.repositoryFullName,
+        targetDocument: args.targetDocument,
+      });
+      appendDetail({
+        item,
+        label: 'Scope',
+        value: source.attachmentScope,
         targetDocument: args.targetDocument,
       });
       appendDetail({
