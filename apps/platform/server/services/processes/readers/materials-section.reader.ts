@@ -12,6 +12,7 @@ import type {
   PlatformStore,
 } from '../../projects/platform-store.js';
 import type { SourceRefreshService } from '../../sources/source-refresh.service.js';
+import { buildProcessSourceReadReference } from '../../sources/source-read-models.js';
 import { resolveActiveProcessSourceAttachments } from '../active-process-sources.js';
 
 function sortByUpdatedAtDesc<T extends { updatedAt: string }>(items: T[]): T[] {
@@ -88,31 +89,7 @@ function buildCurrentSources(args: {
     sourceAttachments: args.sourceAttachments,
     processId: args.processId,
     currentSourceAttachmentIds: args.currentMaterialRefs.sourceAttachmentIds,
-  }).map((sourceAttachment) => ({
-    sourceAttachmentId: sourceAttachment.sourceAttachmentId,
-    displayName: sourceAttachment.displayName,
-    purpose: sourceAttachment.purpose,
-    accessMode: sourceAttachment.accessMode,
-    repositoryUrl: sourceAttachment.repositoryUrl,
-    repositoryFullName: sourceAttachment.repositoryFullName,
-    attachmentScope: sourceAttachment.attachmentScope,
-    targetRef: sourceAttachment.targetRef,
-    hydrationState: sourceAttachment.hydrationState,
-    ...(sourceAttachment.lastHydratedAt === null
-      ? {}
-      : { lastHydratedAt: sourceAttachment.lastHydratedAt }),
-    ...(sourceAttachment.freshnessReason === null
-      ? {}
-      : { freshnessReason: sourceAttachment.freshnessReason }),
-    ...(sourceAttachment.refreshStatus === undefined || sourceAttachment.refreshStatus === 'idle'
-      ? {}
-      : { refreshStatus: sourceAttachment.refreshStatus }),
-    ...(sourceAttachment.refreshRequestedAt === null ||
-    sourceAttachment.refreshRequestedAt === undefined
-      ? {}
-      : { refreshRequestedAt: sourceAttachment.refreshRequestedAt }),
-    updatedAt: sourceAttachment.updatedAt,
-  }));
+  }).map((sourceAttachment) => buildProcessSourceReadReference(sourceAttachment));
 }
 
 export class MaterialsSectionReader {
