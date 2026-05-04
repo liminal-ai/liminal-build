@@ -25,6 +25,7 @@ import type { PlatformStore, WorkingSetPlan } from '../../projects/platform-stor
 import type { SourceProvenanceService } from '../../sources/source-provenance.service.js';
 import type { ProcessLiveHub } from '../live/process-live-hub.js';
 import type { ProcessAccessService } from '../process-access.service.js';
+import { resolveActiveProcessSourceAttachments } from '../active-process-sources.js';
 import { buildProcessSurfaceSummary } from '../process-work-surface.service.js';
 import { MaterialsSectionReader } from '../readers/materials-section.reader.js';
 import { SideWorkSectionReader } from '../readers/side-work-section.reader.js';
@@ -753,13 +754,11 @@ export class ProcessEnvironmentService {
     const projectSourceAttachments = await this.platformStore.listProjectSourceAttachments({
       projectId: currentProcess.projectId,
     });
-    const currentSourceIds = new Set(existingMaterialRefs.sourceAttachmentIds);
-    const currentSourceAttachments =
-      currentSourceIds.size === 0
-        ? projectSourceAttachments
-        : projectSourceAttachments.filter((source) =>
-            currentSourceIds.has(source.sourceAttachmentId),
-          );
+    const currentSourceAttachments = resolveActiveProcessSourceAttachments({
+      sourceAttachments: projectSourceAttachments,
+      processId: args.processId,
+      currentSourceAttachmentIds: existingMaterialRefs.sourceAttachmentIds,
+    });
     const sourceSummariesById = new Map(
       currentSourceAttachments.map((source) => [source.sourceAttachmentId, source]),
     );
@@ -1268,13 +1267,25 @@ export class ProcessEnvironmentService {
   }
 
   private async buildHydrationPlan(processId: string): Promise<WorkingSetPlan> {
-    const [materialRefs, currentOutputs] = await Promise.all([
+    const [materialRefs, currentOutputs, currentProcess] = await Promise.all([
       this.platformStore.getCurrentProcessMaterialRefs({ processId }),
       this.platformStore.listProcessOutputs({ processId }),
+      this.platformStore.getProcessRecord({ processId }),
     ]);
+    const activeSourceAttachmentIds =
+      currentProcess === null
+        ? [...materialRefs.sourceAttachmentIds]
+        : resolveActiveProcessSourceAttachments({
+            sourceAttachments: await this.platformStore.listProjectSourceAttachments({
+              projectId: currentProcess.projectId,
+            }),
+            processId,
+            currentSourceAttachmentIds: materialRefs.sourceAttachmentIds,
+          }).map((sourceAttachment) => sourceAttachment.sourceAttachmentId);
 
     return planHydrationWorkingSet({
-      ...materialRefs,
+      artifactIds: materialRefs.artifactIds,
+      sourceAttachmentIds: activeSourceAttachmentIds,
       outputIds: currentOutputs.map((output) => output.outputId),
     });
   }

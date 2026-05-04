@@ -12,6 +12,7 @@ import type {
   PlatformStore,
 } from '../../projects/platform-store.js';
 import type { SourceRefreshService } from '../../sources/source-refresh.service.js';
+import { resolveActiveProcessSourceAttachments } from '../active-process-sources.js';
 
 function sortByUpdatedAtDesc<T extends { updatedAt: string }>(items: T[]): T[] {
   return [...items].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
@@ -81,14 +82,13 @@ function buildCurrentOutputs(args: {
 function buildCurrentSources(args: {
   sourceAttachments: Awaited<ReturnType<PlatformStore['listProjectSourceAttachments']>>;
   currentMaterialRefs: CurrentProcessMaterialRefs;
+  processId: string;
 }): ProcessSourceReference[] {
-  const currentSourceAttachmentIds = new Set(args.currentMaterialRefs.sourceAttachmentIds);
-
-  return sortByUpdatedAtDesc(
-    args.sourceAttachments.filter((sourceAttachment) =>
-      currentSourceAttachmentIds.has(sourceAttachment.sourceAttachmentId),
-    ),
-  ).map((sourceAttachment) => ({
+  return resolveActiveProcessSourceAttachments({
+    sourceAttachments: args.sourceAttachments,
+    processId: args.processId,
+    currentSourceAttachmentIds: args.currentMaterialRefs.sourceAttachmentIds,
+  }).map((sourceAttachment) => ({
     sourceAttachmentId: sourceAttachment.sourceAttachmentId,
     displayName: sourceAttachment.displayName,
     purpose: sourceAttachment.purpose,
@@ -160,6 +160,7 @@ export class MaterialsSectionReader {
     const currentSources = buildCurrentSources({
       sourceAttachments: synchronizedSourceAttachments,
       currentMaterialRefs,
+      processId: args.processId,
     });
 
     return processMaterialsSectionEnvelopeSchema.parse({

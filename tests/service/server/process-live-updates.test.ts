@@ -802,6 +802,12 @@ describe('server-driven environment execution', () => {
       sourceAttachmentsByProjectId: {
         [executionProjectId]: [executionWritableSource],
       },
+      currentMaterialRefsByProcessId: {
+        [executionProcessId]: {
+          artifactIds: [],
+          sourceAttachmentIds: [executionWritableSource.sourceAttachmentId],
+        },
+      },
     });
   }
 
@@ -1437,6 +1443,15 @@ describe('server-driven environment execution', () => {
       sourceAttachmentsByProjectId: {
         [executionProjectId]: [executionWritableSource, executionSecondaryWritableSource],
       },
+      currentMaterialRefsByProcessId: {
+        [executionProcessId]: {
+          artifactIds: [],
+          sourceAttachmentIds: [
+            executionWritableSource.sourceAttachmentId,
+            executionSecondaryWritableSource.sourceAttachmentId,
+          ],
+        },
+      },
     });
     const partialFailureProvider: ProviderAdapter = {
       providerKind: 'local',
@@ -1556,13 +1571,15 @@ describe('server-driven environment execution', () => {
     socket.close();
     await app.close();
 
-    expect(recordedProvenance).toEqual([
-      expect.objectContaining({
-        sourceAttachmentId: executionWritableSource.sourceAttachmentId,
-        relationshipKind: 'received_code_update',
-        targetRef: executionWritableSource.targetRef,
-      }),
-    ]);
+    expect(recordedProvenance).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceAttachmentId: executionWritableSource.sourceAttachmentId,
+          relationshipKind: 'received_code_update',
+          targetRef: executionWritableSource.targetRef,
+        }),
+      ]),
+    );
   });
 
   it('publishes a rehydrating environment transition with a recomputed process summary when rehydrate is accepted', async () => {

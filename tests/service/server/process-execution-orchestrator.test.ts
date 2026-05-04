@@ -6,6 +6,8 @@ import {
 } from '../../../apps/platform/server/services/auth/auth-session.service.js';
 import { AuthUserSyncService } from '../../../apps/platform/server/services/auth/auth-user-sync.service.js';
 import { ProcessEnvironmentService } from '../../../apps/platform/server/services/processes/environment/process-environment.service.js';
+import { CheckpointPlanner } from '../../../apps/platform/server/services/processes/environment/checkpoint-planner.js';
+import type { CodeCheckpointWriter } from '../../../apps/platform/server/services/processes/environment/code-checkpoint-writer.js';
 import {
   DefaultProviderAdapterRegistry,
   SingleAdapterRegistry,
@@ -21,6 +23,7 @@ import { InMemoryProcessLiveHub } from '../../../apps/platform/server/services/p
 import { ProcessAccessService } from '../../../apps/platform/server/services/processes/process-access.service.js';
 import { ProjectAccessService } from '../../../apps/platform/server/services/projects/project-access.service.js';
 import { InMemoryPlatformStore } from '../../../apps/platform/server/services/projects/platform-store.js';
+import { MaterialsSectionReader } from '../../../apps/platform/server/services/processes/readers/materials-section.reader.js';
 import {
   type LiveProcessUpdateMessage,
   processSummarySchema,
@@ -188,6 +191,7 @@ type ProviderCall = {
     | 'executeScript'
     | 'rehydrateEnvironment'
     | 'rebuildEnvironment';
+  sourceAttachmentIds?: string[];
 };
 
 function buildProviderAdapter(args: {
@@ -216,6 +220,7 @@ function buildProviderAdapter(args: {
       args.calls.push({
         adapterKind: args.providerKind,
         method: 'hydrateEnvironment',
+        sourceAttachmentIds: plan.sourceInputs.map((source) => source.sourceAttachmentId),
       });
       if (args.failMessage !== undefined) {
         throw new Error(args.failMessage);
@@ -240,6 +245,7 @@ function buildProviderAdapter(args: {
       args.calls.push({
         adapterKind: args.providerKind,
         method: 'rehydrateEnvironment',
+        sourceAttachmentIds: plan.sourceInputs.map((source) => source.sourceAttachmentId),
       });
       if (args.failMessage !== undefined) {
         throw new Error(args.failMessage);
@@ -254,6 +260,7 @@ function buildProviderAdapter(args: {
       args.calls.push({
         adapterKind: args.providerKind,
         method: 'rebuildEnvironment',
+        sourceAttachmentIds: plan.sourceInputs.map((source) => source.sourceAttachmentId),
       });
       if (args.failMessage !== undefined) {
         throw new Error(args.failMessage);
@@ -288,6 +295,31 @@ function buildExecutionResult(
     codeCheckpointCandidates: [],
     ...overrides,
   };
+}
+
+class RecordingCodeCheckpointWriter implements CodeCheckpointWriter {
+  readonly calls: Array<{
+    sourceAttachmentId: string;
+    repositoryUrl: string;
+    targetRef: string | null;
+    filePath: string;
+    diff: string;
+    commitMessage: string;
+  }> = [];
+
+  async writeFor(args: {
+    sourceAttachmentId: string;
+    repositoryUrl: string;
+    targetRef: string | null;
+    filePath: string;
+    diff: string;
+    commitMessage: string;
+  }) {
+    this.calls.push(args);
+    return {
+      outcome: 'succeeded' as const,
+    };
+  }
 }
 
 afterEach(() => {
@@ -820,5 +852,213 @@ describe('process execution orchestrator', () => {
 
     subscription.close();
     await app.close();
+  });
+
+  it('TC-5.1c detach during active process work does not rewrite the current hydrated copy and excludes the source from future rehydrate/rebuild planning', async () => {
+    const platformStore = buildStore();
+    const sourceAttachment = await platformStore.createProcessSourceAttachment({
+      projectId,
+      processId,
+      provider: 'github',
+      displayName: 'active source',
+      purpose: 'implementation',
+      accessMode: 'read_write',
+      repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
+      repositoryFullName: 'liminal-ai/liminal-build',
+      targetRef: 'feature/story-5',
+    });
+
+    await platformStore.setProcessHydrationPlan({
+      processId,
+      providerKind: 'local',
+      plan: {
+        artifactIds: [],
+        sourceAttachmentIds: [sourceAttachment.sourceAttachmentId],
+        outputIds: [],
+      },
+    });
+
+    await platformStore.detachSourceAttachment({
+      projectId,
+      sourceAttachmentId: sourceAttachment.sourceAttachmentId,
+      detachedByUserId: actor.userId,
+    });
+
+    expect(await platformStore.getProcessHydrationPlan({ processId })).toEqual({
+      artifactIds: [],
+      sourceAttachmentIds: [sourceAttachment.sourceAttachmentId],
+      outputIds: [],
+    });
+
+    const localCalls: ProviderCall[] = [];
+    const provider = buildProviderAdapter({
+      providerKind: 'local',
+      executionResult: buildExecutionResult('completed'),
+      calls: localCalls,
+    });
+    const processLiveHub = new InMemoryProcessLiveHub();
+    const app = await buildExecutionApp({
+      platformStore,
+      processLiveHub,
+      providerAdapterRegistry: new SingleAdapterRegistry(provider),
+    });
+
+    await platformStore.upsertProcessEnvironmentState({
+      processId,
+      providerKind: 'local',
+      state: 'stale',
+      environmentId: 'env-detached-rehydrate',
+      blockedReason: 'The hydrated working copy is stale.',
+      lastHydratedAt: '2026-04-16T09:00:00.000Z',
+    });
+
+    const rehydrateBefore = localCalls.filter(
+      (call) => call.method === 'rehydrateEnvironment',
+    ).length;
+    const rehydrateResponse = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectId}/processes/${processId}/rehydrate`,
+      cookies: { [sessionCookieName]: 'valid-session-cookie' },
+    });
+
+    expect(rehydrateResponse.statusCode).toBe(200);
+
+    await waitFor(
+      () =>
+        localCalls.filter((call) => call.method === 'rehydrateEnvironment').length ===
+        rehydrateBefore + 1,
+      2000,
+      'Timed out waiting for detached-source rehydrate planning.',
+    );
+    expect(
+      localCalls.find((call) => call.method === 'rehydrateEnvironment')?.sourceAttachmentIds,
+    ).toEqual([]);
+    expect(await platformStore.getProcessHydrationPlan({ processId })).toEqual({
+      artifactIds: [],
+      sourceAttachmentIds: [],
+      outputIds: [],
+    });
+
+    await platformStore.upsertProcessEnvironmentState({
+      processId,
+      providerKind: 'local',
+      state: 'lost',
+      environmentId: 'env-detached-rebuild',
+      blockedReason: 'The previous working copy can no longer be recovered.',
+      lastHydratedAt: '2026-04-16T09:00:00.000Z',
+    });
+
+    const rebuildBefore = localCalls.filter((call) => call.method === 'rebuildEnvironment').length;
+    const rebuildResponse = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectId}/processes/${processId}/rebuild`,
+      cookies: { [sessionCookieName]: 'valid-session-cookie' },
+    });
+
+    expect(rebuildResponse.statusCode).toBe(200);
+
+    await waitFor(
+      () =>
+        localCalls.filter((call) => call.method === 'rebuildEnvironment').length ===
+        rebuildBefore + 1,
+      2000,
+      'Timed out waiting for detached-source rebuild planning.',
+    );
+    expect(
+      localCalls.find((call) => call.method === 'rebuildEnvironment')?.sourceAttachmentIds,
+    ).toEqual([]);
+
+    const materials = await new MaterialsSectionReader(platformStore).read({
+      projectId,
+      processId,
+    });
+    expect(materials.currentSources).toEqual([]);
+
+    await app.close();
+  });
+
+  it('excludes detached source attachments from checkpoint planning and write attempts', async () => {
+    const platformStore = buildStore();
+    const sourceAttachment = await platformStore.createProcessSourceAttachment({
+      projectId,
+      processId,
+      provider: 'github',
+      displayName: 'detached checkpoint source',
+      purpose: 'implementation',
+      accessMode: 'read_write',
+      repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
+      repositoryFullName: 'liminal-ai/liminal-build',
+      targetRef: 'feature/story-5',
+    });
+    await platformStore.detachSourceAttachment({
+      projectId,
+      sourceAttachmentId: sourceAttachment.sourceAttachmentId,
+      detachedByUserId: actor.userId,
+    });
+    await platformStore.upsertProcessEnvironmentState({
+      processId,
+      providerKind: 'local',
+      state: 'ready',
+      environmentId: 'env-detached-checkpoint',
+      blockedReason: null,
+      lastHydratedAt: '2026-04-16T09:00:00.000Z',
+    });
+
+    const processLiveHub = new InMemoryProcessLiveHub();
+    const provider = buildProviderAdapter({
+      providerKind: 'local',
+      executionResult: buildExecutionResult('completed'),
+      calls: [],
+    });
+    const checkpointPlanner = new CheckpointPlanner();
+    const codeCheckpointWriter = new RecordingCodeCheckpointWriter();
+    const processEnvironmentService = new ProcessEnvironmentService(
+      platformStore,
+      new ProcessAccessService(platformStore, new ProjectAccessService(platformStore)),
+      new SingleAdapterRegistry(provider),
+      processLiveHub,
+      undefined,
+      checkpointPlanner,
+      codeCheckpointWriter,
+      'local',
+    );
+
+    await (
+      processEnvironmentService as unknown as {
+        executeCheckpoint(args: {
+          projectId: string;
+          processId: string;
+          environmentId: string;
+          executionResult: ExecutionResult;
+          checkpointPlanner: CheckpointPlanner;
+          codeCheckpointWriter: CodeCheckpointWriter;
+        }): Promise<void>;
+      }
+    ).executeCheckpoint({
+      projectId,
+      processId,
+      environmentId: 'env-detached-checkpoint',
+      executionResult: buildExecutionResult('completed', {
+        codeCheckpointCandidates: [
+          {
+            sourceAttachmentId: sourceAttachment.sourceAttachmentId,
+            displayName: 'Detached source change',
+            targetRef: sourceAttachment.targetRef,
+            accessMode: 'read_write',
+            workspaceRef: 'diff --git a/file.md b/file.md',
+            filePath: 'file.md',
+            commitMessage: 'Checkpoint detached source',
+          },
+        ],
+      }),
+      checkpointPlanner,
+      codeCheckpointWriter,
+    });
+
+    expect(codeCheckpointWriter.calls).toEqual([]);
+    expect(
+      (await platformStore.getProcessEnvironmentSummary({ processId })).lastCheckpointResult
+        ?.failureReason,
+    ).toContain(sourceAttachment.sourceAttachmentId);
   });
 });

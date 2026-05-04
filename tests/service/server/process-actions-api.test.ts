@@ -28,6 +28,7 @@ import {
   pausedProcessFixture,
   waitingProcessFixture,
 } from '../../fixtures/processes.js';
+import { buildSourceAttachmentSummaryFixture } from '../../fixtures/sources.js';
 import { buildApp } from '../../utils/build-app.js';
 
 function createTestAuthSessionService(resolution: SessionResolution) {
@@ -1062,6 +1063,16 @@ describe('process actions api', () => {
           sourceAttachmentIds: ['source-hydration-001'],
         },
       },
+      sourceAttachmentsByProjectId: {
+        [projectSummary.projectId]: [
+          buildSourceAttachmentSummaryFixture({
+            sourceAttachmentId: 'source-hydration-001',
+            attachmentScope: 'project',
+            processId: null,
+            processDisplayLabel: null,
+          }),
+        ],
+      },
     });
 
     const response = await app.inject({
@@ -1190,6 +1201,24 @@ describe('process actions api', () => {
           sourceAttachmentIds: ['source-partial-001', 'source-partial-002'],
         },
       },
+      sourceAttachmentsByProjectId: {
+        [projectSummary.projectId]: [
+          buildSourceAttachmentSummaryFixture({
+            sourceAttachmentId: 'source-partial-001',
+            attachmentScope: 'project',
+            processId: null,
+            processDisplayLabel: null,
+          }),
+          buildSourceAttachmentSummaryFixture({
+            sourceAttachmentId: 'source-partial-002',
+            repositoryFullName: 'liminal-ai/source-partial-002',
+            attachmentScope: 'project',
+            processId: null,
+            processDisplayLabel: null,
+            updatedAt: '2026-04-13T12:01:00.000Z',
+          }),
+        ],
+      },
     });
 
     await app.inject({
@@ -1205,7 +1234,7 @@ describe('process actions api', () => {
     });
     expect(plan).toEqual({
       artifactIds: [],
-      sourceAttachmentIds: ['source-partial-001', 'source-partial-002'],
+      sourceAttachmentIds: ['source-partial-002', 'source-partial-001'],
       outputIds: [],
     });
 

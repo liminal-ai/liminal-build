@@ -8,6 +8,7 @@ import { buildProcessSurfaceSummaryWithReviewability } from './process-work-surf
 import type { ProcessAccessService } from './process-access.service.js';
 import { planHydrationWorkingSet } from './environment/hydration-planner.js';
 import type { ProcessEnvironmentService } from './environment/process-environment.service.js';
+import { resolveActiveProcessSourceAttachments } from './active-process-sources.js';
 
 export class ProcessStartService {
   constructor(
@@ -54,19 +55,27 @@ export class ProcessStartService {
         });
 
     if (requiresEnvironmentPreparation(result.process.status)) {
-      const [materialRefs, currentOutputs] = await Promise.all([
+      const [materialRefs, currentOutputs, sourceAttachments] = await Promise.all([
         this.platformStore.getCurrentProcessMaterialRefs({
           processId: access.process.processId,
         }),
         this.platformStore.listProcessOutputs({
           processId: access.process.processId,
         }),
+        this.platformStore.listProjectSourceAttachments({
+          projectId: access.project.projectId,
+        }),
       ]);
       await this.platformStore.setProcessHydrationPlan({
         processId: access.process.processId,
         providerKind,
         plan: planHydrationWorkingSet({
-          ...materialRefs,
+          artifactIds: materialRefs.artifactIds,
+          sourceAttachmentIds: resolveActiveProcessSourceAttachments({
+            sourceAttachments,
+            processId: access.process.processId,
+            currentSourceAttachmentIds: materialRefs.sourceAttachmentIds,
+          }).map((sourceAttachment) => sourceAttachment.sourceAttachmentId),
           outputIds: currentOutputs.map((o) => o.outputId),
         }),
       });
