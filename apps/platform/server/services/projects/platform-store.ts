@@ -16,6 +16,7 @@ import {
   processSummarySchema,
   type SideWorkItem,
   type SourceAttachmentSummary,
+  type SourceProvenanceEntry,
 } from '../../../shared/contracts/index.js';
 import type { ArtifactCheckpointTarget } from '../processes/environment/checkpoint-types.js';
 import {
@@ -97,6 +98,28 @@ export type UpdateSourceAttachmentRecord = {
   lastObservedRemoteResolvedRef?: string | null;
   refreshStatus?: 'idle' | 'pending' | 'failed';
   refreshRequestedAt?: string | null;
+};
+
+export type StoredSourceProvenanceRecord = {
+  provenanceId: string;
+  projectId: string;
+  processId: string;
+  sourceAttachmentId: string | null;
+  relationshipKind: SourceProvenanceEntry['relationshipKind'];
+  repositoryFullName: string;
+  repositoryUrl: string;
+  targetRef: string | null;
+  eventId: string | null;
+  entryStatus: SourceProvenanceEntry['entryStatus'];
+  degradationReason: string | null;
+  recordedAt: string;
+};
+
+export type CreateSourceProvenanceRecord = Omit<
+  StoredSourceProvenanceRecord,
+  'provenanceId' | 'recordedAt'
+> & {
+  recordedAt?: string;
 };
 
 export interface WorkingSetPlan {
@@ -250,6 +273,12 @@ export interface PlatformStore {
     args: CreateSourceAttachmentRecord & { processId: string },
   ): Promise<SourceAttachmentSummary>;
   updateSourceAttachment?(args: UpdateSourceAttachmentRecord): Promise<SourceAttachmentSummary>;
+  createSourceProvenance?(
+    args: CreateSourceProvenanceRecord,
+  ): Promise<StoredSourceProvenanceRecord>;
+  listProcessSourceProvenance?(args: {
+    processId: string;
+  }): Promise<StoredSourceProvenanceRecord[]>;
   listProcessHistoryItems(args: { processId: string }): Promise<ProcessHistoryItem[]>;
   appendProcessHistoryItem(args: {
     processId: string;
@@ -588,6 +617,18 @@ const updateSourceAttachmentMutation = makeFunctionReference<
   UpdateSourceAttachmentRecord,
   SourceAttachmentSummary
 >('sourceAttachments:updateSourceAttachment');
+
+const createSourceProvenanceMutation = makeFunctionReference<
+  'mutation',
+  CreateSourceProvenanceRecord,
+  StoredSourceProvenanceRecord
+>('sourceProvenance:createSourceProvenance');
+
+const listProcessSourceProvenanceQuery = makeFunctionReference<
+  'query',
+  { processId: string },
+  StoredSourceProvenanceRecord[]
+>('sourceProvenance:listProcessSourceProvenanceEntries');
 
 const listProcessHistoryItemsQuery = makeFunctionReference<
   'query',
@@ -1175,6 +1216,29 @@ export class NullPlatformStore implements PlatformStore {
     };
   }
 
+  async createSourceProvenance(
+    args: CreateSourceProvenanceRecord,
+  ): Promise<StoredSourceProvenanceRecord> {
+    return {
+      provenanceId: `provenance:${args.processId}:${Date.now()}`,
+      projectId: args.projectId,
+      processId: args.processId,
+      sourceAttachmentId: args.sourceAttachmentId,
+      relationshipKind: args.relationshipKind,
+      repositoryFullName: args.repositoryFullName,
+      repositoryUrl: args.repositoryUrl,
+      targetRef: args.targetRef,
+      eventId: args.eventId,
+      entryStatus: args.entryStatus,
+      degradationReason: args.degradationReason,
+      recordedAt: args.recordedAt ?? new Date().toISOString(),
+    };
+  }
+
+  async listProcessSourceProvenance(): Promise<StoredSourceProvenanceRecord[]> {
+    return [];
+  }
+
   async listProcessHistoryItems(): Promise<ProcessHistoryItem[]> {
     return [];
   }
@@ -1608,6 +1672,20 @@ export class ConvexPlatformStore implements PlatformStore {
     });
   }
 
+  async createSourceProvenance(
+    args: CreateSourceProvenanceRecord,
+  ): Promise<StoredSourceProvenanceRecord> {
+    return this.client.mutation(createSourceProvenanceMutation, args, {
+      skipQueue: true,
+    });
+  }
+
+  async listProcessSourceProvenance(args: {
+    processId: string;
+  }): Promise<StoredSourceProvenanceRecord[]> {
+    return this.client.query(listProcessSourceProvenanceQuery, args);
+  }
+
   async listProcessHistoryItems(args: { processId: string }): Promise<ProcessHistoryItem[]> {
     return this.client.query(listProcessHistoryItemsQuery, args);
   }
@@ -1920,6 +1998,7 @@ export class InMemoryPlatformStore implements PlatformStore {
   private readonly processesByProjectId = new Map<string, ProcessSummary[]>();
   private readonly artifactsByProjectId = new Map<string, ArtifactSummary[]>();
   private readonly sourceAttachmentsByProjectId = new Map<string, SourceAttachmentSummary[]>();
+  private readonly sourceProvenanceByProcessId = new Map<string, StoredSourceProvenanceRecord[]>();
   private readonly processHistoryItemsByProcessId = new Map<string, ProcessHistoryItem[]>();
   private readonly currentRequestsByProcessId = new Map<string, CurrentProcessRequest | null>();
   private readonly processEnvironmentSummariesByProcessId = new Map<string, EnvironmentSummary>();
@@ -1967,6 +2046,7 @@ export class InMemoryPlatformStore implements PlatformStore {
       artifactVersionsByArtifactId?: Record<string, ArtifactVersionRecord[]>;
       artifactContentsByVersionId?: Record<string, string>;
       sourceAttachmentsByProjectId?: Record<string, SourceAttachmentSummary[]>;
+      sourceProvenanceByProcessId?: Record<string, StoredSourceProvenanceRecord[]>;
       processHistoryItemsByProcessId?: Record<string, ProcessHistoryItem[]>;
       currentRequestsByProcessId?: Record<string, CurrentProcessRequest | null>;
       processEnvironmentSummariesByProcessId?: Record<string, EnvironmentSummary>;
@@ -2018,6 +2098,10 @@ export class InMemoryPlatformStore implements PlatformStore {
 
     for (const [projectId, summaries] of Object.entries(args.sourceAttachmentsByProjectId ?? {})) {
       this.sourceAttachmentsByProjectId.set(projectId, summaries);
+    }
+
+    for (const [processId, entries] of Object.entries(args.sourceProvenanceByProcessId ?? {})) {
+      this.sourceProvenanceByProcessId.set(processId, [...entries]);
     }
 
     for (const [processId, items] of Object.entries(args.processHistoryItemsByProcessId ?? {})) {
@@ -2616,6 +2700,37 @@ export class InMemoryPlatformStore implements PlatformStore {
     );
 
     return updatedAttachment;
+  }
+
+  async createSourceProvenance(
+    args: CreateSourceProvenanceRecord,
+  ): Promise<StoredSourceProvenanceRecord> {
+    const entry: StoredSourceProvenanceRecord = {
+      provenanceId: `${args.processId}:provenance-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      projectId: args.projectId,
+      processId: args.processId,
+      sourceAttachmentId: args.sourceAttachmentId,
+      relationshipKind: args.relationshipKind,
+      repositoryFullName: args.repositoryFullName,
+      repositoryUrl: args.repositoryUrl,
+      targetRef: args.targetRef,
+      eventId: args.eventId,
+      entryStatus: args.entryStatus,
+      degradationReason: args.degradationReason,
+      recordedAt: args.recordedAt ?? new Date().toISOString(),
+    };
+    const existing = this.sourceProvenanceByProcessId.get(args.processId) ?? [];
+    this.sourceProvenanceByProcessId.set(
+      args.processId,
+      [entry, ...existing].sort((left, right) => right.recordedAt.localeCompare(left.recordedAt)),
+    );
+    return entry;
+  }
+
+  async listProcessSourceProvenance(args: {
+    processId: string;
+  }): Promise<StoredSourceProvenanceRecord[]> {
+    return [...(this.sourceProvenanceByProcessId.get(args.processId) ?? [])];
   }
 
   async listProcessHistoryItems(args: { processId: string }): Promise<ProcessHistoryItem[]> {

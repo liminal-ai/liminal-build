@@ -4,6 +4,7 @@ import type { RequestError } from '../../shared/contracts/index.js';
 import {
   createProcessSourceAttachmentRouteSchema,
   createProjectSourceAttachmentRouteSchema,
+  listProcessSourceProvenanceRouteSchema,
   refreshSourceAttachmentRouteSchema,
   updateSourceAttachmentRouteSchema,
 } from '../schemas/source-management.js';
@@ -245,6 +246,57 @@ export async function registerSourceManagementRoutes(app: FastifyInstance): Prom
 
         throw error;
       }
+    },
+  );
+
+  typedApp.get(
+    '/api/projects/:projectId/processes/:processId/source-provenance',
+    { schema: listProcessSourceProvenanceRouteSchema },
+    async (request, reply) => {
+      if (request.actor === null) {
+        if (request.authFailureReason === 'invalid_session') {
+          reply.clearCookie(sessionCookieName, { path: '/' });
+        }
+
+        return reply.code(401).send(buildUnauthenticatedResponse());
+      }
+
+      const access = await app.processAccessService.getProcessAccess({
+        actor: request.actor,
+        projectId: request.params.projectId,
+        processId: request.params.processId,
+      });
+
+      if (access.kind === 'forbidden') {
+        return reply.code(403).send({
+          code: 'PROCESS_FORBIDDEN',
+          message: 'The current actor cannot access this process.',
+          status: 403,
+        });
+      }
+
+      if (access.kind === 'project_not_found') {
+        return reply.code(404).send({
+          code: 'PROJECT_NOT_FOUND',
+          message: 'The requested project was not found.',
+          status: 404,
+        });
+      }
+
+      if (access.kind === 'process_not_found') {
+        return reply.code(404).send({
+          code: 'PROCESS_NOT_FOUND',
+          message: 'The requested process could not be found.',
+          status: 404,
+        });
+      }
+
+      const provenance = await app.sourceProvenanceService.listProcessSourceProvenance({
+        projectId: request.params.projectId,
+        processId: request.params.processId,
+      });
+
+      return reply.code(200).send(provenance);
     },
   );
 }

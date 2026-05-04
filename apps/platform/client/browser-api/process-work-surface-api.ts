@@ -1,5 +1,6 @@
 import type {
   CreateSourceAttachmentRequest,
+  ListProcessSourceProvenanceResponse,
   ProcessWorkSurfaceResponse,
   RebuildProcessResponse,
   RehydrateProcessResponse,
@@ -19,6 +20,7 @@ import {
   buildProcessStartApiPath,
   buildProcessWorkSurfaceApiPath,
   sourceAttachmentSummarySchema,
+  listProcessSourceProvenanceResponseSchema,
   processWorkSurfaceResponseSchema,
   rebuildProcessResponseSchema,
   requestErrorSchema,
@@ -108,6 +110,24 @@ export async function getProcessWorkSurface(args: {
   }
 
   return processWorkSurfaceResponseSchema.parse(await response.json());
+}
+
+export async function getProcessSourceProvenance(args: {
+  projectId: string;
+  processId: string;
+}): Promise<ListProcessSourceProvenanceResponse> {
+  const response = await fetch(
+    `/api/projects/${args.projectId}/processes/${args.processId}/source-provenance`,
+    {
+      credentials: 'include',
+    },
+  );
+
+  if (!response.ok) {
+    throw new ApiRequestError(await parseRequestError(response));
+  }
+
+  return listProcessSourceProvenanceResponseSchema.parse(await response.json());
 }
 
 export async function startProcess(args: {

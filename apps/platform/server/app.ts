@@ -86,6 +86,10 @@ import {
   RuntimeSourceHydrationExecutor,
   type SourceRefreshService,
 } from './services/sources/source-refresh.service.js';
+import {
+  DefaultSourceProvenanceService,
+  type SourceProvenanceService,
+} from './services/sources/source-provenance.service.js';
 
 export interface CreateAppOptions {
   env?: ServerEnv;
@@ -112,6 +116,7 @@ export interface CreateAppOptions {
   gitHubRepositoryResolver?: GitHubRepositoryResolver;
   sourceManagementService?: SourceManagementService;
   sourceRefreshService?: SourceRefreshService;
+  sourceProvenanceService?: SourceProvenanceService;
   exportService?: ExportService;
   artifactReviewService?: ArtifactReviewService;
   packageReviewService?: PackageReviewService;
@@ -153,6 +158,7 @@ declare module 'fastify' {
     processResumeService: ProcessResumeService;
     sourceManagementService: SourceManagementService;
     sourceRefreshService: SourceRefreshService;
+    sourceProvenanceService: SourceProvenanceService;
     exportService: ExportService;
     artifactReviewService: ArtifactReviewService;
     packageReviewService: PackageReviewService;
@@ -267,6 +273,14 @@ export async function createApp(options: CreateAppOptions = {}) {
   // rather than silently falling back to the stub.
   const codeCheckpointWriter =
     options.codeCheckpointWriter ?? new OctokitCodeCheckpointWriter({ token: env.GITHUB_TOKEN });
+  const sourceProvenanceService =
+    options.sourceProvenanceService ??
+    new DefaultSourceProvenanceService(
+      platformStore as PlatformStore & {
+        createSourceProvenance: NonNullable<PlatformStore['createSourceProvenance']>;
+        listProcessSourceProvenance: NonNullable<PlatformStore['listProcessSourceProvenance']>;
+      },
+    );
   const processEnvironmentService =
     options.processEnvironmentService ??
     new ProcessEnvironmentService(
@@ -278,6 +292,8 @@ export async function createApp(options: CreateAppOptions = {}) {
       checkpointPlanner,
       codeCheckpointWriter,
       env.DEFAULT_ENVIRONMENT_PROVIDER_KIND,
+      platformStore,
+      sourceProvenanceService,
     );
   const sourceRefreshService =
     options.sourceRefreshService ??
@@ -364,6 +380,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.decorate('processResumeService', processResumeService);
   app.decorate('sourceManagementService', sourceManagementService);
   app.decorate('sourceRefreshService', sourceRefreshService);
+  app.decorate('sourceProvenanceService', sourceProvenanceService);
   app.decorate('exportService', exportService);
   app.decorate('artifactReviewService', artifactReviewService);
   app.decorate('packageReviewService', packageReviewService);

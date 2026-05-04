@@ -14,6 +14,7 @@ import {
   DefaultSourceRefreshService,
   type SourceHydrationExecutor,
 } from '../../../apps/platform/server/services/sources/source-refresh.service.js';
+import { DefaultSourceProvenanceService } from '../../../apps/platform/server/services/sources/source-provenance.service.js';
 import {
   processSummarySchema,
   projectSummarySchema,
@@ -562,5 +563,42 @@ describe('source-management service', () => {
       accessMode: 'read_write',
       targetRef: 'feature/story-205-updated',
     });
+  });
+
+  it('TC-4.3a read-only source not recorded as write target', async () => {
+    const store = buildStore();
+    const readOnlyAttachment = await store.createProcessSourceAttachment({
+      projectId: projectSummary.projectId,
+      processId: processSummary.processId,
+      provider: 'github',
+      displayName: 'liminal-build',
+      purpose: 'implementation',
+      accessMode: 'read_only',
+      repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
+      repositoryFullName: 'liminal-ai/liminal-build',
+      targetRef: 'main',
+    });
+    const provenanceService = new DefaultSourceProvenanceService(store);
+
+    await provenanceService.recordReceivedCodeUpdates({
+      projectId: projectSummary.projectId,
+      processId: processSummary.processId,
+      codeTargets: [
+        {
+          sourceAttachmentId: readOnlyAttachment.sourceAttachmentId,
+          repositoryUrl: readOnlyAttachment.repositoryUrl,
+          targetRef: readOnlyAttachment.targetRef,
+          filePath: 'src/index.ts',
+          diff: 'updated content',
+          commitMessage: 'checkpoint',
+        },
+      ],
+    });
+
+    await expect(
+      store.listProcessSourceProvenance({
+        processId: processSummary.processId,
+      }),
+    ).resolves.toEqual([]);
   });
 });

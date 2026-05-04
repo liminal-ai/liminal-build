@@ -15,8 +15,8 @@ import {
   type ProjectAccessResult,
 } from '../../../apps/platform/server/services/projects/platform-store.js';
 import type {
-  GitHubRepositoryResolver,
   GitHubRepositoryResolution,
+  GitHubRepositoryResolver,
 } from '../../../apps/platform/server/services/sources/github-repository-resolver.js';
 import {
   DefaultSourceRefreshService,
@@ -27,6 +27,7 @@ import {
   processSummarySchema,
   projectSummarySchema,
 } from '../../../apps/platform/shared/contracts/index.js';
+import { buildSourceAttachmentSummaryFixture } from '../../fixtures/sources.js';
 import { buildApp } from '../../utils/build-app.js';
 
 function createTestAuthSessionService(resolution: SessionResolution) {
@@ -764,5 +765,277 @@ describe('source-management api', () => {
     });
 
     await unavailableApp.close();
+  });
+
+  it('TC-4.1a returns informing source provenance', async () => {
+    const store = buildStore();
+    const sourceAttachment = await store.createProcessSourceAttachment({
+      projectId: projectSummary.projectId,
+      processId: processSummary.processId,
+      provider: 'github',
+      displayName: 'liminal-build',
+      purpose: 'implementation',
+      accessMode: 'read_only',
+      repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
+      repositoryFullName: 'liminal-ai/liminal-build',
+      targetRef: 'main',
+    });
+    await store.createSourceProvenance({
+      projectId: projectSummary.projectId,
+      processId: processSummary.processId,
+      sourceAttachmentId: sourceAttachment.sourceAttachmentId,
+      relationshipKind: 'informed_work',
+      repositoryFullName: sourceAttachment.repositoryFullName,
+      repositoryUrl: sourceAttachment.repositoryUrl,
+      targetRef: sourceAttachment.targetRef,
+      eventId: null,
+      entryStatus: 'ready',
+      degradationReason: null,
+      recordedAt: '2026-05-02T10:00:00.000Z',
+    });
+    const { app } = await buildAuthenticatedApp({ store });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/source-provenance`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      entries: [
+        expect.objectContaining({
+          relationshipKind: 'informed_work',
+          repositoryFullName: 'liminal-ai/liminal-build',
+          currentAttachmentDisplayName: 'liminal-build',
+          currentAttachmentVisibility: 'available',
+          entryStatus: 'ready',
+        }),
+      ],
+    });
+
+    await app.close();
+  });
+
+  it('TC-4.2a returns receiving source provenance', async () => {
+    const store = buildStore();
+    const sourceAttachment = await store.createProcessSourceAttachment({
+      projectId: projectSummary.projectId,
+      processId: processSummary.processId,
+      provider: 'github',
+      displayName: 'liminal-build writable',
+      purpose: 'implementation',
+      accessMode: 'read_write',
+      repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
+      repositoryFullName: 'liminal-ai/liminal-build',
+      targetRef: 'feature/story-4',
+    });
+    await store.createSourceProvenance({
+      projectId: projectSummary.projectId,
+      processId: processSummary.processId,
+      sourceAttachmentId: sourceAttachment.sourceAttachmentId,
+      relationshipKind: 'received_code_update',
+      repositoryFullName: sourceAttachment.repositoryFullName,
+      repositoryUrl: sourceAttachment.repositoryUrl,
+      targetRef: sourceAttachment.targetRef,
+      eventId: null,
+      entryStatus: 'ready',
+      degradationReason: null,
+      recordedAt: '2026-05-02T11:00:00.000Z',
+    });
+    const { app } = await buildAuthenticatedApp({ store });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/source-provenance`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      entries: [
+        expect.objectContaining({
+          relationshipKind: 'received_code_update',
+          repositoryFullName: 'liminal-ai/liminal-build',
+          targetRef: 'feature/story-4',
+          currentAttachmentDisplayName: 'liminal-build writable',
+          currentAttachmentVisibility: 'available',
+        }),
+      ],
+    });
+
+    await app.close();
+  });
+
+  it('TC-4.4a degraded provenance entry does not hide healthy entries', async () => {
+    const availableSource = buildSourceAttachmentSummaryFixture({
+      sourceAttachmentId: 'source-provenance-ready-001',
+      attachmentScope: 'process',
+      processId: processSummary.processId,
+      processDisplayLabel: processSummary.displayLabel,
+      detachedAt: null,
+    });
+    const detachedSource = buildSourceAttachmentSummaryFixture({
+      sourceAttachmentId: 'source-provenance-detached-001',
+      attachmentScope: 'process',
+      processId: processSummary.processId,
+      processDisplayLabel: processSummary.displayLabel,
+      detachedAt: '2026-05-02T12:00:00.000Z',
+      updatedAt: '2026-05-02T12:00:00.000Z',
+    });
+    const seededStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectSummary.projectId]: [processSummary],
+      },
+      sourceAttachmentsByProjectId: {
+        [projectSummary.projectId]: [availableSource, detachedSource],
+      },
+      sourceProvenanceByProcessId: {
+        [processSummary.processId]: [
+          {
+            provenanceId: 'provenance-detached-001',
+            projectId: projectSummary.projectId,
+            processId: processSummary.processId,
+            sourceAttachmentId: detachedSource.sourceAttachmentId,
+            relationshipKind: 'received_code_update',
+            repositoryFullName: detachedSource.repositoryFullName,
+            repositoryUrl: detachedSource.repositoryUrl,
+            targetRef: detachedSource.targetRef,
+            eventId: null,
+            entryStatus: 'ready',
+            degradationReason: null,
+            recordedAt: '2026-05-02T12:05:00.000Z',
+          },
+          {
+            provenanceId: 'provenance-ready-001',
+            projectId: projectSummary.projectId,
+            processId: processSummary.processId,
+            sourceAttachmentId: availableSource.sourceAttachmentId,
+            relationshipKind: 'informed_work',
+            repositoryFullName: availableSource.repositoryFullName,
+            repositoryUrl: availableSource.repositoryUrl,
+            targetRef: availableSource.targetRef,
+            eventId: null,
+            entryStatus: 'ready',
+            degradationReason: null,
+            recordedAt: '2026-05-02T11:55:00.000Z',
+          },
+        ],
+      },
+    });
+    const { app } = await buildAuthenticatedApp({ store: seededStore });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/source-provenance`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      entries: [
+        expect.objectContaining({
+          provenanceId: 'provenance-detached-001',
+          currentAttachmentVisibility: 'detached',
+          entryStatus: 'degraded',
+          degradationReason: 'source_detached',
+        }),
+        expect.objectContaining({
+          provenanceId: 'provenance-ready-001',
+          currentAttachmentVisibility: 'available',
+          entryStatus: 'ready',
+        }),
+      ],
+    });
+
+    await app.close();
+  });
+
+  it('S4-NT-1 redacts current attachment details when provenance enrichment access is revoked', async () => {
+    const redactedSource = buildSourceAttachmentSummaryFixture({
+      sourceAttachmentId: 'source-provenance-redacted-001',
+      attachmentScope: 'process',
+      processId: processSummary.processId,
+      processDisplayLabel: processSummary.displayLabel,
+      displayName: 'redacted source should not leak',
+      detachedAt: null,
+    });
+    const seededStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectSummary.projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectSummary.projectId]: [processSummary],
+      },
+      sourceAttachmentsByProjectId: {
+        [projectSummary.projectId]: [redactedSource],
+      },
+      sourceProvenanceByProcessId: {
+        [processSummary.processId]: [
+          {
+            provenanceId: 'provenance-redacted-001',
+            projectId: projectSummary.projectId,
+            processId: processSummary.processId,
+            sourceAttachmentId: redactedSource.sourceAttachmentId,
+            relationshipKind: 'informed_work',
+            repositoryFullName: redactedSource.repositoryFullName,
+            repositoryUrl: redactedSource.repositoryUrl,
+            targetRef: redactedSource.targetRef,
+            eventId: null,
+            entryStatus: 'degraded',
+            degradationReason: 'access_revoked',
+            recordedAt: '2026-05-02T12:10:00.000Z',
+          },
+        ],
+      },
+    });
+    const { app } = await buildAuthenticatedApp({ store: seededStore });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${projectSummary.projectId}/processes/${processSummary.processId}/source-provenance`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      entries: [
+        expect.objectContaining({
+          provenanceId: 'provenance-redacted-001',
+          currentAttachmentDisplayName: null,
+          currentAttachmentScope: null,
+          currentAttachmentAccessMode: null,
+          currentAttachmentHydrationState: null,
+          currentAttachmentVisibility: 'redacted',
+          entryStatus: 'degraded',
+          degradationReason: 'access_revoked',
+        }),
+      ],
+    });
+
+    await app.close();
   });
 });

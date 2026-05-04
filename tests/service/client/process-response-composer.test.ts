@@ -1,7 +1,9 @@
+// @vitest-environment jsdom
+
 import { describe, expect, it, vi } from 'vitest';
 import { createAppStore } from '../../../apps/platform/client/app/store.js';
-import { renderProcessWorkSurfacePage } from '../../../apps/platform/client/features/processes/process-work-surface-page.js';
 import { renderProcessResponseComposer } from '../../../apps/platform/client/features/processes/process-response-composer.js';
+import { renderProcessWorkSurfacePage } from '../../../apps/platform/client/features/processes/process-work-surface-page.js';
 import {
   completedProcessSurfaceFixture,
   processSurfaceProjectFixture,
@@ -39,6 +41,7 @@ describe('process response composer', () => {
           currentOutputs: [],
           currentSources: [],
         },
+        sourceProvenance: null,
         currentRequest: null,
         sideWork: {
           status: 'empty',

@@ -5,7 +5,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapApp } from '../../../apps/platform/client/app/bootstrap.js';
 import { createAppStore } from '../../../apps/platform/client/app/store.js';
 import { renderProcessWorkSurfacePage } from '../../../apps/platform/client/features/processes/process-work-surface-page.js';
-import type { ProcessWorkSurfaceResponse } from '../../../apps/platform/shared/contracts/index.js';
+import type {
+  ListProcessSourceProvenanceResponse,
+  ProcessWorkSurfaceResponse,
+} from '../../../apps/platform/shared/contracts/index.js';
 import {
   liveProcessUpdateMessageSchema,
   shellBootstrapPayloadSchema,
@@ -71,6 +74,7 @@ function buildStore(overrides: Parameters<typeof createAppStore>[0] = {}) {
       process: readyProcessWorkSurfaceFixture.process,
       history: readyProcessWorkSurfaceFixture.history,
       materials: readyProcessWorkSurfaceFixture.materials,
+      sourceProvenance: null,
       currentRequest: readyProcessWorkSurfaceFixture.currentRequest,
       sideWork: readyProcessWorkSurfaceFixture.sideWork,
       environment: readyProcessWorkSurfaceFixture.environment,
@@ -180,6 +184,7 @@ function installInteractiveFetchMock(args: {
   actionFailure?: Error;
   actionBodyAsserter?: (body: unknown) => void;
   action: 'start' | 'resume' | 'rehydrate' | 'rebuild' | 'respond';
+  sourceProvenance?: ListProcessSourceProvenanceResponse;
 }) {
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const rawUrl =
@@ -203,6 +208,14 @@ function installInteractiveFetchMock(args: {
         `/api/projects/${args.surface.project.projectId}/processes/${args.surface.process.processId}`
     ) {
       return buildJsonResponse(args.surface);
+    }
+
+    if (
+      method === 'GET' &&
+      url.pathname ===
+        `/api/projects/${args.surface.project.projectId}/processes/${args.surface.process.processId}/source-provenance`
+    ) {
+      return buildJsonResponse(args.sourceProvenance ?? { entries: [] });
     }
 
     if (
@@ -649,6 +662,7 @@ describe('process work surface page', () => {
         process: readyProcessWorkSurfaceFixture.process,
         history: readyProcessWorkSurfaceFixture.history,
         materials: emptyProcessMaterialsFixture,
+        sourceProvenance: null,
         currentRequest: readyProcessWorkSurfaceFixture.currentRequest,
         sideWork: readyProcessWorkSurfaceFixture.sideWork,
         environment: readyProcessWorkSurfaceFixture.environment,
@@ -695,6 +709,7 @@ describe('process work surface page', () => {
         },
         history: readyProcessWorkSurfaceFixture.history,
         materials: readyProcessWorkSurfaceFixture.materials,
+        sourceProvenance: null,
         currentRequest: readyProcessWorkSurfaceFixture.currentRequest,
         sideWork: {
           status: 'ready',
@@ -751,6 +766,16 @@ describe('process work surface page', () => {
         return buildJsonResponse(readyProcessWorkSurfaceFixture);
       }
 
+      if (
+        method === 'GET' &&
+        url.pathname ===
+          `/api/projects/${readyProcessWorkSurfaceFixture.project.projectId}/processes/${readyProcessWorkSurfaceFixture.process.processId}/source-provenance`
+      ) {
+        return buildJsonResponse({
+          entries: [],
+        });
+      }
+
       throw new Error(`Unexpected fetch request: ${method} ${url.pathname}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -802,6 +827,16 @@ describe('process work surface page', () => {
           `/api/projects/${codeCheckpointedAbsentEnvironmentProcessWorkSurfaceFixture.project.projectId}/processes/${codeCheckpointedAbsentEnvironmentProcessWorkSurfaceFixture.process.processId}`
       ) {
         return buildJsonResponse(codeCheckpointedAbsentEnvironmentProcessWorkSurfaceFixture);
+      }
+
+      if (
+        method === 'GET' &&
+        url.pathname ===
+          `/api/projects/${codeCheckpointedAbsentEnvironmentProcessWorkSurfaceFixture.project.projectId}/processes/${codeCheckpointedAbsentEnvironmentProcessWorkSurfaceFixture.process.processId}/source-provenance`
+      ) {
+        return buildJsonResponse({
+          entries: [],
+        });
       }
 
       throw new Error(`Unexpected fetch request: ${method} ${url.pathname}`);
@@ -868,6 +903,16 @@ describe('process work surface page', () => {
           `/api/projects/${readyProcessWorkSurfaceFixture.project.projectId}/processes/${readyProcessWorkSurfaceFixture.process.processId}`
       ) {
         return buildJsonResponse(readyProcessWorkSurfaceFixture);
+      }
+
+      if (
+        method === 'GET' &&
+        url.pathname ===
+          `/api/projects/${readyProcessWorkSurfaceFixture.project.projectId}/processes/${readyProcessWorkSurfaceFixture.process.processId}/source-provenance`
+      ) {
+        return buildJsonResponse({
+          entries: [],
+        });
       }
 
       throw new Error(`Unexpected fetch request: ${method} ${url.pathname}`);
@@ -957,6 +1002,16 @@ describe('process work surface page', () => {
         );
       }
 
+      if (
+        method === 'GET' &&
+        url.pathname ===
+          `/api/projects/${readyProcessWorkSurfaceFixture.project.projectId}/processes/${readyProcessWorkSurfaceFixture.process.processId}/source-provenance`
+      ) {
+        return buildJsonResponse({
+          entries: [],
+        });
+      }
+
       throw new Error(`Unexpected fetch request: ${method} ${url.pathname}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -1006,6 +1061,7 @@ describe('process work surface page', () => {
         process: null,
         history: null,
         materials: null,
+        sourceProvenance: null,
         currentRequest: null,
         sideWork: null,
         environment: null,
@@ -1029,6 +1085,67 @@ describe('process work surface page', () => {
 
     expect(view.textContent).toContain('Access denied');
     expect(view.textContent).not.toContain(readyProcessWorkSurfaceFixture.process.displayLabel);
+  });
+
+  it('surfaces a bounded provenance error when the bootstrap provenance read fails', async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const rawUrl =
+        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const url = new URL(rawUrl, 'http://localhost:5001');
+      const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+
+      if (url.pathname === '/auth/me') {
+        return buildJsonResponse({
+          user: {
+            id: 'user:workos-user-1',
+            email: 'lee@example.com',
+            displayName: 'Lee Moore',
+          },
+        });
+      }
+
+      if (
+        method === 'GET' &&
+        url.pathname ===
+          `/api/projects/${readyProcessWorkSurfaceFixture.project.projectId}/processes/${readyProcessWorkSurfaceFixture.process.processId}`
+      ) {
+        return buildJsonResponse(readyProcessWorkSurfaceFixture);
+      }
+
+      if (
+        method === 'GET' &&
+        url.pathname ===
+          `/api/projects/${readyProcessWorkSurfaceFixture.project.projectId}/processes/${readyProcessWorkSurfaceFixture.process.processId}/source-provenance`
+      ) {
+        return buildJsonResponse(
+          {
+            code: 'SOURCE_ATTACHMENT_UNAVAILABLE',
+            message: 'The requested source data could not be loaded.',
+            status: 503,
+          },
+          503,
+        );
+      }
+
+      throw new Error(`Unexpected fetch request: ${method} ${url.pathname}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const dom = await renderInteractiveProcessSurface(
+      `http://localhost:5001/projects/${readyProcessWorkSurfaceFixture.project.projectId}/processes/${readyProcessWorkSurfaceFixture.process.processId}`,
+      {
+        WebSocketCtor: FakeWebSocket as unknown as typeof WebSocket,
+      },
+    );
+
+    expect(dom.window.document.body.textContent).toContain(
+      readyProcessWorkSurfaceFixture.process.displayLabel,
+    );
+    expect(dom.window.document.body.textContent).toContain(
+      'Source provenance is unavailable right now. Reload the page or try again later.',
+    );
+    expect(dom.window.document.body.textContent).not.toContain(
+      'No source provenance has been recorded for this process yet.',
+    );
   });
 
   it('keeps start and resume visible but disabled when neither action is available', () => {

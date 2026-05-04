@@ -16,6 +16,7 @@ import {
   processSurfaceSummarySchema,
   sideWorkSectionEnvelopeSchema,
 } from './process-work-surface.js';
+import { processSourceProvenanceSectionStateSchema } from './source-management.js';
 import {
   exportPackageResponseSchema,
   reviewWorkspaceResponseSchema,
@@ -149,6 +150,7 @@ export const processSurfaceStateSchema = z.object({
   process: processSurfaceSummarySchema.nullable(),
   history: processHistorySectionEnvelopeSchema.nullable(),
   materials: processMaterialsSectionEnvelopeSchema.nullable(),
+  sourceProvenance: processSourceProvenanceSectionStateSchema.nullable().default(null),
   currentRequest: currentProcessRequestSchema.nullable(),
   sideWork: sideWorkSectionEnvelopeSchema.nullable(),
   environment: environmentSummarySchema.nullable().default(null),

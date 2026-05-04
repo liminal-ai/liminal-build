@@ -2,11 +2,13 @@ import type {
   AppState,
   CreateSourceAttachmentRequest,
   EnvironmentSummary,
+  ListProcessSourceProvenanceResponse,
   LiveProcessUpdateMessage,
   ParsedRoute,
   ProcessMaterialsSectionEnvelope,
   ProcessHistoryItem,
   ProcessHistorySectionEnvelope,
+  ProcessSourceProvenanceSectionState,
   ProcessSourceReference,
   RebuildProcessResponse,
   RehydrateProcessResponse,
@@ -30,6 +32,7 @@ import {
 import { ApiRequestError, getAuthenticatedUser } from '../browser-api/auth-api.js';
 import {
   attachProcessSource,
+  getProcessSourceProvenance,
   rebuildEnvironment,
   getProcessWorkSurface,
   rehydrateEnvironment,
@@ -170,6 +173,38 @@ function patchPendingRefreshIntoProcessSource(
     refreshStatus: 'pending',
     refreshRequestedAt,
   };
+}
+
+function normalizeProcessSourceProvenance(
+  response: ListProcessSourceProvenanceResponse,
+): ProcessSourceProvenanceSectionState {
+  return {
+    status: response.entries.length === 0 ? 'empty' : 'ready',
+    entries: response.entries,
+  };
+}
+
+function buildUnavailableProcessSourceProvenanceState(): ProcessSourceProvenanceSectionState {
+  return {
+    status: 'error',
+    entries: [],
+    error: {
+      code: 'PROCESS_SOURCE_PROVENANCE_UNAVAILABLE',
+      message: 'Source provenance is unavailable right now. Reload the page or try again later.',
+    },
+  };
+}
+
+async function loadProcessSourceProvenanceSafely(args: { projectId: string; processId: string }) {
+  try {
+    return normalizeProcessSourceProvenance(await getProcessSourceProvenance(args));
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.payload.code === 'UNAUTHENTICATED') {
+      throw error;
+    }
+
+    return buildUnavailableProcessSourceProvenanceState();
+  }
 }
 
 export async function bootstrapApp(
@@ -360,10 +395,16 @@ export async function bootstrapApp(
     });
 
     try {
-      const surface = await getProcessWorkSurface({
-        projectId,
-        processId,
-      });
+      const [surface, sourceProvenance] = await Promise.all([
+        getProcessWorkSurface({
+          projectId,
+          processId,
+        }),
+        loadProcessSourceProvenanceSafely({
+          projectId,
+          processId,
+        }),
+      ]);
       const latestSurface = store.get().processSurface;
 
       if (latestSurface.projectId !== projectId || latestSurface.processId !== processId) {
@@ -376,6 +417,7 @@ export async function bootstrapApp(
         process: surface.process,
         history: surface.history,
         materials: surface.materials,
+        sourceProvenance,
         currentRequest: surface.currentRequest,
         sideWork: surface.sideWork,
         environment: surface.environment,
@@ -961,10 +1003,16 @@ export async function bootstrapApp(
       });
 
       try {
-        const surface = await getProcessWorkSurface({
-          projectId: parsedRoute.projectId ?? '',
-          processId: parsedRoute.processId ?? '',
-        });
+        const [surface, sourceProvenance] = await Promise.all([
+          getProcessWorkSurface({
+            projectId: parsedRoute.projectId ?? '',
+            processId: parsedRoute.processId ?? '',
+          }),
+          loadProcessSourceProvenanceSafely({
+            projectId: parsedRoute.projectId ?? '',
+            processId: parsedRoute.processId ?? '',
+          }),
+        ]);
 
         if (requestId !== routeLoadId) {
           return;
@@ -978,6 +1026,7 @@ export async function bootstrapApp(
           process: surface.process,
           history: surface.history,
           materials: surface.materials,
+          sourceProvenance,
           currentRequest: surface.currentRequest,
           sideWork: surface.sideWork,
           environment: surface.environment,

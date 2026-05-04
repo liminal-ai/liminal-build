@@ -22,6 +22,7 @@ import {
 } from '../../../errors/codes.js';
 import type { AuthenticatedActor } from '../../auth/auth-session.service.js';
 import type { PlatformStore, WorkingSetPlan } from '../../projects/platform-store.js';
+import type { SourceProvenanceService } from '../../sources/source-provenance.service.js';
 import type { ProcessLiveHub } from '../live/process-live-hub.js';
 import type { ProcessAccessService } from '../process-access.service.js';
 import { buildProcessSurfaceSummary } from '../process-work-surface.service.js';
@@ -31,7 +32,6 @@ import type { CheckpointPlanner } from './checkpoint-planner.js';
 import type { CheckpointArtifact, CodeCheckpointTarget, CodeDiff } from './checkpoint-types.js';
 import type { CodeCheckpointWriter } from './code-checkpoint-writer.js';
 import { planHydrationWorkingSet } from './hydration-planner.js';
-import type { ProviderAdapterRegistry } from './provider-adapter-registry.js';
 import type {
   ArtifactCheckpointCandidate,
   CodeCheckpointCandidate,
@@ -41,6 +41,7 @@ import type {
   ProviderFailureState,
 } from './provider-adapter.js';
 import { ProviderLifecycleError } from './provider-adapter.js';
+import type { ProviderAdapterRegistry } from './provider-adapter-registry.js';
 import type { ScriptExecutionService } from './script-execution.service.js';
 
 export class ProcessEnvironmentService {
@@ -57,6 +58,7 @@ export class ProcessEnvironmentService {
       PlatformStore,
       'persistCheckpointArtifacts'
     > = platformStore,
+    private readonly sourceProvenanceService?: SourceProvenanceService,
   ) {}
 
   /**
@@ -559,6 +561,10 @@ export class ProcessEnvironmentService {
           processId: args.processId,
         }),
       ]);
+      await this.sourceProvenanceService?.recordInformedWorkForCurrentSources({
+        projectId: currentProcess.projectId,
+        processId: args.processId,
+      });
 
       if (executionResult.processStatus === 'failed') {
         const failureReason = extractExecutionFailureReason(executionResult);
@@ -822,6 +828,18 @@ export class ProcessEnvironmentService {
             writeResult: await args.codeCheckpointWriter.writeFor(target),
           })),
         );
+        const successfulCodeTargets = codeOutcomes
+          .filter((outcome) => outcome.writeResult.outcome === 'succeeded')
+          .map((outcome) => outcome.target);
+
+        if (successfulCodeTargets.length > 0) {
+          await this.sourceProvenanceService?.recordReceivedCodeUpdates({
+            projectId: currentProcess.projectId,
+            processId: args.processId,
+            codeTargets: successfulCodeTargets,
+          });
+        }
+
         const firstFailure = codeOutcomes.find(
           (outcome) => outcome.writeResult.outcome === 'failed',
         );

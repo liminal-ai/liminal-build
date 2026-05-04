@@ -12,6 +12,7 @@ import { renderProcessHistorySection } from './process-history-section.js';
 import { renderProcessLiveStatus } from './process-live-status.js';
 import { renderProcessMaterialsSection } from './process-materials-section.js';
 import { renderProcessResponseComposer } from './process-response-composer.js';
+import { renderSourceProvenanceSection } from './source-provenance-section.js';
 import { renderSideWorkSection } from './side-work-section.js';
 import type { CreateSourceAttachmentRequest } from '../../../shared/contracts/index.js';
 
@@ -232,6 +233,10 @@ export function renderProcessWorkSurfacePage(args: {
           : async (sourceAttachmentId) => {
               await args.onRefreshSource?.(activeProject.projectId, sourceAttachmentId);
             },
+    }),
+    renderSourceProvenanceSection({
+      provenance: processSurface.sourceProvenance,
+      targetDocument: args.targetDocument,
     }),
     renderSideWorkSection({
       envelope: processSurface.sideWork,
