@@ -206,6 +206,7 @@ export const sourceAttachmentSummarySchema = z.object({
   attachmentScope: attachmentScopeSchema,
   processId: z.string().min(1).nullable(),
   processDisplayLabel: z.string().min(1).nullable(),
+  projectRefreshTargetCount: z.number().int().nonnegative().optional(),
   detachedAt: z.string().min(1).nullable().optional(),
   updatedAt: z.string().min(1),
 });

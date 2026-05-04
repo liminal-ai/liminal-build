@@ -208,6 +208,13 @@ export const updateSourceAttachment = mutation({
       ),
     ),
     freshnessReason: v.optional(v.union(v.string(), v.null())),
+    lastHydratedAt: v.optional(v.union(v.string(), v.null())),
+    lastHydratedResolvedRef: v.optional(v.union(v.string(), v.null())),
+    lastObservedRemoteResolvedRef: v.optional(v.union(v.string(), v.null())),
+    refreshStatus: v.optional(
+      v.union(v.literal('idle'), v.literal('pending'), v.literal('failed')),
+    ),
+    refreshRequestedAt: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx: MutationCtx, args) => {
     const sourceAttachment = await getSourceAttachmentRecord(ctx, args.sourceAttachmentId);
@@ -234,7 +241,18 @@ export const updateSourceAttachment = mutation({
       accessMode: args.accessMode,
       targetRef: args.targetRef,
       ...(args.hydrationState === undefined ? {} : { hydrationState: args.hydrationState }),
+      ...(args.lastHydratedAt === undefined ? {} : { lastHydratedAt: args.lastHydratedAt }),
+      ...(args.lastHydratedResolvedRef === undefined
+        ? {}
+        : { lastHydratedResolvedRef: args.lastHydratedResolvedRef }),
+      ...(args.lastObservedRemoteResolvedRef === undefined
+        ? {}
+        : { lastObservedRemoteResolvedRef: args.lastObservedRemoteResolvedRef }),
       ...(args.freshnessReason === undefined ? {} : { freshnessReason: args.freshnessReason }),
+      ...(args.refreshStatus === undefined ? {} : { refreshStatus: args.refreshStatus }),
+      ...(args.refreshRequestedAt === undefined
+        ? {}
+        : { refreshRequestedAt: args.refreshRequestedAt }),
       updatedAt: now,
     });
 

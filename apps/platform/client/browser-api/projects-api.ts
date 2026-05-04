@@ -4,6 +4,7 @@ import type {
   CreateProcessResponse,
   CreateProjectRequest,
   ProjectShellResponse,
+  RefreshSourceAttachmentResponse,
   ProjectSummary,
   SourceAttachmentSummary,
   UpdateSourceAttachmentRequest,
@@ -13,6 +14,7 @@ import {
   createProcessResponseSchema,
   projectShellResponseSchema,
   projectSummarySchema,
+  refreshSourceAttachmentResponseSchema,
   requestErrorSchema,
   sourceAttachmentSummarySchema,
   updateSourceAttachmentRequestSchema,
@@ -151,4 +153,23 @@ export async function updateSourceAttachment(args: {
   }
 
   return sourceAttachmentSummarySchema.parse(await response.json());
+}
+
+export async function refreshSourceAttachment(args: {
+  projectId: string;
+  sourceAttachmentId: string;
+}): Promise<RefreshSourceAttachmentResponse> {
+  const response = await fetch(
+    `/api/projects/${args.projectId}/source-attachments/${args.sourceAttachmentId}/refresh`,
+    {
+      method: 'POST',
+      credentials: 'include',
+    },
+  );
+
+  if (!response.ok) {
+    throw new ApiRequestError(await parseRequestError(response));
+  }
+
+  return refreshSourceAttachmentResponseSchema.parse(await response.json());
 }

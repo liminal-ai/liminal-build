@@ -11,6 +11,7 @@ import type {
   PlatformProcessOutputSummary,
   PlatformStore,
 } from '../../projects/platform-store.js';
+import type { SourceRefreshService } from '../../sources/source-refresh.service.js';
 
 function sortByUpdatedAtDesc<T extends { updatedAt: string }>(items: T[]): T[] {
   return [...items].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
@@ -97,12 +98,28 @@ function buildCurrentSources(args: {
     attachmentScope: sourceAttachment.attachmentScope,
     targetRef: sourceAttachment.targetRef,
     hydrationState: sourceAttachment.hydrationState,
+    ...(sourceAttachment.lastHydratedAt === null
+      ? {}
+      : { lastHydratedAt: sourceAttachment.lastHydratedAt }),
+    ...(sourceAttachment.freshnessReason === null
+      ? {}
+      : { freshnessReason: sourceAttachment.freshnessReason }),
+    ...(sourceAttachment.refreshStatus === undefined || sourceAttachment.refreshStatus === 'idle'
+      ? {}
+      : { refreshStatus: sourceAttachment.refreshStatus }),
+    ...(sourceAttachment.refreshRequestedAt === null ||
+    sourceAttachment.refreshRequestedAt === undefined
+      ? {}
+      : { refreshRequestedAt: sourceAttachment.refreshRequestedAt }),
     updatedAt: sourceAttachment.updatedAt,
   }));
 }
 
 export class MaterialsSectionReader {
-  constructor(private readonly platformStore: PlatformStore) {}
+  constructor(
+    private readonly platformStore: PlatformStore,
+    private readonly sourceRefreshService?: SourceRefreshService,
+  ) {}
 
   async read(args: {
     projectId: string;
@@ -122,6 +139,13 @@ export class MaterialsSectionReader {
         processId: args.processId,
       }),
     ]);
+    const synchronizedSourceAttachments =
+      this.sourceRefreshService === undefined
+        ? sourceAttachments
+        : await this.sourceRefreshService.synchronizeProjectSourceAttachments({
+            projectId: args.projectId,
+            sourceAttachments,
+          });
 
     const currentArtifacts = await buildCurrentArtifacts({
       platformStore: this.platformStore,
@@ -134,7 +158,7 @@ export class MaterialsSectionReader {
       currentArtifacts,
     });
     const currentSources = buildCurrentSources({
-      sourceAttachments,
+      sourceAttachments: synchronizedSourceAttachments,
       currentMaterialRefs,
     });
 

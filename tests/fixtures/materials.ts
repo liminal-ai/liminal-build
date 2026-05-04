@@ -48,6 +48,7 @@ export const processSourceReferenceFixture = processSourceReferenceSchema.parse(
   attachmentScope: 'process',
   targetRef: 'main',
   hydrationState: 'hydrated',
+  lastHydratedAt: '2026-04-13T12:00:00.000Z',
   updatedAt: '2026-04-13T12:10:00.000Z',
 });
 
@@ -61,6 +62,7 @@ export const writableProcessSourceReferenceFixture = processSourceReferenceSchem
   attachmentScope: 'process',
   targetRef: 'feature/epic-03',
   hydrationState: 'hydrated',
+  lastHydratedAt: '2026-04-13T12:00:00.000Z',
   updatedAt: '2026-04-13T12:16:00.000Z',
 });
 
@@ -90,6 +92,7 @@ export const phaseChangeSourceReferenceFixture = processSourceReferenceSchema.pa
   attachmentScope: 'project',
   targetRef: 'story-4',
   hydrationState: 'hydrated',
+  lastHydratedAt: '2026-04-13T12:22:00.000Z',
   updatedAt: '2026-04-13T12:23:00.000Z',
 });
 

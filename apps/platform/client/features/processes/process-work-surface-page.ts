@@ -40,6 +40,7 @@ export function renderProcessWorkSurfacePage(args: {
     processId: string,
     input: CreateSourceAttachmentRequest,
   ) => Promise<void>;
+  onRefreshSource?: (projectId: string, sourceAttachmentId: string) => Promise<void>;
 }): HTMLElement {
   const container = args.targetDocument.createElement('section');
   const state = args.store.get();
@@ -224,6 +225,12 @@ export function renderProcessWorkSurfacePage(args: {
           ? undefined
           : async (input) => {
               await args.onAttachSource?.(activeProject.projectId, activeProcess.processId, input);
+            },
+      onRefreshSource:
+        args.onRefreshSource === undefined
+          ? undefined
+          : async (sourceAttachmentId) => {
+              await args.onRefreshSource?.(activeProject.projectId, sourceAttachmentId);
             },
     }),
     renderSideWorkSection({

@@ -6,6 +6,7 @@ import {
   projectRoleSchema,
   sectionStatusSchema,
   sourceAccessModeSchema,
+  sourceAttachmentRefreshStateSchema,
   sourcePurposeSchema,
   supportedProcessTypeSchema,
 } from './schemas.js';
@@ -329,6 +330,10 @@ export const processSourceReferenceSchema = z.object({
   attachmentScope: attachmentScopeSchema,
   targetRef: z.string().min(1).nullable(),
   hydrationState: hydrationStateSchema,
+  lastHydratedAt: z.string().min(1).nullable().optional(),
+  freshnessReason: z.string().min(1).nullable().optional(),
+  refreshStatus: sourceAttachmentRefreshStateSchema.optional(),
+  refreshRequestedAt: z.string().min(1).nullable().optional(),
   updatedAt: z.string().min(1),
 });
 export type ProcessSourceReference = z.infer<typeof processSourceReferenceSchema>;

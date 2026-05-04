@@ -642,6 +642,7 @@ describe('process work surface api', () => {
           attachmentScope: sharedCurrentSource.attachmentScope,
           targetRef: sharedCurrentSource.targetRef,
           hydrationState: sharedCurrentSource.hydrationState,
+          lastHydratedAt: sharedCurrentSource.lastHydratedAt,
           updatedAt: sharedCurrentSource.updatedAt,
         },
       ],
@@ -1517,6 +1518,7 @@ describe('process work surface api', () => {
         attachmentScope: readOnlySource.attachmentScope,
         targetRef: readOnlySource.targetRef,
         hydrationState: readOnlySource.hydrationState,
+        lastHydratedAt: readOnlySource.lastHydratedAt,
         updatedAt: readOnlySource.updatedAt,
       },
     ]);

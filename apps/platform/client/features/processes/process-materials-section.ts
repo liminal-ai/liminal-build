@@ -57,6 +57,7 @@ export function renderProcessMaterialsSection(args: {
   envelope: ProcessMaterialsSectionEnvelope | null;
   targetDocument: Document;
   onAttachSource?: (input: CreateSourceAttachmentRequest) => Promise<void>;
+  onRefreshSource?: (sourceAttachmentId: string) => Promise<void>;
 }): HTMLElement {
   const section = createSectionElement({
     title: 'Current materials',
@@ -271,6 +272,18 @@ export function renderProcessMaterialsSection(args: {
         value: formatHydrationStateLabel(source.hydrationState),
         targetDocument: args.targetDocument,
       });
+      appendDetail({
+        item,
+        label: 'Last hydrated',
+        value: source.lastHydratedAt ?? 'never',
+        targetDocument: args.targetDocument,
+      });
+      appendDetail({
+        item,
+        label: 'Freshness reason',
+        value: source.freshnessReason?.replaceAll('_', ' ') ?? 'none',
+        targetDocument: args.targetDocument,
+      });
 
       appendDetail({
         item,
@@ -278,6 +291,44 @@ export function renderProcessMaterialsSection(args: {
         value: source.targetRef ?? 'not set',
         targetDocument: args.targetDocument,
       });
+
+      if (source.refreshStatus === 'pending') {
+        appendDetail({
+          item,
+          label: 'Refresh status',
+          value: `pending since ${source.refreshRequestedAt ?? 'just now'}`,
+          targetDocument: args.targetDocument,
+        });
+      } else if (source.refreshStatus === 'failed') {
+        appendDetail({
+          item,
+          label: 'Refresh status',
+          value: 'failed',
+          targetDocument: args.targetDocument,
+        });
+      }
+
+      const refreshLabel =
+        source.hydrationState === 'stale'
+          ? 'Refresh source'
+          : source.hydrationState === 'not_hydrated'
+            ? 'Hydrate source'
+            : null;
+
+      if (refreshLabel !== null && args.onRefreshSource !== undefined) {
+        const refreshButton = args.targetDocument.createElement('button');
+        refreshButton.type = 'button';
+        refreshButton.textContent = refreshLabel;
+        refreshButton.disabled = source.refreshStatus === 'pending';
+        refreshButton.setAttribute('data-process-source-refresh', source.sourceAttachmentId);
+        refreshButton.addEventListener('click', () => {
+          refreshButton.disabled = true;
+          void Promise.resolve(args.onRefreshSource?.(source.sourceAttachmentId)).finally(() => {
+            refreshButton.disabled = false;
+          });
+        });
+        item.append(refreshButton);
+      }
 
       appendDetail({
         item,

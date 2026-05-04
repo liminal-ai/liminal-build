@@ -2,6 +2,45 @@ import { type CreateAppOptions, createApp } from '../../apps/platform/server/app
 import { type ServerEnv, story0PlaceholderEnv } from '../../apps/platform/server/config.js';
 import { StubCodeCheckpointWriter } from '../../apps/platform/server/services/processes/environment/code-checkpoint-writer.js';
 import { InMemoryProviderAdapter } from '../../apps/platform/server/services/processes/environment/provider-adapter.js';
+import type { GitHubRepositoryResolver } from '../../apps/platform/server/services/sources/github-repository-resolver.js';
+import { SourceIdentityService } from '../../apps/platform/server/services/sources/source-identity.service.js';
+import type { SourceRefreshService } from '../../apps/platform/server/services/sources/source-refresh.service.js';
+
+class StubGitHubRepositoryResolver implements GitHubRepositoryResolver {
+  private readonly sourceIdentityService = new SourceIdentityService();
+
+  async resolveRepository(args: { repositoryUrl: string; targetRef: string | null }) {
+    const parsedIdentity = this.sourceIdentityService.parseGitHubRepositoryUrl(args.repositoryUrl);
+
+    if (parsedIdentity === null) {
+      return {
+        kind: 'invalid' as const,
+        message: 'Expected an https://github.com/<owner>/<repo> repository URL.',
+      };
+    }
+
+    return {
+      kind: 'resolved' as const,
+      repositoryUrl: parsedIdentity.repositoryUrl,
+      repositoryFullName: parsedIdentity.repositoryFullName,
+      targetRef: args.targetRef,
+      targetRefKind: args.targetRef === null ? ('none' as const) : ('branch' as const),
+      defaultBranch: 'main',
+      resolvedRef: args.targetRef === null ? null : 'test'.padEnd(40, '0'),
+    };
+  }
+}
+
+const noOpSourceRefreshService: SourceRefreshService = {
+  async synchronizeProjectSourceAttachments(args) {
+    return args.sourceAttachments;
+  },
+  async refreshSource() {
+    return {
+      refreshStatus: 'settled',
+    };
+  },
+};
 
 export async function buildApp(
   overrides: Omit<CreateAppOptions, 'env'> & { env?: Partial<ServerEnv> } = {},
@@ -29,6 +68,9 @@ export async function buildApp(
     ...overrides,
     providerAdapter,
     codeCheckpointWriter,
+    gitHubRepositoryResolver:
+      overrides.gitHubRepositoryResolver ?? new StubGitHubRepositoryResolver(),
+    sourceRefreshService: overrides.sourceRefreshService ?? noOpSourceRefreshService,
     env,
     logger: overrides.logger ?? false,
   });

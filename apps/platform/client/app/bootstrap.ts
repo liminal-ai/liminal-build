@@ -4,8 +4,10 @@ import type {
   EnvironmentSummary,
   LiveProcessUpdateMessage,
   ParsedRoute,
+  ProcessMaterialsSectionEnvelope,
   ProcessHistoryItem,
   ProcessHistorySectionEnvelope,
+  ProcessSourceReference,
   RebuildProcessResponse,
   RehydrateProcessResponse,
   RequestError,
@@ -14,6 +16,7 @@ import type {
   ProjectShellResponse,
   ProjectSummary,
   ReviewWorkspaceSelection,
+  SourceAttachmentSummary,
   StartProcessResponse,
   SubmitProcessResponseResponse,
   UpdateSourceAttachmentRequest,
@@ -40,6 +43,7 @@ import {
   createProject,
   getProjectShell,
   listProjects,
+  refreshSourceAttachment,
   updateSourceAttachment,
 } from '../browser-api/projects-api.js';
 import {
@@ -123,6 +127,49 @@ function normalizeReviewWorkspaceBootstrapError(error: ApiRequestError): Request
   }
 
   return error.payload;
+}
+
+function buildProcessSourceReference(
+  sourceAttachment: SourceAttachmentSummary,
+): ProcessSourceReference {
+  return {
+    sourceAttachmentId: sourceAttachment.sourceAttachmentId,
+    displayName: sourceAttachment.displayName,
+    purpose: sourceAttachment.purpose,
+    accessMode: sourceAttachment.accessMode,
+    repositoryUrl: sourceAttachment.repositoryUrl,
+    repositoryFullName: sourceAttachment.repositoryFullName,
+    attachmentScope: sourceAttachment.attachmentScope,
+    targetRef: sourceAttachment.targetRef,
+    hydrationState: sourceAttachment.hydrationState,
+    lastHydratedAt: sourceAttachment.lastHydratedAt,
+    freshnessReason: sourceAttachment.freshnessReason,
+    refreshStatus: sourceAttachment.refreshStatus,
+    refreshRequestedAt: sourceAttachment.refreshRequestedAt,
+    updatedAt: sourceAttachment.updatedAt,
+  };
+}
+
+function patchPendingRefreshIntoSourceAttachment(
+  sourceAttachment: SourceAttachmentSummary,
+  refreshRequestedAt: string,
+): SourceAttachmentSummary {
+  return {
+    ...sourceAttachment,
+    refreshStatus: 'pending',
+    refreshRequestedAt,
+  };
+}
+
+function patchPendingRefreshIntoProcessSource(
+  sourceAttachment: ProcessSourceReference,
+  refreshRequestedAt: string,
+): ProcessSourceReference {
+  return {
+    ...sourceAttachment,
+    refreshStatus: 'pending',
+    refreshRequestedAt,
+  };
 }
 
 export async function bootstrapApp(
@@ -1733,6 +1780,76 @@ export async function bootstrapApp(
     }
   };
 
+  const submitProjectSourceRefresh = async (sourceAttachmentId: string): Promise<void> => {
+    const currentShell = store.get().shell;
+
+    if (currentShell.project === null) {
+      return;
+    }
+
+    try {
+      const refreshResponse = await refreshSourceAttachment({
+        projectId: currentShell.project.projectId,
+        sourceAttachmentId,
+      });
+      const latestShell = store.get().shell;
+
+      if (latestShell.project?.projectId !== currentShell.project.projectId) {
+        return;
+      }
+
+      const currentSourceAttachments = latestShell.sourceAttachments;
+
+      if (currentSourceAttachments === null || currentSourceAttachments.status !== 'ready') {
+        return;
+      }
+
+      store.patch('shell', {
+        ...latestShell,
+        sourceAttachments: {
+          ...currentSourceAttachments,
+          items: currentSourceAttachments.items.map((sourceAttachment) => {
+            if (sourceAttachment.sourceAttachmentId !== sourceAttachmentId) {
+              return sourceAttachment;
+            }
+
+            if (refreshResponse.sourceAttachment !== undefined) {
+              return refreshResponse.sourceAttachment;
+            }
+
+            if (
+              refreshResponse.refreshStatus === 'pending' &&
+              refreshResponse.refreshRequestedAt !== undefined
+            ) {
+              return patchPendingRefreshIntoSourceAttachment(
+                sourceAttachment,
+                refreshResponse.refreshRequestedAt,
+              );
+            }
+
+            return sourceAttachment;
+          }),
+        },
+      });
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        if (error.payload.code === 'UNAUTHENTICATED') {
+          redirectToLogin();
+          return;
+        }
+
+        store.patch('shell', {
+          ...store.get().shell,
+          selectedProcessBanner: error.payload.message,
+          isLoading: false,
+        });
+        return;
+      }
+
+      throw error;
+    }
+  };
+
   const submitProcessSourceAttachment = async (
     projectId: string,
     processId: string,
@@ -1779,6 +1896,70 @@ export async function bootstrapApp(
       }
 
       handleUnexpectedProcessActionFailure(projectId, processId);
+    }
+  };
+
+  const submitProcessSourceRefresh = async (
+    projectId: string,
+    sourceAttachmentId: string,
+  ): Promise<void> => {
+    try {
+      const refreshResponse = await refreshSourceAttachment({
+        projectId,
+        sourceAttachmentId,
+      });
+      const currentSurface = store.get().processSurface;
+
+      if (
+        currentSurface.projectId !== projectId ||
+        currentSurface.materials === null ||
+        currentSurface.materials.status !== 'ready'
+      ) {
+        return;
+      }
+
+      const nextMaterials: ProcessMaterialsSectionEnvelope = {
+        ...currentSurface.materials,
+        currentSources: currentSurface.materials.currentSources.map((sourceAttachment) => {
+          if (sourceAttachment.sourceAttachmentId !== sourceAttachmentId) {
+            return sourceAttachment;
+          }
+
+          if (refreshResponse.sourceAttachment !== undefined) {
+            return buildProcessSourceReference(refreshResponse.sourceAttachment);
+          }
+
+          if (
+            refreshResponse.refreshStatus === 'pending' &&
+            refreshResponse.refreshRequestedAt !== undefined
+          ) {
+            return patchPendingRefreshIntoProcessSource(
+              sourceAttachment,
+              refreshResponse.refreshRequestedAt,
+            );
+          }
+
+          return sourceAttachment;
+        }),
+      };
+
+      store.patch('processSurface', {
+        ...currentSurface,
+        materials: nextMaterials,
+        actionError: null,
+      });
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        if (error.payload.code === 'UNAUTHENTICATED') {
+          redirectToLogin();
+          return;
+        }
+
+        setProcessActionError(projectId, store.get().processSurface.processId ?? '', error.payload);
+        return;
+      }
+
+      handleUnexpectedProcessActionFailure(projectId, store.get().processSurface.processId ?? '');
     }
   };
 
@@ -1905,7 +2086,9 @@ export async function bootstrapApp(
     },
     onAttachProjectSource: submitProjectSourceAttachment,
     onUpdateProjectSource: submitProjectSourceMetadataUpdate,
+    onRefreshProjectSource: submitProjectSourceRefresh,
     onAttachProcessSource: submitProcessSourceAttachment,
+    onRefreshProcessSource: submitProcessSourceRefresh,
     onOpenProject: (projectId: string) => {
       void openProject(projectId);
     },

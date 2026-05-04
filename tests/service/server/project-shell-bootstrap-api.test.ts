@@ -199,6 +199,87 @@ describe('project shell bootstrap api', () => {
     await app.close();
   });
 
+  it('exposes project-shell refresh target counts so ambiguous project-scoped refresh controls can be hidden', async () => {
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [populatedProjectSummary],
+      },
+      projectAccessByProjectId: {
+        [populatedProjectSummary.projectId]: {
+          kind: 'accessible',
+          project: populatedProjectSummary,
+        },
+      },
+      processesByProjectId: {
+        [populatedProjectSummary.projectId]: [
+          waitingProcessFixture,
+          runningProcessFixture,
+          draftProcessFixture,
+        ],
+      },
+      sourceAttachmentsByProjectId: {
+        [populatedProjectSummary.projectId]: [
+          hydratedSourceFixture,
+          notHydratedSourceFixture,
+          staleSourceFixture,
+        ],
+      },
+      currentMaterialRefsByProcessId: {
+        [waitingProcessFixture.processId]: {
+          artifactIds: [],
+          sourceAttachmentIds: [staleSourceFixture.sourceAttachmentId],
+        },
+        [runningProcessFixture.processId]: {
+          artifactIds: [],
+          sourceAttachmentIds: [notHydratedSourceFixture.sourceAttachmentId],
+        },
+        [draftProcessFixture.processId]: {
+          artifactIds: [],
+          sourceAttachmentIds: [notHydratedSourceFixture.sourceAttachmentId],
+        },
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${populatedProjectSummary.projectId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const items = new Map(
+      response
+        .json()
+        .sourceAttachments.items.map(
+          (item: { projectRefreshTargetCount?: number; sourceAttachmentId: string }) => [
+            item.sourceAttachmentId,
+            item.projectRefreshTargetCount ?? 0,
+          ],
+        ),
+    );
+
+    expect(items.get(hydratedSourceFixture.sourceAttachmentId)).toBe(0);
+    expect(items.get(staleSourceFixture.sourceAttachmentId)).toBe(1);
+    expect(items.get(notHydratedSourceFixture.sourceAttachmentId)).toBe(2);
+
+    await app.close();
+  });
+
   it('TC-6.3a returns an artifact section error without blocking healthy sections', async () => {
     const platformStore = buildPopulatedStore();
     const projectShellService = new ProjectShellService(platformStore, {

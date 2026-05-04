@@ -11,6 +11,7 @@ export type GitHubRepositoryResolution =
       targetRef: string | null;
       targetRefKind: GitHubTargetRefKind;
       defaultBranch: string;
+      resolvedRef: string | null;
     }
   | {
       kind: 'invalid';
@@ -34,15 +35,21 @@ interface OctokitRepositoryClient {
       status: number;
       data: { full_name: string; default_branch: string };
     }>;
-    getBranch(args: { owner: string; repo: string; branch: string }): Promise<{ status: number }>;
-    getCommit(args: { owner: string; repo: string; ref: string }): Promise<{ status: number }>;
+    getBranch(args: { owner: string; repo: string; branch: string }): Promise<{
+      status: number;
+      data: { commit: { sha: string } };
+    }>;
+    getCommit(args: { owner: string; repo: string; ref: string }): Promise<{
+      status: number;
+      data: { sha: string };
+    }>;
   };
   git: {
     getRef(args: {
       owner: string;
       repo: string;
       ref: string;
-    }): Promise<{ status: number; data: { ref: string } }>;
+    }): Promise<{ status: number; data: { object: { sha: string }; ref: string } }>;
   };
 }
 
@@ -110,6 +117,7 @@ export class OctokitGitHubRepositoryResolver implements GitHubRepositoryResolver
         targetRef: null,
         targetRefKind: 'none',
         defaultBranch: repository.default_branch,
+        resolvedRef: null,
       };
     }
 
@@ -188,7 +196,7 @@ export class OctokitGitHubRepositoryResolver implements GitHubRepositoryResolver
     branchName: string;
   }): Promise<GitHubRepositoryResolution> {
     try {
-      await this.client.repos.getBranch({
+      const response = await this.client.repos.getBranch({
         owner: args.owner,
         repo: args.repo,
         branch: args.branchName,
@@ -200,6 +208,7 @@ export class OctokitGitHubRepositoryResolver implements GitHubRepositoryResolver
         targetRef: args.branchName,
         targetRefKind: 'branch',
         defaultBranch: args.defaultBranch,
+        resolvedRef: response.data.commit.sha,
       };
     } catch (error) {
       if (readErrorStatus(error) === 404) {
@@ -225,7 +234,7 @@ export class OctokitGitHubRepositoryResolver implements GitHubRepositoryResolver
     tagName: string;
   }): Promise<GitHubRepositoryResolution> {
     try {
-      await this.client.git.getRef({
+      const response = await this.client.git.getRef({
         owner: args.owner,
         repo: args.repo,
         ref: `tags/${args.tagName}`,
@@ -237,6 +246,7 @@ export class OctokitGitHubRepositoryResolver implements GitHubRepositoryResolver
         targetRef: args.tagName,
         targetRefKind: 'tag',
         defaultBranch: args.defaultBranch,
+        resolvedRef: response.data.object.sha,
       };
     } catch (error) {
       if (readErrorStatus(error) === 404) {
@@ -262,7 +272,7 @@ export class OctokitGitHubRepositoryResolver implements GitHubRepositoryResolver
     commitish: string;
   }): Promise<GitHubRepositoryResolution> {
     try {
-      await this.client.repos.getCommit({
+      const response = await this.client.repos.getCommit({
         owner: args.owner,
         repo: args.repo,
         ref: args.commitish,
@@ -274,6 +284,7 @@ export class OctokitGitHubRepositoryResolver implements GitHubRepositoryResolver
         targetRef: args.commitish,
         targetRefKind: 'commit',
         defaultBranch: args.defaultBranch,
+        resolvedRef: response.data.sha,
       };
     } catch (error) {
       if (readErrorStatus(error) === 404) {

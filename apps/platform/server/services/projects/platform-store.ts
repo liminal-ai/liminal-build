@@ -92,6 +92,11 @@ export type UpdateSourceAttachmentRecord = {
   targetRef: string | null;
   hydrationState?: SourceAttachmentSummary['hydrationState'];
   freshnessReason?: string | null;
+  lastHydratedAt?: string | null;
+  lastHydratedResolvedRef?: string | null;
+  lastObservedRemoteResolvedRef?: string | null;
+  refreshStatus?: 'idle' | 'pending' | 'failed';
+  refreshRequestedAt?: string | null;
 };
 
 export interface WorkingSetPlan {
@@ -1156,12 +1161,12 @@ export class NullPlatformStore implements PlatformStore {
       repositoryFullName: 'placeholder/updated-source',
       targetRef: args.targetRef,
       hydrationState: args.hydrationState ?? 'not_hydrated',
-      lastHydratedAt: null,
-      lastHydratedResolvedRef: null,
-      lastObservedRemoteResolvedRef: null,
+      lastHydratedAt: args.lastHydratedAt ?? null,
+      lastHydratedResolvedRef: args.lastHydratedResolvedRef ?? null,
+      lastObservedRemoteResolvedRef: args.lastObservedRemoteResolvedRef ?? null,
       freshnessReason: args.freshnessReason ?? null,
-      refreshStatus: 'idle',
-      refreshRequestedAt: null,
+      refreshStatus: args.refreshStatus ?? 'idle',
+      refreshRequestedAt: args.refreshRequestedAt ?? null,
       attachmentScope: 'project',
       processId: null,
       processDisplayLabel: null,
@@ -2578,10 +2583,26 @@ export class InMemoryPlatformStore implements PlatformStore {
       accessMode: args.accessMode,
       targetRef: args.targetRef,
       hydrationState: args.hydrationState ?? existingAttachment.hydrationState,
+      lastHydratedAt:
+        args.lastHydratedAt === undefined ? existingAttachment.lastHydratedAt : args.lastHydratedAt,
+      lastHydratedResolvedRef:
+        args.lastHydratedResolvedRef === undefined
+          ? existingAttachment.lastHydratedResolvedRef
+          : args.lastHydratedResolvedRef,
+      lastObservedRemoteResolvedRef:
+        args.lastObservedRemoteResolvedRef === undefined
+          ? existingAttachment.lastObservedRemoteResolvedRef
+          : args.lastObservedRemoteResolvedRef,
       freshnessReason:
         args.freshnessReason === undefined
           ? existingAttachment.freshnessReason
           : args.freshnessReason,
+      refreshStatus:
+        args.refreshStatus === undefined ? existingAttachment.refreshStatus : args.refreshStatus,
+      refreshRequestedAt:
+        args.refreshRequestedAt === undefined
+          ? existingAttachment.refreshRequestedAt
+          : args.refreshRequestedAt,
       updatedAt: new Date().toISOString(),
     };
 

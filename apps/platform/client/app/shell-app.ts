@@ -25,11 +25,13 @@ export interface ShellAppOptions {
     sourceAttachmentId: string,
     input: UpdateSourceAttachmentRequest,
   ) => Promise<void>;
+  onRefreshProjectSource?: (sourceAttachmentId: string) => Promise<void>;
   onAttachProcessSource?: (
     projectId: string,
     processId: string,
     input: CreateSourceAttachmentRequest,
   ) => Promise<void>;
+  onRefreshProcessSource?: (projectId: string, sourceAttachmentId: string) => Promise<void>;
   onOpenCreateProcess: () => void;
   onCancelCreateProcess: () => void;
   onOpenProject: (projectId: string) => void;
@@ -129,6 +131,7 @@ export function createShellApp(options: ShellAppOptions) {
                   void options.onRetryLiveSubscription(projectId, processId);
                 },
                 onAttachSource: options.onAttachProcessSource,
+                onRefreshSource: options.onRefreshProcessSource,
               })
             : renderProjectShellPage({
                 store: options.store,
@@ -138,6 +141,7 @@ export function createShellApp(options: ShellAppOptions) {
                 onCreateProcess: options.onCreateProcess,
                 onAttachSource: options.onAttachProjectSource,
                 onUpdateSource: options.onUpdateProjectSource,
+                onRefreshSource: options.onRefreshProjectSource,
                 onCancelCreateProcess: options.onCancelCreateProcess,
                 onOpenCreateProcess: options.onOpenCreateProcess,
               });
