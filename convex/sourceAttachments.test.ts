@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { listProjectSourceAttachmentSummaries } from './sourceAttachments.js';
+import {
+  createProjectSourceAttachment,
+  listProjectSourceAttachmentSummaries,
+} from './sourceAttachments.js';
 import { createFakeConvexContext } from './test_helpers/fake_convex_context.js';
 
 function getHandler<TArgs, TReturn>(
@@ -35,6 +38,19 @@ const listProjectSourceAttachmentSummariesHandler = getHandler<
   { projectId: string },
   SourceAttachmentSummaryShape[]
 >(listProjectSourceAttachmentSummaries);
+const createProjectSourceAttachmentHandler = getHandler<
+  {
+    projectId: string;
+    provider: 'github';
+    displayName: string;
+    purpose: 'research' | 'review' | 'implementation' | 'other';
+    accessMode: 'read_only' | 'read_write';
+    repositoryUrl: string;
+    repositoryFullName: string;
+    targetRef: string | null;
+  },
+  SourceAttachmentSummaryShape
+>(createProjectSourceAttachment);
 
 function buildSourceAttachmentsSeed() {
   return {
@@ -267,5 +283,46 @@ describe('convex/sourceAttachments summaries', () => {
     expect(readOnly).toHaveLength(2);
     expect(readWrite).toHaveLength(1);
     expect(readWrite[0]?.sourceAttachmentId).toBe('source-writable-process-1');
+  });
+
+  it('TC-1.3b treats missing target ref as a duplicate missing target ref', async () => {
+    const { ctx, db } = createFakeConvexContext(buildSourceAttachmentsSeed());
+
+    await createProjectSourceAttachmentHandler(ctx, {
+      projectId: 'project-sources-1',
+      provider: 'github',
+      displayName: 'missing-target-ref',
+      purpose: 'research',
+      accessMode: 'read_only',
+      repositoryUrl: 'https://github.com/liminal-ai/missing-target-ref',
+      repositoryFullName: 'liminal-ai/missing-target-ref',
+      targetRef: null,
+    });
+
+    await expect(
+      createProjectSourceAttachmentHandler(ctx, {
+        projectId: 'project-sources-1',
+        provider: 'github',
+        displayName: 'missing-target-ref duplicate',
+        purpose: 'research',
+        accessMode: 'read_only',
+        repositoryUrl: 'https://github.com/liminal-ai/missing-target-ref',
+        repositoryFullName: 'liminal-ai/missing-target-ref',
+        targetRef: null,
+      }),
+    ).rejects.toThrow('SOURCE_ATTACHMENT_CONFLICT');
+
+    const duplicates = db
+      .list('sourceAttachments')
+      .filter(
+        (sourceAttachment) =>
+          sourceAttachment.projectId === 'project-sources-1' &&
+          sourceAttachment.processId === null &&
+          sourceAttachment.repositoryFullName === 'liminal-ai/missing-target-ref' &&
+          sourceAttachment.targetRef === null &&
+          sourceAttachment.detachedAt === null,
+      );
+
+    expect(duplicates).toHaveLength(1);
   });
 });

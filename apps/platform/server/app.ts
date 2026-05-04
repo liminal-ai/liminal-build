@@ -14,6 +14,7 @@ import { registerAuthRoutes } from './routes/auth.js';
 import { registerProcessRoutes } from './routes/processes.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { registerReviewRoutes } from './routes/review.js';
+import { registerSourceManagementRoutes } from './routes/source-management.js';
 import { AuthSessionService } from './services/auth/auth-session.service.js';
 import { AuthUserSyncService } from './services/auth/auth-user-sync.service.js';
 import {
@@ -70,6 +71,14 @@ import { ProjectAccessService } from './services/projects/project-access.service
 import { ProjectCreateService } from './services/projects/project-create.service.js';
 import { ProjectIndexService } from './services/projects/project-index.service.js';
 import { ProjectShellService } from './services/projects/project-shell.service.js';
+import {
+  type GitHubRepositoryResolver,
+  OctokitGitHubRepositoryResolver,
+} from './services/sources/github-repository-resolver.js';
+import {
+  DefaultSourceManagementService,
+  type SourceManagementService,
+} from './services/sources/source-management.service.js';
 
 export interface CreateAppOptions {
   env?: ServerEnv;
@@ -93,6 +102,8 @@ export interface CreateAppOptions {
   processResponseService?: ProcessResponseService;
   processRegistrationService?: ProcessRegistrationService;
   processResumeService?: ProcessResumeService;
+  gitHubRepositoryResolver?: GitHubRepositoryResolver;
+  sourceManagementService?: SourceManagementService;
   exportService?: ExportService;
   artifactReviewService?: ArtifactReviewService;
   packageReviewService?: PackageReviewService;
@@ -132,6 +143,7 @@ declare module 'fastify' {
     processResponseService: ProcessResponseService;
     processRegistrationService: ProcessRegistrationService;
     processResumeService: ProcessResumeService;
+    sourceManagementService: SourceManagementService;
     exportService: ExportService;
     artifactReviewService: ArtifactReviewService;
     packageReviewService: PackageReviewService;
@@ -201,6 +213,20 @@ export async function createApp(options: CreateAppOptions = {}) {
   const processResponseService =
     options.processResponseService ??
     new ProcessResponseService(platformStore, processAccessService, processLiveHub);
+  const gitHubRepositoryResolver =
+    options.gitHubRepositoryResolver ??
+    new OctokitGitHubRepositoryResolver({
+      token: env.GITHUB_TOKEN,
+    });
+  const sourceManagementService =
+    options.sourceManagementService ??
+    new DefaultSourceManagementService(
+      platformStore as PlatformStore & {
+        createProjectSourceAttachment: NonNullable<PlatformStore['createProjectSourceAttachment']>;
+        createProcessSourceAttachment: NonNullable<PlatformStore['createProcessSourceAttachment']>;
+      },
+      gitHubRepositoryResolver,
+    );
   // Test seam: when a single `providerAdapter` is supplied, the registry
   // resolves every providerKind to that adapter so existing tests that pass
   // `FailingProviderAdapter` etc. continue to work. Production wires real
@@ -295,6 +321,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.decorate('processResponseService', processResponseService);
   app.decorate('processRegistrationService', processRegistrationService);
   app.decorate('processResumeService', processResumeService);
+  app.decorate('sourceManagementService', sourceManagementService);
   app.decorate('exportService', exportService);
   app.decorate('artifactReviewService', artifactReviewService);
   app.decorate('packageReviewService', packageReviewService);
@@ -318,6 +345,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   await app.register(registerProjectRoutes);
   await app.register(registerProcessRoutes);
   await app.register(registerReviewRoutes);
+  await app.register(registerSourceManagementRoutes);
 
   app.get('/health', async () => {
     return {

@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import type { Doc, Id } from './_generated/dataModel.js';
-import { type QueryCtx, query } from './_generated/server.js';
+import { type MutationCtx, mutation, type QueryCtx, query } from './_generated/server.js';
 
 export const sourceAttachmentsTableFields = {
   projectId: v.string(),
@@ -85,3 +85,378 @@ export const listProjectSourceAttachmentSummaries = query({
     );
   },
 });
+
+export const createProjectSourceAttachment = mutation({
+  args: {
+    projectId: v.string(),
+    provider: v.literal('github'),
+    displayName: v.string(),
+    purpose: v.union(
+      v.literal('research'),
+      v.literal('review'),
+      v.literal('implementation'),
+      v.literal('other'),
+    ),
+    accessMode: v.union(v.literal('read_only'), v.literal('read_write')),
+    repositoryUrl: v.string(),
+    repositoryFullName: v.string(),
+    targetRef: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx: MutationCtx, args) => {
+    const now = new Date().toISOString();
+    const sourceAttachmentId = await createSourceAttachmentRecord(ctx, {
+      ...args,
+      processId: null,
+      now,
+    });
+
+    const sourceAttachment = await ctx.db.get(sourceAttachmentId);
+
+    if (sourceAttachment === null) {
+      throw new Error('Source attachment could not be loaded after creation.');
+    }
+
+    return buildSourceAttachmentSummary(ctx, sourceAttachment);
+  },
+});
+
+export const createProcessSourceAttachment = mutation({
+  args: {
+    projectId: v.string(),
+    processId: v.string(),
+    provider: v.literal('github'),
+    displayName: v.string(),
+    purpose: v.union(
+      v.literal('research'),
+      v.literal('review'),
+      v.literal('implementation'),
+      v.literal('other'),
+    ),
+    accessMode: v.union(v.literal('read_only'), v.literal('read_write')),
+    repositoryUrl: v.string(),
+    repositoryFullName: v.string(),
+    targetRef: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx: MutationCtx, args) => {
+    const now = new Date().toISOString();
+    const processRecord = await getProcessRecord(ctx, args.processId);
+
+    if (processRecord === null || processRecord.projectId !== args.projectId) {
+      throw new Error('Process not found.');
+    }
+
+    const sourceAttachmentId = await createSourceAttachmentRecord(ctx, {
+      ...args,
+      processId: args.processId,
+      now,
+    });
+
+    await appendCurrentProcessSourceRef(ctx, {
+      processRecord,
+      sourceAttachmentId: sourceAttachmentId as Id<'sourceAttachments'>,
+      updatedAt: now,
+    });
+
+    const sourceAttachment = await ctx.db.get(sourceAttachmentId);
+
+    if (sourceAttachment === null) {
+      throw new Error('Source attachment could not be loaded after creation.');
+    }
+
+    return buildSourceAttachmentSummary(ctx, sourceAttachment);
+  },
+});
+
+async function buildSourceAttachmentSummary(
+  ctx: QueryCtx | MutationCtx,
+  sourceAttachment: Doc<'sourceAttachments'>,
+) {
+  const attachedProcess =
+    sourceAttachment.processId === null
+      ? null
+      : await ctx.db.get(sourceAttachment.processId as Id<'processes'>);
+
+  return {
+    sourceAttachmentId: sourceAttachment._id,
+    provider: sourceAttachment.provider,
+    displayName: sourceAttachment.displayName,
+    purpose: sourceAttachment.purpose,
+    accessMode: sourceAttachment.accessMode,
+    repositoryUrl: sourceAttachment.repositoryUrl,
+    repositoryFullName: sourceAttachment.repositoryFullName,
+    targetRef: sourceAttachment.targetRef,
+    hydrationState: sourceAttachment.hydrationState,
+    lastHydratedAt: sourceAttachment.lastHydratedAt,
+    lastHydratedResolvedRef: sourceAttachment.lastHydratedResolvedRef,
+    lastObservedRemoteResolvedRef: sourceAttachment.lastObservedRemoteResolvedRef,
+    freshnessReason: sourceAttachment.freshnessReason,
+    refreshStatus: sourceAttachment.refreshStatus,
+    refreshRequestedAt: sourceAttachment.refreshRequestedAt,
+    attachmentScope: sourceAttachment.processId === null ? 'project' : 'process',
+    processId: sourceAttachment.processId,
+    processDisplayLabel: attachedProcess?.displayLabel ?? null,
+    detachedAt: sourceAttachment.detachedAt,
+    updatedAt: sourceAttachment.updatedAt,
+  };
+}
+
+async function createSourceAttachmentRecord(
+  ctx: MutationCtx,
+  args: {
+    projectId: string;
+    processId: string | null;
+    provider: 'github';
+    displayName: string;
+    purpose: 'research' | 'review' | 'implementation' | 'other';
+    accessMode: 'read_only' | 'read_write';
+    repositoryUrl: string;
+    repositoryFullName: string;
+    targetRef: string | null;
+    now: string;
+  },
+): Promise<Id<'sourceAttachments'>> {
+  await assertNoActiveDuplicate(ctx, {
+    projectId: args.projectId,
+    processId: args.processId,
+    repositoryFullName: args.repositoryFullName,
+    targetRef: args.targetRef,
+  });
+
+  const sourceAttachmentId = await ctx.db.insert('sourceAttachments', {
+    projectId: args.projectId,
+    processId: args.processId,
+    provider: args.provider,
+    displayName: args.displayName,
+    purpose: args.purpose,
+    accessMode: args.accessMode,
+    repositoryUrl: args.repositoryUrl,
+    repositoryFullName: args.repositoryFullName,
+    targetRef: args.targetRef,
+    hydrationState: 'not_hydrated',
+    lastHydratedAt: null,
+    lastHydratedResolvedRef: null,
+    lastObservedRemoteResolvedRef: null,
+    freshnessReason: null,
+    refreshStatus: 'idle',
+    refreshRequestedAt: null,
+    detachedAt: null,
+    detachedByUserId: null,
+    updatedAt: args.now,
+  });
+
+  if (args.processId === null) {
+    await touchProject(ctx, args.projectId as Id<'projects'>, args.now);
+  } else {
+    const processRecord = await getProcessRecord(ctx, args.processId);
+
+    if (processRecord !== null) {
+      await touchProcessAndProject(ctx, processRecord, args.now);
+    }
+  }
+
+  return sourceAttachmentId;
+}
+
+async function assertNoActiveDuplicate(
+  ctx: MutationCtx,
+  args: {
+    projectId: string;
+    processId: string | null;
+    repositoryFullName: string;
+    targetRef: string | null;
+  },
+): Promise<void> {
+  const duplicates = await ctx.db
+    .query('sourceAttachments')
+    .withIndex('by_projectId_processId_repositoryFullName_targetRef', (indexQuery) =>
+      indexQuery
+        .eq('projectId', args.projectId)
+        .eq('processId', args.processId)
+        .eq('repositoryFullName', args.repositoryFullName)
+        .eq('targetRef', args.targetRef),
+    )
+    .take(10);
+
+  if (duplicates.some((attachment) => attachment.detachedAt === null)) {
+    throw new Error('SOURCE_ATTACHMENT_CONFLICT');
+  }
+}
+
+async function appendCurrentProcessSourceRef(
+  ctx: MutationCtx,
+  args: {
+    processRecord: Doc<'processes'>;
+    sourceAttachmentId: Id<'sourceAttachments'>;
+    updatedAt: string;
+  },
+): Promise<void> {
+  const existingSourceAttachmentIds = await resolveCurrentProcessSourceAttachmentIds(
+    ctx,
+    args.processRecord,
+  );
+  const nextSourceAttachmentIds = dedupeIds([
+    ...existingSourceAttachmentIds,
+    args.sourceAttachmentId,
+  ]);
+
+  await writeCurrentProcessSourceAttachmentIds(ctx, args.processRecord, {
+    sourceAttachmentIds: nextSourceAttachmentIds,
+    updatedAt: args.updatedAt,
+  });
+  await touchProcessAndProject(ctx, args.processRecord, args.updatedAt);
+}
+
+async function resolveCurrentProcessSourceAttachmentIds(
+  ctx: MutationCtx,
+  processRecord: Doc<'processes'>,
+): Promise<Id<'sourceAttachments'>[]> {
+  switch (processRecord.processType) {
+    case 'ProductDefinition': {
+      const state = await ctx.db
+        .query('processProductDefinitionStates')
+        .withIndex('by_processId', (query) => query.eq('processId', processRecord._id))
+        .unique();
+      return state?.currentSourceAttachmentIds ?? [];
+    }
+    case 'FeatureSpecification': {
+      const state = await ctx.db
+        .query('processFeatureSpecificationStates')
+        .withIndex('by_processId', (query) => query.eq('processId', processRecord._id))
+        .unique();
+      return state?.currentSourceAttachmentIds ?? [];
+    }
+    case 'FeatureImplementation': {
+      const state = await ctx.db
+        .query('processFeatureImplementationStates')
+        .withIndex('by_processId', (query) => query.eq('processId', processRecord._id))
+        .unique();
+      return state?.currentSourceAttachmentIds ?? [];
+    }
+    default:
+      return [];
+  }
+}
+
+async function writeCurrentProcessSourceAttachmentIds(
+  ctx: MutationCtx,
+  processRecord: Doc<'processes'>,
+  args: {
+    sourceAttachmentIds: Id<'sourceAttachments'>[];
+    updatedAt: string;
+  },
+): Promise<void> {
+  switch (processRecord.processType) {
+    case 'ProductDefinition': {
+      const state = await ctx.db
+        .query('processProductDefinitionStates')
+        .withIndex('by_processId', (query) => query.eq('processId', processRecord._id))
+        .unique();
+
+      if (state === null) {
+        await ctx.db.insert('processProductDefinitionStates', {
+          processId: processRecord._id,
+          currentArtifactIds: [],
+          currentSourceAttachmentIds: args.sourceAttachmentIds,
+          createdAt: args.updatedAt,
+          updatedAt: args.updatedAt,
+        });
+        return;
+      }
+
+      await ctx.db.patch(state._id, {
+        currentSourceAttachmentIds: args.sourceAttachmentIds,
+        updatedAt: args.updatedAt,
+      });
+      return;
+    }
+    case 'FeatureSpecification': {
+      const state = await ctx.db
+        .query('processFeatureSpecificationStates')
+        .withIndex('by_processId', (query) => query.eq('processId', processRecord._id))
+        .unique();
+
+      if (state === null) {
+        await ctx.db.insert('processFeatureSpecificationStates', {
+          processId: processRecord._id,
+          currentArtifactIds: [],
+          currentSourceAttachmentIds: args.sourceAttachmentIds,
+          createdAt: args.updatedAt,
+          updatedAt: args.updatedAt,
+        });
+        return;
+      }
+
+      await ctx.db.patch(state._id, {
+        currentSourceAttachmentIds: args.sourceAttachmentIds,
+        updatedAt: args.updatedAt,
+      });
+      return;
+    }
+    case 'FeatureImplementation': {
+      const state = await ctx.db
+        .query('processFeatureImplementationStates')
+        .withIndex('by_processId', (query) => query.eq('processId', processRecord._id))
+        .unique();
+
+      if (state === null) {
+        await ctx.db.insert('processFeatureImplementationStates', {
+          processId: processRecord._id,
+          currentArtifactIds: [],
+          currentSourceAttachmentIds: args.sourceAttachmentIds,
+          createdAt: args.updatedAt,
+          updatedAt: args.updatedAt,
+        });
+        return;
+      }
+
+      await ctx.db.patch(state._id, {
+        currentSourceAttachmentIds: args.sourceAttachmentIds,
+        updatedAt: args.updatedAt,
+      });
+      return;
+    }
+    default:
+      return;
+  }
+}
+
+async function getProcessRecord(
+  ctx: MutationCtx,
+  processId: string,
+): Promise<Doc<'processes'> | null> {
+  try {
+    return await ctx.db.get(processId as Id<'processes'>);
+  } catch {
+    return null;
+  }
+}
+
+async function touchProject(
+  ctx: MutationCtx,
+  projectId: Id<'projects'>,
+  now: string,
+): Promise<void> {
+  try {
+    await ctx.db.patch(projectId, {
+      lastUpdatedAt: now,
+      updatedAt: now,
+    });
+  } catch {
+    // Keep the durable source attachment even if the project row lookup is stale.
+  }
+}
+
+async function touchProcessAndProject(
+  ctx: MutationCtx,
+  processRecord: Doc<'processes'>,
+  now: string,
+): Promise<void> {
+  await ctx.db.patch(processRecord._id, {
+    updatedAt: now,
+  });
+  await touchProject(ctx, processRecord.projectId as Id<'projects'>, now);
+}
+
+function dedupeIds<TId extends string>(ids: TId[]): TId[] {
+  return [...new Set(ids)];
+}

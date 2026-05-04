@@ -73,6 +73,17 @@ export interface CurrentProcessMaterialRefs {
   sourceAttachmentIds: string[];
 }
 
+export type CreateSourceAttachmentRecord = {
+  projectId: string;
+  provider: SourceAttachmentSummary['provider'];
+  displayName: string;
+  purpose: SourceAttachmentSummary['purpose'];
+  accessMode: SourceAttachmentSummary['accessMode'];
+  repositoryUrl: string;
+  repositoryFullName: string;
+  targetRef: string | null;
+};
+
 export interface WorkingSetPlan {
   artifactIds: string[];
   sourceAttachmentIds: string[];
@@ -213,6 +224,12 @@ export interface PlatformStore {
     artifactIds: string[];
   }): Promise<ArtifactSummary[]>;
   listProjectSourceAttachments(args: { projectId: string }): Promise<SourceAttachmentSummary[]>;
+  createProjectSourceAttachment?(
+    args: CreateSourceAttachmentRecord,
+  ): Promise<SourceAttachmentSummary>;
+  createProcessSourceAttachment?(
+    args: CreateSourceAttachmentRecord & { processId: string },
+  ): Promise<SourceAttachmentSummary>;
   listProcessHistoryItems(args: { processId: string }): Promise<ProcessHistoryItem[]>;
   appendProcessHistoryItem(args: {
     processId: string;
@@ -527,6 +544,18 @@ const listProjectSourceAttachmentsQuery = makeFunctionReference<
   { projectId: string },
   SourceAttachmentSummary[]
 >('sourceAttachments:listProjectSourceAttachmentSummaries');
+
+const createProjectSourceAttachmentMutation = makeFunctionReference<
+  'mutation',
+  CreateSourceAttachmentRecord,
+  SourceAttachmentSummary
+>('sourceAttachments:createProjectSourceAttachment');
+
+const createProcessSourceAttachmentMutation = makeFunctionReference<
+  'mutation',
+  CreateSourceAttachmentRecord & { processId: string },
+  SourceAttachmentSummary
+>('sourceAttachments:createProcessSourceAttachment');
 
 const listProcessHistoryItemsQuery = makeFunctionReference<
   'query',
@@ -1026,6 +1055,62 @@ export class NullPlatformStore implements PlatformStore {
     return [];
   }
 
+  async createProjectSourceAttachment(
+    args: CreateSourceAttachmentRecord,
+  ): Promise<SourceAttachmentSummary> {
+    const now = new Date().toISOString();
+    return {
+      sourceAttachmentId: `source:${args.projectId}:1`,
+      provider: args.provider,
+      displayName: args.displayName,
+      purpose: args.purpose,
+      accessMode: args.accessMode,
+      repositoryUrl: args.repositoryUrl,
+      repositoryFullName: args.repositoryFullName,
+      targetRef: args.targetRef,
+      hydrationState: 'not_hydrated',
+      lastHydratedAt: null,
+      lastHydratedResolvedRef: null,
+      lastObservedRemoteResolvedRef: null,
+      freshnessReason: null,
+      refreshStatus: 'idle',
+      refreshRequestedAt: null,
+      attachmentScope: 'project',
+      processId: null,
+      processDisplayLabel: null,
+      detachedAt: null,
+      updatedAt: now,
+    };
+  }
+
+  async createProcessSourceAttachment(
+    args: CreateSourceAttachmentRecord & { processId: string },
+  ): Promise<SourceAttachmentSummary> {
+    const now = new Date().toISOString();
+    return {
+      sourceAttachmentId: `source:${args.processId}:1`,
+      provider: args.provider,
+      displayName: args.displayName,
+      purpose: args.purpose,
+      accessMode: args.accessMode,
+      repositoryUrl: args.repositoryUrl,
+      repositoryFullName: args.repositoryFullName,
+      targetRef: args.targetRef,
+      hydrationState: 'not_hydrated',
+      lastHydratedAt: null,
+      lastHydratedResolvedRef: null,
+      lastObservedRemoteResolvedRef: null,
+      freshnessReason: null,
+      refreshStatus: 'idle',
+      refreshRequestedAt: null,
+      attachmentScope: 'process',
+      processId: args.processId,
+      processDisplayLabel: null,
+      detachedAt: null,
+      updatedAt: now,
+    };
+  }
+
   async listProcessHistoryItems(): Promise<ProcessHistoryItem[]> {
     return [];
   }
@@ -1426,6 +1511,22 @@ export class ConvexPlatformStore implements PlatformStore {
     projectId: string;
   }): Promise<SourceAttachmentSummary[]> {
     return this.client.query(listProjectSourceAttachmentsQuery, args);
+  }
+
+  async createProjectSourceAttachment(
+    args: CreateSourceAttachmentRecord,
+  ): Promise<SourceAttachmentSummary> {
+    return this.client.mutation(createProjectSourceAttachmentMutation, args, {
+      skipQueue: true,
+    });
+  }
+
+  async createProcessSourceAttachment(
+    args: CreateSourceAttachmentRecord & { processId: string },
+  ): Promise<SourceAttachmentSummary> {
+    return this.client.mutation(createProcessSourceAttachmentMutation, args, {
+      skipQueue: true,
+    });
   }
 
   async listProcessHistoryItems(args: { processId: string }): Promise<ProcessHistoryItem[]> {
@@ -1944,6 +2045,69 @@ export class InMemoryPlatformStore implements PlatformStore {
     return null;
   }
 
+  private buildStoredSourceAttachment(
+    args: CreateSourceAttachmentRecord & { processId: string | null },
+  ): SourceAttachmentSummary {
+    const now = new Date().toISOString();
+    const processRecord = args.processId === null ? null : this.findProcessRecord(args.processId);
+
+    return {
+      sourceAttachmentId: `${args.projectId}:source-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      provider: args.provider,
+      displayName: args.displayName,
+      purpose: args.purpose,
+      accessMode: args.accessMode,
+      repositoryUrl: args.repositoryUrl,
+      repositoryFullName: args.repositoryFullName,
+      targetRef: args.targetRef,
+      hydrationState: 'not_hydrated',
+      lastHydratedAt: null,
+      lastHydratedResolvedRef: null,
+      lastObservedRemoteResolvedRef: null,
+      freshnessReason: null,
+      refreshStatus: 'idle',
+      refreshRequestedAt: null,
+      attachmentScope: args.processId === null ? 'project' : 'process',
+      processId: args.processId,
+      processDisplayLabel: processRecord?.displayLabel ?? null,
+      detachedAt: null,
+      updatedAt: now,
+    };
+  }
+
+  private appendSourceAttachment(
+    projectId: string,
+    sourceAttachment: SourceAttachmentSummary,
+  ): void {
+    const existing = this.sourceAttachmentsByProjectId.get(projectId) ?? [];
+    this.sourceAttachmentsByProjectId.set(projectId, [sourceAttachment, ...existing]);
+    this.bumpProjectSourceAttachmentCount(projectId);
+  }
+
+  private bumpProjectSourceAttachmentCount(projectId: string): void {
+    const nextCount = this.sourceAttachmentsByProjectId.get(projectId)?.length ?? 0;
+
+    for (const [userId, projects] of this.projectsByUserId.entries()) {
+      const nextProjects = projects.map((project) =>
+        project.projectId === projectId
+          ? { ...project, sourceAttachmentCount: nextCount }
+          : project,
+      );
+      this.projectsByUserId.set(userId, nextProjects);
+    }
+
+    const access = this.accessByProjectId.get(projectId);
+    if (access?.kind === 'accessible') {
+      this.accessByProjectId.set(projectId, {
+        ...access,
+        project: {
+          ...access.project,
+          sourceAttachmentCount: nextCount,
+        },
+      });
+    }
+  }
+
   private computeCurrentWorkingSetFingerprint(processId: string): string | null {
     const processRecord = this.findProcessRecord(processId);
 
@@ -2243,7 +2407,47 @@ export class InMemoryPlatformStore implements PlatformStore {
   async listProjectSourceAttachments(args: {
     projectId: string;
   }): Promise<SourceAttachmentSummary[]> {
-    return this.sourceAttachmentsByProjectId.get(args.projectId) ?? [];
+    return [...(this.sourceAttachmentsByProjectId.get(args.projectId) ?? [])];
+  }
+
+  async createProjectSourceAttachment(
+    args: CreateSourceAttachmentRecord,
+  ): Promise<SourceAttachmentSummary> {
+    const attachment = this.buildStoredSourceAttachment({
+      ...args,
+      processId: null,
+    });
+    this.appendSourceAttachment(args.projectId, attachment);
+    return attachment;
+  }
+
+  async createProcessSourceAttachment(
+    args: CreateSourceAttachmentRecord & { processId: string },
+  ): Promise<SourceAttachmentSummary> {
+    const processRecord = await this.getProcessRecord({
+      processId: args.processId,
+    });
+
+    if (processRecord === null || processRecord.projectId !== args.projectId) {
+      throw new Error('Process not found.');
+    }
+
+    const attachment = this.buildStoredSourceAttachment(args);
+    this.appendSourceAttachment(args.projectId, attachment);
+
+    const existingRefs = await this.getCurrentProcessMaterialRefs({
+      processId: args.processId,
+    });
+
+    this.currentMaterialRefsByProcessId.set(args.processId, {
+      artifactIds: [...existingRefs.artifactIds],
+      sourceAttachmentIds: dedupeStringIds([
+        ...existingRefs.sourceAttachmentIds,
+        attachment.sourceAttachmentId,
+      ]),
+    });
+
+    return attachment;
   }
 
   async listProcessHistoryItems(args: { processId: string }): Promise<ProcessHistoryItem[]> {
@@ -3225,6 +3429,10 @@ function resolveLifecycleAvailableActions(
     case 'interrupted':
       return ['resume', 'review', 'rehydrate', 'restart'];
   }
+}
+
+function dedupeStringIds(ids: string[]): string[] {
+  return [...new Set(ids)];
 }
 
 export function buildEmptyProjectShellResponse(project: ProjectSummary): ProjectShellResponse {
