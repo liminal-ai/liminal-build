@@ -12,6 +12,7 @@ import {
   projectSummarySchema,
   type ArchiveEntry,
   type DerivedArchiveViewListResponse,
+  requestErrorSchema,
 } from '../../../apps/platform/shared/contracts/index.js';
 import {
   degradedArchiveEntryFixture,
@@ -49,6 +50,12 @@ const processSummary = processSummarySchema.parse({
   processId,
   displayLabel: 'Archive replay process',
   updatedAt: '2026-05-05T09:05:00.000Z',
+});
+
+const derivedViewsBootstrapFailure = requestErrorSchema.parse({
+  code: 'PROCESS_ACTION_FAILED',
+  message: 'Derived views are unavailable right now. Reload the page or try again later.',
+  status: 500,
 });
 
 const accessibleProcessAccess = {
@@ -155,6 +162,7 @@ function buildArchiveStore() {
       archive: readyArchivePageFixture,
       turns: readyArchiveTurnPageFixture,
       derivedViews: readyDerivedArchiveViewsFixture,
+      derivedViewsError: null,
       isLoading: false,
       error: null,
     },
@@ -165,6 +173,7 @@ describe('derived archive view rendering', () => {
   it('renders structural boundaries and provenance for ready views', () => {
     const view = renderDerivedArchiveViewsSection({
       derivedViews: readyDerivedArchiveViewsFixture,
+      derivedViewsError: null,
       targetDocument: document,
     });
 
@@ -181,6 +190,7 @@ describe('derived archive view rendering', () => {
   it('renders degraded derived-view metadata from fixtures', () => {
     const view = renderDerivedArchiveViewsSection({
       derivedViews: readyDerivedArchiveViewsFixture,
+      derivedViewsError: null,
       targetDocument: document,
     });
 
@@ -193,6 +203,7 @@ describe('derived archive view rendering', () => {
     const response = await buildDerivedViewsFromService();
     const view = renderDerivedArchiveViewsSection({
       derivedViews: response.derivedViews,
+      derivedViewsError: null,
       targetDocument: document,
     });
 
@@ -214,6 +225,20 @@ describe('derived archive view rendering', () => {
     expect(
       view.querySelector('[data-derived-archive-view-status="degraded"]')?.textContent,
     ).toContain('Related artifact version is unavailable.');
+  });
+
+  it('renders a derived-view request failure without inventing structural view rows', () => {
+    const view = renderDerivedArchiveViewsSection({
+      derivedViews: null,
+      derivedViewsError: derivedViewsBootstrapFailure,
+      targetDocument: document,
+    });
+
+    expect(view.querySelector('[data-derived-archive-views-error="true"]')?.textContent).toContain(
+      derivedViewsBootstrapFailure.message,
+    );
+    expect(view.querySelector('[data-derived-archive-view-id]')).toBeNull();
+    expect(view.querySelector('[data-derived-archive-views-empty-state="true"]')).toBeNull();
   });
 
   it('renders the derived views section inside the archive page', () => {

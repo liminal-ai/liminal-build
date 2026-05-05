@@ -1,4 +1,7 @@
-import type { DerivedArchiveViewListResponse } from '../../../shared/contracts/index.js';
+import type {
+  DerivedArchiveViewListResponse,
+  RequestError,
+} from '../../../shared/contracts/index.js';
 
 function renderTurnRangeText(view: DerivedArchiveViewListResponse['views'][number]): string {
   if (view.turnRange === null) {
@@ -12,6 +15,7 @@ function renderTurnRangeText(view: DerivedArchiveViewListResponse['views'][numbe
 
 export function renderDerivedArchiveViewsSection(args: {
   derivedViews: DerivedArchiveViewListResponse | null;
+  derivedViewsError: RequestError | null;
   targetDocument: Document;
 }): HTMLElement {
   const section = args.targetDocument.createElement('section');
@@ -21,7 +25,18 @@ export function renderDerivedArchiveViewsSection(args: {
   title.textContent = 'Derived views';
   section.append(title);
 
-  if (args.derivedViews === null) {
+  const derivedViews = args.derivedViews;
+
+  if (derivedViews === null) {
+    if (args.derivedViewsError !== null) {
+      const error = args.targetDocument.createElement('p');
+      error.setAttribute('data-derived-archive-views-error', 'true');
+      error.setAttribute('role', 'alert');
+      error.textContent = args.derivedViewsError.message;
+      section.append(error);
+      return section;
+    }
+
     const loading = args.targetDocument.createElement('p');
     loading.textContent = 'Loading structural views...';
     section.append(loading);
@@ -30,10 +45,10 @@ export function renderDerivedArchiveViewsSection(args: {
 
   const pageState = args.targetDocument.createElement('p');
   pageState.setAttribute('data-derived-archive-views-state', 'true');
-  pageState.textContent = `Showing ${args.derivedViews.views.length} structural views.`;
+  pageState.textContent = `Showing ${derivedViews.views.length} structural views.`;
   section.append(pageState);
 
-  if (args.derivedViews.views.length === 0) {
+  if (derivedViews.views.length === 0) {
     const empty = args.targetDocument.createElement('p');
     empty.setAttribute('data-derived-archive-views-empty-state', 'true');
     empty.textContent = 'No derived archive views yet.';
@@ -43,7 +58,7 @@ export function renderDerivedArchiveViewsSection(args: {
 
   const list = args.targetDocument.createElement('ol');
 
-  for (const view of args.derivedViews.views) {
+  for (const view of derivedViews.views) {
     const item = args.targetDocument.createElement('li');
     const heading = args.targetDocument.createElement('strong');
     const boundary = args.targetDocument.createElement('p');

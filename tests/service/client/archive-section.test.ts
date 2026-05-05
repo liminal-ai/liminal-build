@@ -264,6 +264,7 @@ function buildArchiveStore() {
       archive: readyArchivePageFixture,
       turns: readyArchiveTurnPageFixture,
       derivedViews: readyDerivedArchiveViewsFixture,
+      derivedViewsError: null,
       isLoading: false,
       error: null,
     },

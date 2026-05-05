@@ -49,6 +49,7 @@ function buildArchiveStore() {
       archive: readyArchivePageFixture,
       turns: readyArchiveTurnPageFixture,
       derivedViews: readyDerivedArchiveViewsFixture,
+      derivedViewsError: null,
       isLoading: false,
       error: null,
     },
@@ -81,6 +82,24 @@ describe('archive turns rendering', () => {
     );
     expect(view.querySelector('[data-archive-turn-status="degraded"]')?.textContent).toContain(
       'Related artifact context was missing while rebuilding the turn.',
+    );
+  });
+
+  it('renders bounded turn page state when more turns are available', () => {
+    const view = renderArchiveTurnsSection({
+      turns: {
+        ...readyArchiveTurnPageFixture,
+        page: {
+          cursor: null,
+          nextCursor: '49',
+          hasMore: true,
+        },
+      },
+      targetDocument: document,
+    });
+
+    expect(view.querySelector('[data-archive-turn-page-state="true"]')?.textContent).toContain(
+      'More derived turns are available.',
     );
   });
 

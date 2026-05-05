@@ -19,6 +19,7 @@ import {
 import {
   modelArchiveEntryFixture,
   processEventArchiveEntryFixture,
+  readyDerivedArchiveViewsFixture,
   toolCallArchiveEntryFixture,
   toolResultArchiveEntryFixture,
   turnRangeDerivedArchiveViewFixture,
@@ -196,6 +197,12 @@ class ConflictDuringDerivedViewRefreshStore extends InMemoryPlatformStore {
   }
 }
 
+class StoredDerivedViewsOnlyStore extends InMemoryPlatformStore {
+  override async listArchiveEntries(): Promise<never> {
+    throw new Error('Derived-view reload should reuse stored structural views.');
+  }
+}
+
 describe('derived archive view service and route', () => {
   it('TC-5.1a derived view returned for turn range', async () => {
     const app = await buildDerivedViewsApp(buildStore());
@@ -298,6 +305,90 @@ describe('derived archive view service and route', () => {
         }),
       ]),
     });
+
+    await app.close();
+  });
+
+  it('TC-7.1b derived view restores after reload from stored views when rebuild is unavailable', async () => {
+    const store = new StoredDerivedViewsOnlyStore({
+      accessibleProjectsByUserId: {
+        [`user:${actor.workosUserId}`]: [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectId]: [processSummary],
+      },
+      derivedArchiveViewsByProcessId: {
+        [processId]: readyDerivedArchiveViewsFixture.views,
+      },
+    });
+    const app = await buildDerivedViewsApp(store);
+    const storedViews = await store.listDerivedArchiveViews({ processId });
+
+    const first = await app.inject({
+      method: 'GET',
+      url: buildProcessDerivedArchiveViewsApiPath({ projectId, processId }),
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+    const second = await app.inject({
+      method: 'GET',
+      url: buildProcessDerivedArchiveViewsApiPath({ projectId, processId }),
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+    expect(first.json()).toEqual({
+      views: storedViews,
+    });
+    expect(second.json()).toEqual(first.json());
+
+    await app.close();
+  });
+
+  it('caps derived archive lists at 50 structural views', async () => {
+    const archiveEntries = Array.from({ length: 40 }, (_, index) => {
+      const sequenceBase = index * 2;
+
+      return [
+        makeArchiveEntry(userArchiveEntryFixture, {
+          archiveEntryId: `archive-entry-user-bounded-${index}`,
+          finalizationKey: `response:bounded-${index}`,
+          sourceObjectId: `history-bounded-${index}`,
+          bodyText: `User message ${index}`,
+          sequence: sequenceBase,
+          recordedAt: `2026-05-01T13:${String(index).padStart(2, '0')}:00.000Z`,
+        }),
+        makeArchiveEntry(modelArchiveEntryFixture, {
+          archiveEntryId: `archive-entry-model-bounded-${index}`,
+          finalizationKey: `model:bounded-${index}`,
+          sourceObjectId: `message-bounded-${index}`,
+          bodyText: `Model message ${index}`,
+          sequence: sequenceBase + 1,
+          recordedAt: `2026-05-01T13:${String(index).padStart(2, '0')}:01.000Z`,
+        }),
+      ];
+    }).flat();
+    const app = await buildDerivedViewsApp(buildStore({ archiveEntries }));
+    const response = await app.inject({
+      method: 'GET',
+      url: buildProcessDerivedArchiveViewsApiPath({ projectId, processId }),
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().views).toHaveLength(50);
 
     await app.close();
   });

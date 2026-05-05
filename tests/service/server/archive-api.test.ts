@@ -11,7 +11,9 @@ import {
   type StoredSourceProvenanceRecord,
 } from '../../../apps/platform/server/services/projects/platform-store.js';
 import {
+  archiveEntrySchema,
   buildProcessArchiveApiPath,
+  buildProcessArchiveTurnsApiPath,
   buildProcessDerivedArchiveViewsRefreshApiPath,
   processSummarySchema,
   projectSummarySchema,
@@ -318,6 +320,58 @@ describe('archive API', () => {
     await app.close();
   });
 
+  it('TC-7.1a archive and turn reads restore after reload', async () => {
+    const store = buildStore();
+    const app = await buildArchiveApp(store);
+    const archiveUrl = buildProcessArchiveApiPath({ projectId, processId });
+    const turnsUrl = buildProcessArchiveTurnsApiPath({ projectId, processId });
+
+    const firstArchive = await app.inject({
+      method: 'GET',
+      url: archiveUrl,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+    const firstTurns = await app.inject({
+      method: 'GET',
+      url: turnsUrl,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+    const secondArchive = await app.inject({
+      method: 'GET',
+      url: archiveUrl,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+    const secondTurns = await app.inject({
+      method: 'GET',
+      url: turnsUrl,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(firstArchive.statusCode).toBe(200);
+    expect(secondArchive.statusCode).toBe(200);
+    expect(firstTurns.statusCode).toBe(200);
+    expect(secondTurns.statusCode).toBe(200);
+    expect(firstArchive.json()).toEqual(secondArchive.json());
+    expect(firstTurns.json()).toEqual(secondTurns.json());
+    expect(firstTurns.json()).toMatchObject({
+      turns: [
+        expect.objectContaining({
+          turnId: `${processId}:turn:0`,
+        }),
+      ],
+    });
+
+    await app.close();
+  });
+
   it('TC-3.3a unauthorized archive read blocked', async () => {
     const store = buildStore({
       access: 'forbidden',
@@ -411,6 +465,62 @@ describe('archive API', () => {
       code: 'INVALID_ARCHIVE_REQUEST',
       message: 'Archive pagination parameters were invalid.',
       status: 422,
+    });
+
+    await app.close();
+  });
+
+  it('TC-7.3a archive read returns a bounded page', async () => {
+    const archiveEntries = Array.from({ length: 105 }, (_, index) =>
+      archiveEntrySchema.parse({
+        ...userArchiveEntryFixture,
+        archiveEntryId: `archive-entry-bounded-${index}`,
+        finalizationKey: `response:bounded-${index}`,
+        sourceObjectId: `history-bounded-${index}`,
+        bodyText: `Bounded archive entry ${index}`,
+        sequence: index,
+        recordedAt: `2026-05-02T${String(Math.floor(index / 60)).padStart(2, '0')}:${String(index % 60).padStart(2, '0')}:00.000Z`,
+      }),
+    );
+    const store = buildStore({
+      archiveEntries,
+    });
+    const app = await buildArchiveApp(store);
+
+    const first = await app.inject({
+      method: 'GET',
+      url: buildProcessArchiveApiPath({ projectId, processId }),
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(first.statusCode).toBe(200);
+    expect(first.json()).toMatchObject({
+      entries: archiveEntries.slice(0, 100),
+      page: {
+        cursor: null,
+        nextCursor: '99',
+        hasMore: true,
+      },
+    });
+
+    const second = await app.inject({
+      method: 'GET',
+      url: `${buildProcessArchiveApiPath({ projectId, processId })}?cursor=99`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(second.statusCode).toBe(200);
+    expect(second.json()).toMatchObject({
+      entries: archiveEntries.slice(100),
+      page: {
+        cursor: '99',
+        nextCursor: null,
+        hasMore: false,
+      },
     });
 
     await app.close();

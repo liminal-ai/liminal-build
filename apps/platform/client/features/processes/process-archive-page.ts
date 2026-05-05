@@ -105,6 +105,7 @@ export function renderProcessArchivePage(args: {
   container.append(
     renderDerivedArchiveViewsSection({
       derivedViews: archiveSurface.derivedViews,
+      derivedViewsError: archiveSurface.derivedViewsError,
       targetDocument: args.targetDocument,
     }),
   );

@@ -317,6 +317,60 @@ describe('turn derivation service and route', () => {
     await app.close();
   });
 
+  it('returns a bounded turn page with hasMore metadata for long archives', async () => {
+    const archiveEntries = Array.from({ length: 55 }, (_, index) => {
+      const sequenceBase = index * 2;
+
+      return [
+        makeArchiveEntry(userArchiveEntryFixture, {
+          archiveEntryId: `archive-entry-user-turn-page-${index}`,
+          finalizationKey: `response:turn-page-${index}`,
+          sourceObjectId: `history-turn-page-${index}`,
+          bodyText: `Turn page user ${index}`,
+          sequence: sequenceBase,
+          recordedAt: `2026-05-01T14:${String(index).padStart(2, '0')}:00.000Z`,
+        }),
+        makeArchiveEntry(modelArchiveEntryFixture, {
+          archiveEntryId: `archive-entry-model-turn-page-${index}`,
+          finalizationKey: `model:turn-page-${index}`,
+          sourceObjectId: `message-turn-page-${index}`,
+          bodyText: `Turn page model ${index}`,
+          sequence: sequenceBase + 1,
+          recordedAt: `2026-05-01T14:${String(index).padStart(2, '0')}:01.000Z`,
+        }),
+      ];
+    }).flat();
+    const store = buildStore(archiveEntries);
+    const app = await buildTurnsApp(store);
+    const response = await app.inject({
+      method: 'GET',
+      url: buildProcessArchiveTurnsApiPath({ projectId, processId }),
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      turns: expect.arrayContaining([
+        expect.objectContaining({
+          turnId: `${processId}:turn:0`,
+        }),
+        expect.objectContaining({
+          turnId: `${processId}:turn:49`,
+        }),
+      ]),
+      page: {
+        cursor: null,
+        nextCursor: '49',
+        hasMore: true,
+      },
+    });
+    expect(response.json().turns).toHaveLength(50);
+
+    await app.close();
+  });
+
   it('pre-user-message entries form deterministic turn zero', async () => {
     const store = buildStore([
       makeArchiveEntry(processEventArchiveEntryFixture, {

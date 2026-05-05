@@ -161,6 +161,18 @@ function normalizeReviewWorkspaceBootstrapError(error: ApiRequestError): Request
   return error.payload;
 }
 
+function normalizeDerivedArchiveViewsBootstrapError(error: unknown): RequestError {
+  if (error instanceof ApiRequestError) {
+    return error.payload;
+  }
+
+  return {
+    code: 'PROCESS_ACTION_FAILED',
+    message: 'Derived views are unavailable right now. Reload the page or try again later.',
+    status: 500,
+  };
+}
+
 function buildProcessSourceReference(
   sourceAttachment: SourceAttachmentSummary,
 ): ProcessSourceReference {
@@ -1110,7 +1122,19 @@ export async function bootstrapApp(
       });
 
       try {
-        const [surface, archive, turns, derivedViews] = await Promise.all([
+        const derivedViewsPromise = getProcessDerivedArchiveViews({
+          projectId: parsedRoute.projectId ?? '',
+          processId: parsedRoute.processId ?? '',
+        })
+          .then((derivedViews) => ({
+            derivedViews,
+            derivedViewsError: null,
+          }))
+          .catch((error: unknown) => ({
+            derivedViews: null,
+            derivedViewsError: normalizeDerivedArchiveViewsBootstrapError(error),
+          }));
+        const [surface, archive, turns, derivedViewsResult] = await Promise.all([
           getProcessWorkSurface({
             projectId: parsedRoute.projectId ?? '',
             processId: parsedRoute.processId ?? '',
@@ -1123,10 +1147,7 @@ export async function bootstrapApp(
             projectId: parsedRoute.projectId ?? '',
             processId: parsedRoute.processId ?? '',
           }),
-          getProcessDerivedArchiveViews({
-            projectId: parsedRoute.projectId ?? '',
-            processId: parsedRoute.processId ?? '',
-          }),
+          derivedViewsPromise,
         ]);
 
         if (requestId !== routeLoadId) {
@@ -1141,7 +1162,8 @@ export async function bootstrapApp(
           process: surface.process,
           archive,
           turns,
-          derivedViews,
+          derivedViews: derivedViewsResult.derivedViews,
+          derivedViewsError: derivedViewsResult.derivedViewsError,
           isLoading: false,
           error: null,
         });

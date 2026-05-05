@@ -22,6 +22,7 @@ import type { TurnDerivationService } from './turn-derivation.service.js';
 
 const ARCHIVE_REBUILD_PAGE_LIMIT = 200;
 const CHUNK_CANDIDATE_GROUP_SIZE = 2;
+const MAX_DERIVED_ARCHIVE_VIEWS = 50;
 
 export interface DerivedArchiveViewService {
   listViews(args: {
@@ -40,7 +41,7 @@ export class DefaultDerivedArchiveViewService implements DerivedArchiveViewServi
   constructor(
     private readonly platformStore: Pick<
       PlatformStore,
-      'listArchiveEntries' | 'replaceDerivedArchiveViews'
+      'listArchiveEntries' | 'listDerivedArchiveViews' | 'replaceDerivedArchiveViews'
     >,
     private readonly turnDerivationService: Pick<TurnDerivationService, 'rebuildTurns'>,
     private readonly processAccessService: Pick<ProcessAccessService, 'assertProcessAccess'>,
@@ -57,19 +58,32 @@ export class DefaultDerivedArchiveViewService implements DerivedArchiveViewServi
       processId: args.processId,
     });
 
-    const turns = await this.turnDerivationService.rebuildTurns({
-      projectId: args.projectId,
-      processId: args.processId,
-    });
-    const views = buildDerivedArchiveViews(turns, args.processId);
+    try {
+      const turns = await this.turnDerivationService.rebuildTurns({
+        projectId: args.projectId,
+        processId: args.processId,
+      });
+      const views = limitDerivedArchiveViews(buildDerivedArchiveViews(turns, args.processId));
 
-    await this.platformStore.replaceDerivedArchiveViews({
-      projectId: args.projectId,
-      processId: args.processId,
-      views,
-    });
+      await this.platformStore.replaceDerivedArchiveViews({
+        projectId: args.projectId,
+        processId: args.processId,
+        views,
+      });
 
-    return derivedArchiveViewListResponseSchema.parse({ views });
+      return derivedArchiveViewListResponseSchema.parse({ views });
+    } catch (error) {
+      const storedViews = await this.platformStore.listDerivedArchiveViews({
+        processId: args.processId,
+      });
+      if (storedViews.length > 0) {
+        return derivedArchiveViewListResponseSchema.parse({
+          views: limitDerivedArchiveViews(storedViews),
+        });
+      }
+
+      throw error;
+    }
   }
 
   async refreshViews(args: {
@@ -104,7 +118,7 @@ export class DefaultDerivedArchiveViewService implements DerivedArchiveViewServi
       });
     }
 
-    const views = buildDerivedArchiveViews(turns, args.processId);
+    const views = limitDerivedArchiveViews(buildDerivedArchiveViews(turns, args.processId));
     await this.platformStore.replaceDerivedArchiveViews({
       projectId: args.projectId,
       processId: args.processId,
@@ -191,6 +205,10 @@ function buildDerivedArchiveViews(turns: DerivedTurn[], processId: string): Deri
   );
 
   return [...turnRangeViews, ...chunkCandidateViews];
+}
+
+function limitDerivedArchiveViews(views: DerivedArchiveView[]): DerivedArchiveView[] {
+  return views.slice(0, MAX_DERIVED_ARCHIVE_VIEWS);
 }
 
 function groupTurnsForChunkCandidates(turns: DerivedTurn[]): DerivedTurn[][] {

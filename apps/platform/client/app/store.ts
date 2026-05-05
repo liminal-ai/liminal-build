@@ -61,6 +61,7 @@ export const defaultAppState: AppState = appStateSchema.parse({
     archive: null,
     turns: null,
     derivedViews: null,
+    derivedViewsError: null,
     isLoading: false,
     error: null,
   },
