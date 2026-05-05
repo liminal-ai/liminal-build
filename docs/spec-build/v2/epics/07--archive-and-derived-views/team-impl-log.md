@@ -1,10 +1,10 @@
 # Team Implementation Log
 
 ## Run Overview
-- State: STORY_ACTIVE
+- State: PRE_EPIC_VERIFY
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views
 - Current Story: 07-reopen-and-degraded-archive-state
-- Current Phase: accept
+- Current Phase: none
 
 ## Run Configuration
 - Primary Harness: claude-code
@@ -192,7 +192,7 @@
   - none
 - Baseline Before: 39
 - Baseline After: 46
-- Commit: pending
+- Commit: 08e45a0
 
 ## Cumulative Baselines
 - Baseline Before Current Story: 39
