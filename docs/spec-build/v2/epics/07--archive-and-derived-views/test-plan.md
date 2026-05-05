@@ -3,8 +3,9 @@
 ## Purpose
 
 This test plan maps every Epic 7 test condition to planned tests. It verifies
-canonical archive append/read behavior, finalization boundaries, turn
-derivation, structural derived views, provenance enrichment, and degraded reads.
+canonical archive append/read behavior, finalization boundaries, archive read
+surfaces, turn derivation, structural derived views, provenance enrichment, and
+degraded reads.
 
 Related design: `docs/spec-build/v2/epics/07--archive-and-derived-views/tech-design.md`
 
@@ -19,11 +20,20 @@ Related design: `docs/spec-build/v2/epics/07--archive-and-derived-views/tech-des
 | Client service tests | `tests/service/client/archive-section.test.ts`, `tests/service/client/archive-turns-section.test.ts`, `tests/service/client/derived-archive-views.test.ts` | User-visible archive, turn, structural-view, empty, pagination, and degraded states |
 | Existing live/process tests | `tests/service/client/process-live.test.ts`, `tests/service/server/process-live-updates.test.ts`, `tests/service/server/process-execution-orchestrator.test.ts` | Ensure live upserts remain separate from archive finalization |
 
+### Scope Boundaries
+
+| Story | Owns | Does Not Prove |
+|-------|------|----------------|
+| 1 Archive persistence | Convex archive-entry primitive, taxonomy, sequence ordering, idempotency guard, related-id round-trip | Service finalization hooks, archive route/UI, read-time artifact/source enrichment |
+| 2 Finalization boundary | Service-level proof that completed live objects append exactly once and partial/delta objects do not append | Primitive storage mechanics beyond Story 1 contract, browser archive read surface |
+| 3 Archive read/reopen | Authenticated route/UI, reload/environment-loss reads, access checks, bounded page contract, displaying degraded entries already present in the response | Deep artifact/source provenance enrichment or lookup-failure degradation semantics |
+| 6 Provenance coherence | Artifact/source enrichment and per-entry lookup-failure degradation semantics | Replacing Story 3 route/UI, access, reload, or bounded-page behavior |
+
 ### Mock Boundaries
 
 | Boundary | Mock? | Notes |
 |----------|-------|-------|
-| Artifact/source enrichment services | Yes in archive read tests | Mock unavailable related context to verify per-entry degradation |
+| Artifact/source enrichment services | Yes in Story 6 archive read tests | Mock unavailable related context to verify per-entry degradation |
 | Environment/provider runtime | Yes | Finalization tests use completed/interrupted fake runtime objects |
 | Convex in route tests | Existing fake/in-memory PlatformStore pattern | Route tests exercise Fastify services without live Convex |
 | Internal derivation helpers | No | Test via `TurnDerivationService` and `DerivedArchiveViewService` |
@@ -33,27 +43,27 @@ Related design: `docs/spec-build/v2/epics/07--archive-and-derived-views/tech-des
 
 | TC | Test File | Test Description | Coverage Notes |
 |----|-----------|------------------|----------------|
-| TC-1.1a | `tests/service/server/archive-finalization.test.ts` | `TC-1.1a archives finalized user message` | Accepted response maps to `user_message` |
-| TC-1.1b | `tests/service/server/archive-finalization.test.ts` | `TC-1.1b archives finalized model message` | Completed model object maps to `model_message` |
-| TC-1.1c | `tests/service/server/archive-finalization.test.ts` | `TC-1.1c archives finalized process event` | Process event maps to `process_event` |
+| TC-1.1a | `convex/archiveEntries.test.ts` | `TC-1.1a appends finalized user_message entry through primitive` | Trusted caller payload persists as canonical `user_message` row |
+| TC-1.1b | `convex/archiveEntries.test.ts` | `TC-1.1b appends finalized model_message entry through primitive` | Trusted caller payload persists as canonical `model_message` row |
+| TC-1.1c | `convex/archiveEntries.test.ts` | `TC-1.1c appends finalized process_event entry through primitive` | Trusted caller payload persists as canonical `process_event` row |
 | TC-1.2a | `convex/archiveEntries.test.ts` | `TC-1.2a accepts required archive entry kinds` | All seven kinds accepted |
 | TC-1.2b | `convex/archiveEntries.test.ts` | `TC-1.2b rejects unsupported archive entry kind` | Invalid kind creates no row |
 | TC-1.3a | `convex/archiveEntries.test.ts` | `TC-1.3a reads entries in stable sequence order` | Ascending sequence |
 | TC-1.3b | `convex/archiveEntries.test.ts` | `TC-1.3b same timestamp entries remain deterministic` | Sequence breaks timestamp ties |
-| TC-1.4a | `tests/service/server/archive-api.test.ts` | `TC-1.4a enriches archive entry with artifact context` | Related artifact version visible |
-| TC-1.4b | `tests/service/server/archive-api.test.ts` | `TC-1.4b archive entry survives missing related context` | Entry returned degraded |
+| TC-1.4a | `convex/archiveEntries.test.ts` | `TC-1.4a round-trips related ids on archive row` | Related artifact/source/tool ids return unchanged from canonical row |
+| TC-1.4b | `convex/archiveEntries.test.ts` | `TC-1.4b archive row remains readable without related-record lookup` | Primitive read does not require enrichment |
 | TC-2.1a | `tests/service/server/archive-finalization.test.ts` | `TC-2.1a raw streaming delta excluded from archive` | Delta object never calls append |
 | TC-2.2a | `tests/service/server/archive-finalization.test.ts` | `TC-2.2a interrupted model output excluded` | Interrupted object ignored |
 | TC-2.2b | `tests/service/server/archive-finalization.test.ts` | `TC-2.2b incomplete tool result excluded` | Tool result without finalization ignored |
-| TC-2.3a | `tests/service/server/archive-finalization.test.ts` | `TC-2.3a completed live object archived once` | Completion appends one entry |
-| TC-2.3b | `convex/archiveEntries.test.ts` | `TC-2.3b replayed completion does not duplicate entry` | Same `finalizationKey` returns/no-ops existing entry |
+| TC-2.3a | `tests/service/server/archive-finalization.test.ts` | `TC-2.3a completed live object archived once through finalization service` | Finalization service appends one canonical entry |
+| TC-2.3b | `tests/service/server/archive-finalization.test.ts` | `TC-2.3b replayed completion does not duplicate entry through service boundary` | Retried completion does not duplicate archive append |
 | TC-3.1a | `tests/service/client/archive-section.test.ts` | `TC-3.1a archive entries visible` | Client renders finalized entries |
 | TC-3.1b | `tests/service/client/archive-section.test.ts` | `TC-3.1b empty archive state visible` | Empty state rendered |
 | TC-3.2a | `tests/service/server/archive-api.test.ts` | `TC-3.2a archive survives reload` | GET archive reads durable state |
 | TC-3.2b | `tests/service/server/archive-api.test.ts` | `TC-3.2b archive survives environment loss` | Environment absent does not affect archive read |
 | TC-3.3a | `tests/service/server/archive-api.test.ts` | `TC-3.3a unauthorized archive read blocked` | 403/401 without leakage |
 | TC-3.3b | `tests/service/server/archive-api.test.ts` | `TC-3.3b missing process archive read returns not found` | 404 `PROCESS_NOT_FOUND` |
-| TC-3.4a | `tests/service/server/archive-api.test.ts` | `TC-3.4a degraded entry returned with healthy entries` | Mixed ready/degraded page |
+| TC-3.4a | `tests/service/server/archive-api.test.ts` | `TC-3.4a degraded entry displayed with healthy entries` | Mixed ready/degraded page without hiding healthy rows |
 | TC-4.1a | `tests/service/server/turn-derivation.test.ts` | `TC-4.1a turns derived from archive` | Entries grouped into turns |
 | TC-4.1b | `tests/service/server/turn-derivation.test.ts` | `TC-4.1b empty archive produces empty turn view` | Empty turns response |
 | TC-4.2a | `tests/service/server/turn-derivation.test.ts` | `TC-4.2a turn includes archive entry references` | Turn carries source entry ids |
@@ -82,6 +92,7 @@ Related design: `docs/spec-build/v2/epics/07--archive-and-derived-views/tech-des
 | `tests/service/client/archive-section.test.ts` | archive contract schemas accept all Epic 7 entry kinds and reject non-finalized entries | Protects shared contract vocabulary before route work |
 | `tests/service/client/process-live.test.ts` | live history upserts still update current process history without creating archive rows | Protects live/archive separation |
 | `tests/service/server/archive-finalization.test.ts` | `appendFromProcessHistoryItem` maps `process_message` to `model_message` only for finalized compatible items | Compatibility bridge clarity |
+| `convex/archiveEntries.test.ts` | same `processId + finalizationKey` returns or no-ops existing archive row | Primitive idempotency guard below Story 2 service proofs |
 | `tests/service/server/turn-derivation.test.ts` | pre-user-message entries form deterministic turn zero | Edge case in grouping rules |
 | `tests/service/server/turn-derivation.test.ts` | turn-cache rebuild preserves stable turn provenance for derived views | Prevents dangling view references after rebuild |
 | `tests/service/server/derived-archive-view.test.ts` | `chunk_candidate` rejects generated summary body content | Prevents summarization scope creep |
@@ -95,18 +106,18 @@ Related design: `docs/spec-build/v2/epics/07--archive-and-derived-views/tech-des
 | Chunk | TC Tests | Non-TC Tests | Total | Primary Files |
 |-------|----------|--------------|-------|---------------|
 | 0 Foundation | 0 | 1 | 1 | contract/schema/fixture tests |
-| 1 Archive persistence | 9 | 1 | 10 | Convex archive entries, archive API |
+| 1 Archive persistence | 9 | 2 | 11 | Convex archive entries |
 | 2 Finalization boundary | 5 | 2 | 7 | archive finalization, live tests |
 | 3 Archive read/reopen | 7 | 1 | 8 | archive API, client archive section |
 | 4 Turn derivation | 5 | 2 | 7 | turn derivation service |
 | 5 Structural views | 7 | 3 | 10 | derived-view service/client |
 | 6 Provenance coherence | 4 | 0 | 4 | archive API enrichment |
-| 7 Reopen/bounded degradation | 4 | 0 | 4 | archive API, derived-view service |
-| **Total** | **41** | **10** | **51** |  |
+| 7 Reopen/bounded reads | 4 | 0 | 4 | archive API, derived-view service |
+| **Total** | **41** | **11** | **52** |  |
 
 Epic 7 has 41 named TCs. Non-TC tests cover live/archive separation,
 compatibility mapping, turn-zero grouping, turn-cache rebuild stability,
-no-summary enforcement, stale/rebuilt derived views, atomic sequence
+no-summary enforcement, stale/rebuilt derived views, primitive idempotency, atomic sequence
 assignment, invalid archive requests, and refresh conflict behavior.
 
 ## Verification Gates
@@ -128,11 +139,11 @@ assignment, invalid archive requests, and refresh conflict behavior.
 6. Open the turn view and verify turns reference source archive entries.
 7. Open derived views and verify structural turn ranges/chunk candidates have no generated summary text.
 8. Simulate missing related source/artifact context and verify only affected entries degrade.
-9. Verify archive pagination returns a bounded page with a next cursor.
+9. Verify archive reads return a bounded page with a next cursor.
 
 ## Reconciliation
 
 - TC tests: 41
-- Non-TC decided tests: 10
-- Planned automated tests: 51
+- Non-TC decided tests: 11
+- Planned automated tests: 52
 - Manual verification steps: 9

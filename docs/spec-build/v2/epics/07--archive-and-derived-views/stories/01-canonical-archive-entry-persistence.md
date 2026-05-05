@@ -15,7 +15,7 @@ Persist finalized low-level archive entries for one process with the required ta
 
 **Objective**
 
-Implement the durable append/read primitive for canonical archive entries and make finalized entries stable, ordered, and linked to optional context without depending on current process history rows.
+Implement the durable append/read primitive for canonical archive entries so trusted callers can persist finalized low-level entries with stable ordering, idempotency, and optional related ids without depending on current process history rows.
 
 **Scope**
 
@@ -48,20 +48,20 @@ Out:
 
 ### Acceptance Criteria
 <!-- Jira: Acceptance Criteria field -->
-**AC-1.1:** The platform stores finalized archive entries at low-level grain.
+**AC-1.1:** The canonical archive-entry primitive persists finalized low-level entries supplied by trusted callers.
 
-- **TC-1.1a: Finalized user message archived**
-  - Given: A user response is accepted by a process
-  - When: The response is finalized
-  - Then: A `user_message` archive entry is appended for that process
-- **TC-1.1b: Finalized model message archived**
-  - Given: A model response completes
-  - When: The response is finalized
-  - Then: A `model_message` archive entry is appended for that process
-- **TC-1.1c: Process event archived**
-  - Given: A process emits a lifecycle or checkpoint event that should remain part of history
-  - When: The event is finalized
-  - Then: A `process_event` archive entry is appended for that process
+- **TC-1.1a: User message entry appended through primitive**
+  - Given: A trusted caller submits a finalized `user_message` payload for one process
+  - When: The archive-entry append primitive is invoked
+  - Then: A canonical `user_message` archive entry is persisted for that process
+- **TC-1.1b: Model message entry appended through primitive**
+  - Given: A trusted caller submits a finalized `model_message` payload for one process
+  - When: The archive-entry append primitive is invoked
+  - Then: A canonical `model_message` archive entry is persisted for that process
+- **TC-1.1c: Process event entry appended through primitive**
+  - Given: A trusted caller submits a finalized `process_event` payload for one process
+  - When: The archive-entry append primitive is invoked
+  - Then: A canonical `process_event` archive entry is persisted for that process
 
 **AC-1.2:** The canonical archive supports the PRD entry taxonomy.
 
@@ -85,20 +85,20 @@ Out:
   - When: The archive is read
   - Then: The platform returns them in a stable deterministic order
 
-**AC-1.4:** Archive entries can link to related process, artifact, source, or tool context without requiring those related records to remain current.
+**AC-1.4:** Archive entries can store and return related process, artifact, source, or tool ids without depending on read-time enrichment.
 
-- **TC-1.4a: Archive entry links to artifact context**
-  - Given: An archive entry relates to an artifact version or artifact event
-  - When: The archive entry is read
-  - Then: The related artifact context is visible when available
-- **TC-1.4b: Archive entry survives missing related context**
-  - Given: Related context cannot be resolved
-  - When: The archive entry is read
-  - Then: The archive entry remains visible with bounded degraded related-context metadata
+- **TC-1.4a: Related ids round-trip through archive storage**
+  - Given: An archive entry includes related artifact, source provenance, or tool correlation ids
+  - When: The archive entry is appended and later read through the primitive
+  - Then: The stored related ids are returned unchanged on the canonical archive row
+- **TC-1.4b: Archive row remains readable without related-record lookup**
+  - Given: An archive entry stores nullable related ids and no related-record enrichment is performed
+  - When: The archive entry is read through the primitive
+  - Then: The canonical archive row remains readable without requiring artifact or source resolution
 
 ### Technical Design
 <!-- Jira: Technical Notes or sub-section of Description -->
-This story owns the durable canonical archive-entry primitive.
+This story owns only the durable canonical archive-entry primitive.
 
 #### Architecture Context
 
@@ -141,8 +141,10 @@ Implementation notes:
 - `lifecycleState` is always `finalized`.
 - `finalizationKey` is unique within a process and stable across retries.
 - Same-timestamp ordering is deterministic because reads sort by `sequence`, not `recordedAt`.
-- Related ids are nullable. Missing related records do not delete or hide the archive row.
-- TC-1.4a may assert stored related ids in this story; full artifact/source enrichment is completed in Story 6.
+- Related ids are nullable and round-trip as stored values on the canonical row.
+- Missing related records do not delete or hide the archive row.
+- Service-level finalization proof is completed in Story 2.
+- Full artifact/source enrichment and related-record lookup degradation are completed in Story 6.
 
 #### Design References
 
@@ -155,23 +157,24 @@ Implementation notes:
 
 | TC | Test File / Check | Test Description |
 |----|-------------------|------------------|
-| TC-1.1a | `tests/service/server/archive-finalization.test.ts` | archives finalized user message |
-| TC-1.1b | `tests/service/server/archive-finalization.test.ts` | archives finalized model message |
-| TC-1.1c | `tests/service/server/archive-finalization.test.ts` | archives finalized process event |
+| TC-1.1a | `convex/archiveEntries.test.ts` | appends finalized `user_message` entry through primitive |
+| TC-1.1b | `convex/archiveEntries.test.ts` | appends finalized `model_message` entry through primitive |
+| TC-1.1c | `convex/archiveEntries.test.ts` | appends finalized `process_event` entry through primitive |
 | TC-1.2a | `convex/archiveEntries.test.ts` | accepts required archive entry kinds |
 | TC-1.2b | `convex/archiveEntries.test.ts` | rejects unsupported archive entry kind |
 | TC-1.3a | `convex/archiveEntries.test.ts` | reads entries in stable sequence order |
 | TC-1.3b | `convex/archiveEntries.test.ts` | same timestamp entries remain deterministic |
-| TC-1.4a | `tests/service/server/archive-api.test.ts` | enriches archive entry with artifact context |
-| TC-1.4b | `tests/service/server/archive-api.test.ts` | archive entry survives missing related context |
+| TC-1.4a | `convex/archiveEntries.test.ts` | round-trips related artifact/source/tool ids |
+| TC-1.4b | `convex/archiveEntries.test.ts` | reads archive row without requiring related-record lookup |
 
 #### Non-TC Decided Tests
 
 - `convex/archiveEntries.test.ts`: sequence assignment is atomic across same-process appends
+- `convex/archiveEntries.test.ts`: same `processId + finalizationKey` returns or no-ops an existing archive row
 
 #### Technical Notes
 
-- This story owns durable append/read primitives only. It does not decide when an object is final enough to append.
+- This story owns durable append/read primitives only. It does not decide when an object is final enough to append, and it does not prove service-level finalization hooks or read-time provenance enrichment.
 
 #### Anti-Shim Requirements
 

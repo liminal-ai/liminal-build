@@ -67,15 +67,15 @@ Out:
   - When: The process archive is read
   - Then: The incomplete tool result is not returned as a finalized archive entry
 
-**AC-2.3:** Finalized entries may be created from completed live objects.
+**AC-2.3:** Finalization services append completed live objects into the canonical archive exactly once.
 
-- **TC-2.3a: Completed live object archived once**
+- **TC-2.3a: Completed live object archived once through finalization service**
   - Given: The browser received live upserts for an in-flight object
   - When: The object completes
-  - Then: The platform appends one finalized archive entry for that object
-- **TC-2.3b: Replayed completion does not duplicate archive entry**
+  - Then: The platform appends one finalized archive entry for that object through the finalization service
+- **TC-2.3b: Replayed completion does not duplicate archive entry through service boundary**
   - Given: A completion event is retried for an already-archived object
-  - When: The archive append path processes the retry
+  - When: The finalization service processes the retry
   - Then: The platform does not create a duplicate canonical entry
 
 ### Technical Design
@@ -85,8 +85,9 @@ This story owns the separation between active live state and canonical archive f
 #### Architecture Context
 
 Story 2 is the control-plane finalization seam. It decides which completed
-process/runtime objects become canonical archive entries and protects the
-existing live WebSocket/upsert model from quietly becoming archive truth.
+process/runtime objects become canonical archive entries, proves those objects
+append exactly once through the service boundary, and protects the existing live
+WebSocket/upsert model from quietly becoming archive truth.
 
 #### Service Interface
 
@@ -117,8 +118,9 @@ Implementation notes:
 
 - Existing live upserts remain current-object transport and do not become archive writes.
 - Only trusted Fastify completion points call `ArchiveFinalizationService`.
+- Story 1 proves primitive idempotency; this story proves completion hooks call that primitive exactly once for finalized objects.
 - Raw deltas, partial buffers, interrupted objects, and abandoned tool results do not call append.
-- Replayed completion events rely on Story 1 `finalizationKey` idempotency and produce no duplicate row.
+- Replayed completion events rely on Story 1 `finalizationKey` idempotency and must prove exactly-once archive append behavior at the service boundary.
 - Compatibility mapping may map finalized `process_message` to `model_message`; it must not treat arbitrary legacy presentation rows as canonical archive truth.
 - `process-live-normalizer.ts` remains unchanged except where tests assert live/archive separation.
 
@@ -136,8 +138,8 @@ Implementation notes:
 | TC-2.1a | `tests/service/server/archive-finalization.test.ts` | raw streaming delta excluded from archive |
 | TC-2.2a | `tests/service/server/archive-finalization.test.ts` | interrupted model output excluded |
 | TC-2.2b | `tests/service/server/archive-finalization.test.ts` | incomplete tool result excluded |
-| TC-2.3a | `tests/service/server/archive-finalization.test.ts` | completed live object archived once |
-| TC-2.3b | `convex/archiveEntries.test.ts` | replayed completion does not duplicate entry |
+| TC-2.3a | `tests/service/server/archive-finalization.test.ts` | completed live object archived once through finalization service |
+| TC-2.3b | `tests/service/server/archive-finalization.test.ts` | replayed completion does not duplicate entry through service boundary |
 
 #### Non-TC Decided Tests
 
@@ -146,7 +148,7 @@ Implementation notes:
 
 #### Technical Notes
 
-- Finalization is a control-plane decision. Live upserts remain current-object transport only.
+- Finalization is a control-plane decision. Live upserts remain current-object transport only, and this story owns the service-level proof that finalized objects append into the archive exactly once.
 
 #### Anti-Shim Requirements
 

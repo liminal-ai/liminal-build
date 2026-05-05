@@ -2,7 +2,7 @@
 
 ### Summary
 <!-- Jira: Summary field -->
-Enrich archive-entry reads with available artifact-version and source provenance while preserving derived-view traceability and degrading missing related context per entry.
+Enrich archive-entry reads with available artifact-version and source provenance while preserving derived-view traceability and owning per-entry lookup-failure degradation semantics.
 
 ### Description
 <!-- Jira: Description field -->
@@ -15,7 +15,7 @@ Enrich archive-entry reads with available artifact-version and source provenance
 
 **Objective**
 
-Connect archive reads to Epic 5 artifact-version provenance and Epic 6 source provenance without redefining artifact ownership or source attachment lifecycle.
+Connect the Story 3 archive read surface to Epic 5 artifact-version provenance and Epic 6 source provenance without redefining artifact ownership or source attachment lifecycle.
 
 **Scope**
 
@@ -28,6 +28,7 @@ In:
 - Per-entry degraded metadata when source context cannot resolve
 - Per-entry degraded metadata when artifact context cannot resolve
 - Derived-view provenance traces through source turns to source archive entries
+- Preserving Story 3 route/UI behavior while enriching the archive response contract
 
 Out:
 
@@ -36,6 +37,7 @@ Out:
 - External-source or MCP attachment behavior
 - Changing artifact ownership, package ownership, or source attachment shadowing rules
 - Hiding archive entries because related records are unavailable
+- Replacing Story 3 archive route, access, reload, or bounded-page behavior
 
 **Dependencies**
 
@@ -80,9 +82,9 @@ This story owns read-time provenance enrichment and per-entry related-context de
 #### Architecture Context
 
 Story 6 is a read-time enrichment story. It does not extend source lifecycle or
-artifact ownership. It enriches archive-entry reads with related artifact/source
-context when available and leaves derived views to rely on the stable trace
-already provided by Story 5.
+artifact ownership. It deepens the Story 3 archive read surface by enriching
+archive-entry reads with related artifact/source context when available and by
+owning the lookup-failure degradation semantics for those related records.
 
 #### Related Provenance Fields
 
@@ -114,6 +116,7 @@ Implementation notes:
 
 - Archive entries store nullable related ids. They do not copy or own artifact/source domain records.
 - `ArchiveReadService` enriches related context when available and degrades only the affected entry when a lookup fails.
+- Story 3 is responsible for displaying degraded entries; this story is responsible for creating the artifact/source-related degraded states that the read surface displays.
 - Degraded related-context states do not expose unavailable source or artifact details beyond fields already stored on the archive entry.
 - Missing artifact/source context must not hide healthy entries or remove the affected archive entry.
 - Derived views preserve provenance by exposing `sourceTurnIds` and `sourceArchiveEntryIds`; source archive entries remain inspectable through the archive read surface.

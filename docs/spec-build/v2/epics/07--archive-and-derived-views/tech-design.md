@@ -562,26 +562,24 @@ exposes only durable append/read/upsert/replace operations.
 
 ### Flow 1: Capture Finalized Archive Entries
 
-This flow covers AC-1.1 through AC-1.4. Finalization happens at trusted Fastify
-completion points. Convex appends the durable entry only after Fastify decides
-the object is finalized and maps it into the canonical taxonomy.
+This flow covers the Story 1 primitive boundary behind AC-1.1 through AC-1.4.
+Trusted callers supply already-finalized archive-entry payloads to the durable
+append/read primitive. Convex owns the canonical row shape, taxonomy
+validation, stable ordering, idempotency guard, related-id storage, and bounded
+primitive reads.
 
 ```mermaid
 sequenceDiagram
-    participant P as Process Service
-    participant A as ArchiveFinalizationService
+    participant P as Trusted Caller
     participant S as PlatformStore
     participant X as Convex archiveEntries
 
-    P->>A: appendFinalizedEntry(completed object)
-    Note over P,A: AC-1.1/AC-1.2 finalized low-level kind
-    A->>A: validate taxonomy and finalizationKey
-    A->>S: appendArchiveEntry(write)
+    P->>S: appendArchiveEntry(write)
+    Note over P,S: AC-1.1 finalized low-level entry payload
     S->>X: appendArchiveEntry mutation
-    Note over S,X: AC-1.3 sequence and idempotency
+    Note over S,X: AC-1.2/AC-1.3/AC-1.4 taxonomy, ordering, idempotency, related ids
     X-->>S: ArchiveEntry
-    S-->>A: ArchiveEntry
-    A-->>P: ArchiveEntry
+    S-->>P: ArchiveEntry
 ```
 
 ### Flow 2: Keep Live State Separate from Canonical Archive
@@ -589,7 +587,9 @@ sequenceDiagram
 This flow covers AC-2.1 through AC-2.3. Existing WebSocket upserts continue to
 serve active UI state through `process-live-normalizer.ts` and
 `process-live.ts`. Those live messages are not archive writes. Only completed
-objects that reach a finalization point call `ArchiveFinalizationService`.
+objects that reach a finalization point call `ArchiveFinalizationService`,
+which maps finalized runtime/process objects into the Story 1 append primitive
+exactly once.
 
 Retries are safe because every finalized object supplies a `finalizationKey`.
 Examples:
@@ -603,13 +603,15 @@ Examples:
 
 This flow covers AC-3.1 through AC-3.4. The user reads archive entries through
 Fastify routes under the existing process path. Archive reads do not depend on
-environment state or live WebSocket state.
+environment state or live WebSocket state. `ArchiveReadService` fetches one
+bounded page from Convex, applies route validation and access rules, and
+returns archive response rows for the client surface to render.
 
-`ArchiveReadService` fetches a bounded page from Convex, then enriches related
-artifact/source/tool context. Enrichment failures set `entryStatus: degraded`
-and `degradationReason` on the response object for the affected entry only.
-Read-time degradation must not mutate the canonical `archiveEntries` row unless
-the row itself was originally persisted as degraded.
+This flow owns displaying degraded entries already present in the response
+contract. Deep artifact/source enrichment and lookup-failure degradation
+semantics are added in Flow 6. Read-time degradation must not mutate the
+canonical `archiveEntries` row unless the row itself was originally persisted
+as degraded.
 
 ### Flow 4: Derive Turns
 
@@ -646,17 +648,20 @@ deterministic label or structural note such as `Turns 4-8`.
 ### Flow 6: Connect Provenance
 
 This flow covers AC-6.1 through AC-6.3. Archive entries store nullable related
-ids. Read services enrich when possible:
+ids. Building on the Flow 3 archive read surface, read services enrich when
+possible:
 
 - artifact context through `PlatformStore.listArtifactVersions` or a targeted
   artifact-version read helper
 - source context through Epic 6 `sourceProvenance` reads
 - tool context through `relatedToolCallId`
 
-If a related record is unavailable, the entry remains visible. The archive
-entry status becomes `degraded` for the read response, or an enriched response
-includes degraded related-context metadata without mutating the stored canonical
-entry.
+If a related record is unavailable, the entry remains visible. This flow owns
+the artifact/source lookup-failure degradation semantics: the archive entry
+status becomes `degraded` for the read response, or an enriched response
+includes degraded related-context metadata without mutating the stored
+canonical entry. Story 3 remains responsible for rendering that response
+state to the user.
 
 ### Flow 7: Return Later and Bound Long Reads
 
@@ -677,13 +682,13 @@ available.
 | Chunk | Story | Scope | ACs | Primary Tests |
 |-------|-------|-------|-----|---------------|
 | 0 | Foundation | Contracts, Convex schema, fixtures, error codes, compatibility mapping skeletons | All support | Relevant sections: API Contracts, Data Model. Non-TC: archive contract vocabulary and finalized-only schema test |
-| 1 | Archive persistence | Append/read entries, taxonomy, ordering, idempotency, related ids | AC-1.x | Relevant sections: Flow 1, Data Model, Route Validation. Non-TC: atomic sequence assignment |
+| 1 | Archive persistence | Append/read entries, taxonomy, ordering, idempotency, related ids | AC-1.x | Relevant sections: Flow 1, Data Model. Non-TC: atomic sequence assignment and primitive idempotency |
 | 2 | Finalization boundary | Completion hooks, live/archive separation, retry idempotency | AC-2.x | Relevant sections: Flow 2, Service Interfaces. Non-TC: live-history separation, compatibility mapping decision |
-| 3 | Archive read/reopen | Routes, access controls, empty/degraded states, environment-loss reads | AC-3.x | Relevant sections: Flow 3, Route Validation. Non-TC: invalid archive request handling |
+| 3 | Archive read/reopen | Routes, access controls, empty state, bounded page contract, environment-loss reads, degraded-entry display | AC-3.x | Relevant sections: Flow 3, Route Validation. Non-TC: invalid archive request handling |
 | 4 | Turn derivation | Deterministic grouping, cached rebuild, degraded turns | AC-4.x | Relevant sections: Flow 4, Data Model. Non-TC: turn-zero grouping, rebuild stability |
 | 5 | Structural derived views | `turn_range`, `chunk_candidate`, refresh, degradation | AC-5.x | Relevant sections: Flow 5, Route Validation. Non-TC: no generated summary body, stale/rebuilt derived views |
-| 6 | Provenance coherence | Artifact/source enrichment and degraded related context | AC-6.x | Relevant sections: Flow 6, API Contracts. Non-TC: none |
-| 7 | Reopen/bounded degradation | Reload behavior, derived failures, pagination | AC-7.x | Relevant sections: Flow 7, Route Validation. Non-TC: none |
+| 6 | Provenance coherence | Artifact/source enrichment and related-record lookup degradation semantics | AC-6.x | Relevant sections: Flow 6, API Contracts. Non-TC: none |
+| 7 | Reopen/bounded reads | Reload behavior, derived failures, long-process pagination hardening | AC-7.x | Relevant sections: Flow 7, Route Validation. Non-TC: none |
 
 ## Verification
 

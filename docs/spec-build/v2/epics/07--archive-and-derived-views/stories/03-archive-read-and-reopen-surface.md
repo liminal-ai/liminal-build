@@ -15,7 +15,7 @@ Expose process archive reads through authenticated Fastify routes and client sur
 
 **Objective**
 
-Add process archive read routes and user-visible archive rendering that read durable canonical entries, enforce project/process access, show empty states, and degrade one unresolved entry without hiding healthy entries.
+Add process archive read routes and user-visible archive rendering that read durable canonical entries, enforce project/process access, show empty states, and display degraded entries without hiding healthy entries.
 
 **Scope**
 
@@ -24,19 +24,20 @@ In:
 - `GET /api/projects/{projectId}/processes/{processId}/archive`
 - Route auth and project/process access checks
 - Cursor/limit validation and invalid-request handling
+- One bounded archive page using the canonical archive response contract
 - `ArchiveReadService.getArchive`
 - Client archive read API and archive section rendering
 - Empty archive state
 - Durable reload/reopen behavior
 - Environment-loss archive read behavior
-- Per-entry degraded related-context display when context cannot resolve
+- Per-entry degraded entry display from the archive response contract
 
 Out:
 
 - Turn derivation and turn UI
 - Derived-view route/UI
 - Full artifact/source provenance enrichment, owned by Story 6
-- Long-process pagination hardening beyond the basic page contract, completed in Story 7
+- Long-process pagination hardening beyond this bounded page contract, completed in Story 7
 
 **Dependencies**
 
@@ -81,12 +82,12 @@ Out:
   - When: User requests the process archive
   - Then: The platform returns a process-not-found error
 
-**AC-3.4:** One degraded archive entry does not hide healthy archive entries.
+**AC-3.4:** One degraded archive entry does not hide healthy archive entries on the read surface.
 
-- **TC-3.4a: Degraded entry returned with healthy entries**
-  - Given: One archive entry has unresolved related context and other entries are healthy
+- **TC-3.4a: Degraded entry displayed with healthy entries**
+  - Given: One archive entry is returned in a degraded state and other entries are healthy
   - When: User reads the archive
-  - Then: Healthy entries remain visible and the unresolved entry is returned with degraded metadata
+  - Then: Healthy entries remain visible and the degraded entry is displayed with its degraded metadata
 
 ### Technical Design
 <!-- Jira: Technical Notes or sub-section of Description -->
@@ -96,7 +97,7 @@ This story owns the first browser-facing canonical archive read surface.
 
 Story 3 is the first user-facing archive story. It exposes durable archive
 truth through authenticated Fastify routes and client rendering without relying
-on environment state or the live WebSocket stream.
+on environment state, the live WebSocket stream, or provenance enrichment.
 
 #### Endpoint
 
@@ -137,8 +138,8 @@ Implementation notes:
 
 - The route lives under the existing process path and uses existing actor resolution and process access checks before archive services run.
 - Archive reads depend on durable `archiveEntries`, not live WebSocket state or environment state.
-- `ArchiveReadService` enriches related context where available and marks only the affected entry degraded when related context fails.
-- Read-time degradation should not mutate canonical archive rows unless the row itself was originally persisted degraded.
+- `ArchiveReadService` returns a bounded page of canonical archive entries for the route and preserves any per-entry degraded status present on the response contract.
+- Deep artifact/source provenance enrichment and lookup-failure degradation semantics are completed in Story 6.
 - Client rendering should show finalized entries, empty state, degraded metadata, and page state without adding a separate top-level archive app.
 
 #### Design References
@@ -157,7 +158,7 @@ Implementation notes:
 | TC-3.2b | `tests/service/server/archive-api.test.ts` | archive survives environment loss |
 | TC-3.3a | `tests/service/server/archive-api.test.ts` | unauthorized archive read blocked |
 | TC-3.3b | `tests/service/server/archive-api.test.ts` | missing process archive read returns not found |
-| TC-3.4a | `tests/service/server/archive-api.test.ts` | degraded entry returned with healthy entries |
+| TC-3.4a | `tests/service/server/archive-api.test.ts` | degraded entry returned and displayed with healthy entries |
 
 #### Non-TC Decided Tests
 
@@ -165,7 +166,7 @@ Implementation notes:
 
 #### Technical Notes
 
-- This story owns the first browser-facing archive read; provenance depth stays minimal here and deepens in Story 6.
+- This story owns the first browser-facing archive read; it proves route/UI access, bounded reads, reload behavior, and degraded-entry display while leaving deep provenance enrichment to Story 6.
 
 #### Anti-Shim Requirements
 
