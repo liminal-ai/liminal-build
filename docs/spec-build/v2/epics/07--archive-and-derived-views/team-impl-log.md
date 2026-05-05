@@ -292,3 +292,9 @@
 - Story 6 owns read-time artifact/source provenance enrichment and per-entry related-context degradation without copying or owning related domain records.
 - Story 7 owns reload/environment-loss hardening, derived-failure isolation, bounded read limits, pagination state, and feasible observability.
 - Test plan now expects 52 planned automated tests: 41 named TC tests and 11 non-TC guard tests across Convex, Fastify service/API, client, and existing live/process separation tests.
+
+## Additional Orchestrator Friction Notes
+- The formal closeout sequence and the human-directed closeout sequence diverged. The documented `ls-impl` flow wants epic synthesis after verifier reports exist, but in this run the user explicitly wanted “last verifier batch, then subagent fixes, then manual verification, then close out.” The process currently has no clean first-class mode for that user-directed path, so it felt like I was fighting the framework instead of using it.
+- Epic-verifier wording repeatedly used terms like “shipped,” “production,” and “placeholder debt,” which were a poor fit for this repo state. Epic 7 was still the 7th platform-standup epic, not a public product launch. That language blurred the real question: whether the integrated path was authentic enough, not whether a public product should ship.
+- Once `guard:no-test-changes` became real, it immediately exposed a baseline-policy problem. Comparing against dirty `HEAD` is mechanically correct, but noisy during an active epic branch where test changes are expected. Future runs should decide the intended baseline ref at setup time rather than discovering the ambiguity at closeout.
+- The artifacts tree became so large that it created its own usability friction. By the end of the run, the number of saved artifacts, logs, progress files, and streams made diffs and final commit review much noisier than necessary, which made “durable closeout” harder to inspect calmly.
