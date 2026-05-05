@@ -1,10 +1,10 @@
 # Team Implementation Log
 
 ## Run Overview
-- State: STORY_ACTIVE
+- State: BETWEEN_STORIES
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views
-- Current Story: 00-foundation
-- Current Phase: accept
+- Current Story: 01-canonical-archive-entry-persistence
+- Current Phase: none
 
 ## Run Configuration
 - Primary Harness: claude-code
@@ -62,7 +62,7 @@
   - none
 - Baseline Before: 624
 - Baseline After: 630
-- Commit: included with this receipt
+- Commit: bea8512
 
 ## Cumulative Baselines
 - Baseline Before Current Story: 624
