@@ -1,10 +1,10 @@
 # Team Implementation Log
 
 ## Run Overview
-- State: STORY_ACTIVE
+- State: BETWEEN_STORIES
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views
-- Current Story: 06-archive-provenance-coherence
-- Current Phase: accept
+- Current Story: 07-reopen-and-degraded-archive-state
+- Current Phase: none
 
 ## Run Configuration
 - Primary Harness: claude-code
@@ -175,11 +175,11 @@
   - none
 - Baseline Before: 572
 - Baseline After: 572
-- Commit: pending
+- Commit: e3970d3
 
 ## Cumulative Baselines
 - Baseline Before Current Story: 572
-- Expected After Current Story: 572
+- Expected After Current Story: unknown
 - Latest Actual Total: 572
 
 ## Cleanup / Epic Verification
