@@ -3,7 +3,7 @@
 ## Run Overview
 - State: BETWEEN_STORIES
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views
-- Current Story: 03-archive-read-and-reopen-surface
+- Current Story: 04-turn-derivation
 - Current Phase: none
 
 ## Run Configuration
@@ -37,15 +37,15 @@
 
 ## Current Continuation Handles
 - Story Implementor:
-  - Story: 02-finalization-boundary-between-live-state-and-archive
+  - Story: 03-archive-read-and-reopen-surface
   - Provider: codex
-  - Session ID: 019df646-e074-7f90-9808-50acca9910a9
-  - Result Artifact: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/02-finalization-boundary-between-live-state-and-archive/003-implementor.json
+  - Session ID: 019df687-1278-71d1-86dc-b5c0952ba1a6
+  - Result Artifact: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/03-archive-read-and-reopen-surface/003-implementor.json
 - Story Verifier:
-  - Story: 02-finalization-boundary-between-live-state-and-archive
+  - Story: 03-archive-read-and-reopen-surface
   - Provider: codex
-  - Session ID: 019df66a-060e-7fd1-906a-9cee34ec3e12
-  - Result Artifact: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/02-finalization-boundary-between-live-state-and-archive/014-verify.json
+  - Session ID: 019df694-36f2-75f0-a722-78f0967af845
+  - Result Artifact: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/03-archive-read-and-reopen-surface/008-verify.json
 
 ## Story Receipts
 ### 00-foundation
@@ -108,10 +108,27 @@
 - Baseline After: 670
 - Commit: f44ae1f
 
+### 03-archive-read-and-reopen-surface
+- Story Title: Story 3: Archive Read and Reopen Surface
+- Implementor Evidence:
+  - /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/03-archive-read-and-reopen-surface/003-implementor.json
+- Verifier Evidence:
+  - /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/03-archive-read-and-reopen-surface/005-verify.json
+  - /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/03-archive-read-and-reopen-surface/008-verify.json
+- Story Gate: corepack pnpm run green-verify — pass
+- Completion Gate: corepack pnpm run verify-all — pass
+- Dispositions:
+  - story3-bounded-page-production-read: fixed
+- Open Risks:
+  - none
+- Baseline Before: 651
+- Baseline After: 660
+- Commit: 7b959bb
+
 ## Cumulative Baselines
-- Baseline Before Current Story: 670
+- Baseline Before Current Story: 660
 - Expected After Current Story: unknown
-- Latest Actual Total: 670
+- Latest Actual Total: 660
 
 ## Cleanup / Epic Verification
 - Cleanup Artifact: none
@@ -153,6 +170,11 @@
 - Story 2 initial verifier artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/02-finalization-boundary-between-live-state-and-archive/005-verify.json`; verifier surfaced the initial compatibility-bridge finalization-key blocker.
 - Story 2 quick-fix artifacts: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/quick-fix/002-quick-fix.json`, `003-quick-fix.json`, and `004-quick-fix.json`; these iteratively repaired bridge finalization-key reuse, live/archive separation coverage, formatting, and persisted-history identity handling in the execution-result finalization path.
 - Story 2 follow-up verifier artifacts: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/02-finalization-boundary-between-live-state-and-archive/008-verify.json`, `011-verify.json`, and `014-verify.json`; final verifier outcome `pass`, all open findings resolved, `green-verify` and `verify-all` both passed.
+- Story 3 validation artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/03-archive-read-and-reopen-surface/001-story-validate.json`; outcome `ready`, story-run selection `start-new`, baseline seed `567`.
+- Story 3 implementor artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/03-archive-read-and-reopen-surface/003-implementor.json`; completed with outcome `ready-for-verification`.
+- Story 3 initial verifier artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/03-archive-read-and-reopen-surface/005-verify.json`; verifier surfaced the unbounded production Convex archive read as the only blocking finding.
+- Story 3 quick-fix artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/quick-fix/005-quick-fix.json`; quick-fix tightened the Convex archive query to fetch one bounded page plus lookahead via the index instead of collecting the full archive, and updated the fake Convex query helper to support the required range operators.
+- Story 3 follow-up verifier artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/03-archive-read-and-reopen-surface/008-verify.json`; outcome `pass`, the bounded-page blocker was resolved, and `green-verify` passed.
 - Convex rule: before any Convex code work, read `convex/_generated/ai/guidelines.md`.
 
 ## Spec-Pack Carry-Forward Notes
