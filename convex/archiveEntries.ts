@@ -141,17 +141,30 @@ export const listArchiveEntries = query({
   handler: async (ctx: QueryCtx, args): Promise<ArchivePage> => {
     assertArchivePageLimit(args.limit);
     const processId = args.processId as Id<'processes'>;
-    const allEntries = await ctx.db
+    const decodedCursor = decodeArchiveCursor(args.cursor ?? null);
+    const pageWithLookahead = await ctx.db
       .query('archiveEntries')
-      .withIndex('by_processId_and_sequence', (indexQuery) => indexQuery.eq('processId', processId))
+      .withIndex('by_processId_and_sequence', (indexQuery) =>
+        decodedCursor === null
+          ? indexQuery.eq('processId', processId)
+          : indexQuery.eq('processId', processId).gt('sequence', decodedCursor),
+      )
       .order('asc')
-      .collect();
+      .take(args.limit + 1);
+    const hasMore = pageWithLookahead.length > args.limit;
+    const pageEntries = pageWithLookahead
+      .slice(0, args.limit)
+      .map((entry) => buildArchiveEntry(entry));
+    const lastEntry = pageEntries.at(-1);
 
-    return paginateArchiveEntries({
-      entries: allEntries.map((entry) => buildArchiveEntry(entry)),
-      cursor: args.cursor ?? null,
-      limit: args.limit,
-    });
+    return {
+      entries: pageEntries,
+      page: {
+        cursor: args.cursor ?? null,
+        nextCursor: hasMore && lastEntry !== undefined ? String(lastEntry.sequence) : null,
+        hasMore,
+      },
+    };
   },
 });
 
@@ -256,28 +269,4 @@ function decodeArchiveCursor(cursor: string | null): number | null {
 
   const parsed = Number.parseInt(cursor, 10);
   return Number.isNaN(parsed) ? null : parsed;
-}
-
-function paginateArchiveEntries(args: {
-  entries: ArchiveEntry[];
-  cursor: string | null;
-  limit: number;
-}): ArchivePage {
-  const decodedCursor = decodeArchiveCursor(args.cursor);
-  const filtered =
-    decodedCursor === null
-      ? args.entries
-      : args.entries.filter((entry) => entry.sequence > decodedCursor);
-  const pageEntries = filtered.slice(0, args.limit);
-  const hasMore = filtered.length > args.limit;
-  const lastEntry = pageEntries.at(-1);
-
-  return {
-    entries: pageEntries,
-    page: {
-      cursor: args.cursor,
-      nextCursor: hasMore && lastEntry !== undefined ? String(lastEntry.sequence) : null,
-      hasMore,
-    },
-  };
 }

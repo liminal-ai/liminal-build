@@ -1,4 +1,5 @@
 import { z } from 'zod/v4';
+import { archivePageSchema } from './archive.js';
 import {
   artifactSectionEnvelopeSchema,
   authenticatedUserSchema,
@@ -25,7 +26,13 @@ import {
 
 export const parsedRouteSchema = z
   .object({
-    kind: z.enum(['project-index', 'project-shell', 'process-work-surface', 'review-workspace']),
+    kind: z.enum([
+      'project-index',
+      'project-shell',
+      'process-work-surface',
+      'process-archive',
+      'review-workspace',
+    ]),
     projectId: z.string().min(1).nullable(),
     selectedProcessId: z.string().min(1).nullable(),
     processId: z.string().min(1).nullable(),
@@ -109,6 +116,34 @@ export const parsedRouteSchema = z
       });
     }
 
+    if (value.kind === 'process-archive' && value.projectId === null) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Process archive routes require a projectId.',
+      });
+    }
+
+    if (value.kind === 'process-archive' && value.selectedProcessId !== null) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Process archive routes cannot carry a selected process id.',
+      });
+    }
+
+    if (value.kind === 'process-archive' && value.processId === null) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Process archive routes require a processId.',
+      });
+    }
+
+    if (value.kind === 'process-archive' && value.reviewSelection !== null) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Process archive routes cannot carry review selection state.',
+      });
+    }
+
     if (value.kind === 'review-workspace' && value.projectId === null) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -166,6 +201,17 @@ export const processSurfaceStateSchema = z.object({
 });
 export type ProcessSurfaceState = z.infer<typeof processSurfaceStateSchema>;
 
+export const archiveSurfaceStateSchema = z.object({
+  projectId: z.string().min(1).nullable(),
+  processId: z.string().min(1).nullable(),
+  project: processSurfaceProjectSchema.nullable(),
+  process: processSurfaceSummarySchema.nullable(),
+  archive: archivePageSchema.nullable(),
+  isLoading: z.boolean(),
+  error: requestErrorSchema.nullable(),
+});
+export type ArchiveSurfaceState = z.infer<typeof archiveSurfaceStateSchema>;
+
 export const reviewWorkspaceStateSchema = z.object({
   projectId: z.string().min(1).nullable(),
   processId: z.string().min(1).nullable(),
@@ -216,6 +262,7 @@ export const appStateSchema = z.object({
     error: requestErrorSchema.nullable(),
   }),
   processSurface: processSurfaceStateSchema,
+  archiveSurface: archiveSurfaceStateSchema,
   reviewWorkspace: reviewWorkspaceStateSchema,
   modals: z.object({
     createProjectOpen: z.boolean(),

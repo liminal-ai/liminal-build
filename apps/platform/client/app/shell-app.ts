@@ -1,3 +1,4 @@
+import { renderProcessArchivePage } from '../features/processes/process-archive-page.js';
 import { renderProcessWorkSurfacePage } from '../features/processes/process-work-surface-page.js';
 import { renderProjectIndexPage } from '../features/projects/project-index-page.js';
 import { renderProjectShellPage } from '../features/projects/project-shell-page.js';
@@ -70,6 +71,7 @@ export function createShellApp(options: ShellAppOptions) {
 
     const state = options.store.get();
     const isReviewWorkspace = state.reviewWorkspace.processId !== null;
+    const isProcessArchive = state.archiveSurface.processId !== null;
     const isProcessWorkSurface = state.processSurface.processId !== null;
     const page =
       state.route.projectId === null
@@ -104,49 +106,58 @@ export function createShellApp(options: ShellAppOptions) {
                 options.onExportExpired(projectId, processId, packageId);
               },
             })
-          : isProcessWorkSurface
-            ? renderProcessWorkSurfacePage({
+          : isProcessArchive
+            ? renderProcessArchivePage({
                 store: options.store,
                 targetDocument: options.targetWindow.document,
                 targetWindow: options.targetWindow,
-                onOpenProject: options.onOpenProject,
-                onOpenReview: (projectId, processId) => {
-                  options.onOpenReview(projectId, processId, null);
+                onOpenProcess: (projectId, processId) => {
+                  options.onOpenProcess(projectId, processId);
                 },
-                onStartProcess: (projectId, processId) => {
-                  void options.onStartProcess(projectId, processId);
-                },
-                onResumeProcess: (projectId, processId) => {
-                  void options.onResumeProcess(projectId, processId);
-                },
-                onRehydrateEnvironment: (projectId, processId) => {
-                  void options.onRehydrateEnvironment(projectId, processId);
-                },
-                onRebuildEnvironment: (projectId, processId) => {
-                  void options.onRebuildEnvironment(projectId, processId);
-                },
-                onSubmitProcessResponse: (projectId, processId, message) => {
-                  void options.onSubmitProcessResponse(projectId, processId, message);
-                },
-                onRetryLiveSubscription: (projectId, processId) => {
-                  void options.onRetryLiveSubscription(projectId, processId);
-                },
-                onAttachSource: options.onAttachProcessSource,
-                onRefreshSource: options.onRefreshProcessSource,
               })
-            : renderProjectShellPage({
-                store: options.store,
-                targetDocument: options.targetWindow.document,
-                targetWindow: options.targetWindow,
-                onOpenProcess: options.onOpenProcess,
-                onCreateProcess: options.onCreateProcess,
-                onAttachSource: options.onAttachProjectSource,
-                onUpdateSource: options.onUpdateProjectSource,
-                onRefreshSource: options.onRefreshProjectSource,
-                onDetachSource: options.onDetachProjectSource,
-                onCancelCreateProcess: options.onCancelCreateProcess,
-                onOpenCreateProcess: options.onOpenCreateProcess,
-              });
+            : isProcessWorkSurface
+              ? renderProcessWorkSurfacePage({
+                  store: options.store,
+                  targetDocument: options.targetWindow.document,
+                  targetWindow: options.targetWindow,
+                  onOpenProject: options.onOpenProject,
+                  onOpenReview: (projectId, processId) => {
+                    options.onOpenReview(projectId, processId, null);
+                  },
+                  onStartProcess: (projectId, processId) => {
+                    void options.onStartProcess(projectId, processId);
+                  },
+                  onResumeProcess: (projectId, processId) => {
+                    void options.onResumeProcess(projectId, processId);
+                  },
+                  onRehydrateEnvironment: (projectId, processId) => {
+                    void options.onRehydrateEnvironment(projectId, processId);
+                  },
+                  onRebuildEnvironment: (projectId, processId) => {
+                    void options.onRebuildEnvironment(projectId, processId);
+                  },
+                  onSubmitProcessResponse: (projectId, processId, message) => {
+                    void options.onSubmitProcessResponse(projectId, processId, message);
+                  },
+                  onRetryLiveSubscription: (projectId, processId) => {
+                    void options.onRetryLiveSubscription(projectId, processId);
+                  },
+                  onAttachSource: options.onAttachProcessSource,
+                  onRefreshSource: options.onRefreshProcessSource,
+                })
+              : renderProjectShellPage({
+                  store: options.store,
+                  targetDocument: options.targetWindow.document,
+                  targetWindow: options.targetWindow,
+                  onOpenProcess: options.onOpenProcess,
+                  onCreateProcess: options.onCreateProcess,
+                  onAttachSource: options.onAttachProjectSource,
+                  onUpdateSource: options.onUpdateProjectSource,
+                  onRefreshSource: options.onRefreshProjectSource,
+                  onDetachSource: options.onDetachProjectSource,
+                  onCancelCreateProcess: options.onCancelCreateProcess,
+                  onOpenCreateProcess: options.onOpenCreateProcess,
+                });
 
     options.root.append(page);
 

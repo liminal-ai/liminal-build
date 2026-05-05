@@ -24,6 +24,7 @@ import type {
   UpdateSourceAttachmentRequest,
 } from '../../shared/contracts/index.js';
 import {
+  buildProcessArchivePath,
   buildReviewWorkspacePath,
   buildProcessLiveUpdatesPath,
   deriveEnvironmentStatusLabel,
@@ -32,6 +33,7 @@ import {
 import { ApiRequestError, getAuthenticatedUser } from '../browser-api/auth-api.js';
 import {
   attachProcessSource,
+  getProcessArchive,
   getProcessSourceProvenance,
   rebuildEnvironment,
   getProcessWorkSurface,
@@ -71,6 +73,13 @@ function getRoutePathname(parsedRoute: ParsedRoute): string {
     return `/projects/${parsedRoute.projectId ?? ''}/processes/${parsedRoute.processId ?? ''}`;
   }
 
+  if (parsedRoute.kind === 'process-archive') {
+    return buildProcessArchivePath({
+      projectId: parsedRoute.projectId ?? '',
+      processId: parsedRoute.processId ?? '',
+    });
+  }
+
   if (parsedRoute.kind === 'review-workspace') {
     return buildReviewWorkspacePath({
       projectId: parsedRoute.projectId ?? '',
@@ -86,6 +95,23 @@ function getProcessSurfaceRouteIdentity(parsedRoute: ParsedRoute): {
   processId: string | null;
 } {
   if (parsedRoute.kind !== 'process-work-surface') {
+    return {
+      projectId: null,
+      processId: null,
+    };
+  }
+
+  return {
+    projectId: parsedRoute.projectId,
+    processId: parsedRoute.processId,
+  };
+}
+
+function getArchiveRouteIdentity(parsedRoute: ParsedRoute): {
+  projectId: string | null;
+  processId: string | null;
+} {
+  if (parsedRoute.kind !== 'process-archive') {
     return {
       projectId: null,
       processId: null,
@@ -214,6 +240,7 @@ export async function bootstrapApp(
   const bootstrap = getShellBootstrapPayload(targetWindow);
   const parsedRoute = parseRoute(new URL(targetWindow.location.href));
   const processSurfaceRouteIdentity = getProcessSurfaceRouteIdentity(parsedRoute);
+  const archiveRouteIdentity = getArchiveRouteIdentity(parsedRoute);
   const reviewWorkspaceRouteIdentity = getReviewWorkspaceRouteIdentity(parsedRoute);
   const initialState: Partial<AppState> = {
     auth: {
@@ -230,6 +257,11 @@ export async function bootstrapApp(
       ...defaultAppState.processSurface,
       projectId: processSurfaceRouteIdentity.projectId,
       processId: processSurfaceRouteIdentity.processId,
+    },
+    archiveSurface: {
+      ...defaultAppState.archiveSurface,
+      projectId: archiveRouteIdentity.projectId,
+      processId: archiveRouteIdentity.processId,
     },
     reviewWorkspace: {
       ...defaultAppState.reviewWorkspace,
@@ -450,6 +482,7 @@ export async function bootstrapApp(
   const applyRouteState = (parsedRoute: ParsedRoute): void => {
     stopLiveConnection();
     const processSurfaceIdentity = getProcessSurfaceRouteIdentity(parsedRoute);
+    const archiveSurfaceIdentity = getArchiveRouteIdentity(parsedRoute);
     const reviewWorkspaceIdentity = getReviewWorkspaceRouteIdentity(parsedRoute);
 
     store.patch('route', {
@@ -461,6 +494,11 @@ export async function bootstrapApp(
       ...defaultAppState.processSurface,
       projectId: processSurfaceIdentity.projectId,
       processId: processSurfaceIdentity.processId,
+    });
+    store.patch('archiveSurface', {
+      ...defaultAppState.archiveSurface,
+      projectId: archiveSurfaceIdentity.projectId,
+      processId: archiveSurfaceIdentity.processId,
     });
     store.patch('reviewWorkspace', {
       ...defaultAppState.reviewWorkspace,
@@ -1043,6 +1081,66 @@ export async function bootstrapApp(
         if (error instanceof ApiRequestError) {
           store.patch('processSurface', {
             ...defaultAppState.processSurface,
+            projectId: parsedRoute.projectId,
+            processId: parsedRoute.processId,
+            isLoading: false,
+            error: error.payload,
+          });
+          return;
+        }
+
+        throw error;
+      }
+
+      return;
+    }
+
+    if (parsedRoute.kind === 'process-archive') {
+      store.patch('shell', {
+        ...defaultAppState.shell,
+      });
+      store.patch('archiveSurface', {
+        ...defaultAppState.archiveSurface,
+        projectId: parsedRoute.projectId,
+        processId: parsedRoute.processId,
+        isLoading: true,
+        error: null,
+      });
+
+      try {
+        const [surface, archive] = await Promise.all([
+          getProcessWorkSurface({
+            projectId: parsedRoute.projectId ?? '',
+            processId: parsedRoute.processId ?? '',
+          }),
+          getProcessArchive({
+            projectId: parsedRoute.projectId ?? '',
+            processId: parsedRoute.processId ?? '',
+          }),
+        ]);
+
+        if (requestId !== routeLoadId) {
+          return;
+        }
+
+        store.patch('archiveSurface', {
+          ...defaultAppState.archiveSurface,
+          projectId: parsedRoute.projectId,
+          processId: parsedRoute.processId,
+          project: surface.project,
+          process: surface.process,
+          archive,
+          isLoading: false,
+          error: null,
+        });
+      } catch (error) {
+        if (requestId !== routeLoadId) {
+          return;
+        }
+
+        if (error instanceof ApiRequestError) {
+          store.patch('archiveSurface', {
+            ...defaultAppState.archiveSurface,
             projectId: parsedRoute.projectId,
             processId: parsedRoute.processId,
             isLoading: false,

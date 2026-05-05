@@ -11,12 +11,17 @@ import { vitePlugin } from './plugins/vite.plugin.js';
 import { websocketPlugin } from './plugins/websocket.plugin.js';
 import { workosAuthPlugin } from './plugins/workos-auth.plugin.js';
 import { registerAuthRoutes } from './routes/auth.js';
+import { registerArchiveRoutes } from './routes/archive.js';
 import { registerProcessRoutes } from './routes/processes.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { registerReviewRoutes } from './routes/review.js';
 import { registerSourceManagementRoutes } from './routes/source-management.js';
 import { AuthSessionService } from './services/auth/auth-session.service.js';
 import { AuthUserSyncService } from './services/auth/auth-user-sync.service.js';
+import {
+  DefaultArchiveReadService,
+  type ArchiveReadService,
+} from './services/archive/archive-read.service.js';
 import {
   InMemoryProcessLiveHub,
   type ProcessLiveHub,
@@ -113,6 +118,7 @@ export interface CreateAppOptions {
   processResponseService?: ProcessResponseService;
   processRegistrationService?: ProcessRegistrationService;
   processResumeService?: ProcessResumeService;
+  archiveReadService?: ArchiveReadService;
   gitHubRepositoryResolver?: GitHubRepositoryResolver;
   sourceManagementService?: SourceManagementService;
   sourceRefreshService?: SourceRefreshService;
@@ -156,6 +162,7 @@ declare module 'fastify' {
     processResponseService: ProcessResponseService;
     processRegistrationService: ProcessRegistrationService;
     processResumeService: ProcessResumeService;
+    archiveReadService: ArchiveReadService;
     sourceManagementService: SourceManagementService;
     sourceRefreshService: SourceRefreshService;
     sourceProvenanceService: SourceProvenanceService;
@@ -345,6 +352,9 @@ export async function createApp(options: CreateAppOptions = {}) {
       processEnvironmentService,
       env.DEFAULT_ENVIRONMENT_PROVIDER_KIND,
     );
+  const archiveReadService =
+    options.archiveReadService ??
+    new DefaultArchiveReadService(platformStore, processAccessService);
   const processWorkSurfaceService =
     options.processWorkSurfaceService ??
     new DefaultProcessWorkSurfaceService(platformStore, processAccessService, {
@@ -381,6 +391,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.decorate('processResponseService', processResponseService);
   app.decorate('processRegistrationService', processRegistrationService);
   app.decorate('processResumeService', processResumeService);
+  app.decorate('archiveReadService', archiveReadService);
   app.decorate('sourceManagementService', sourceManagementService);
   app.decorate('sourceRefreshService', sourceRefreshService);
   app.decorate('sourceProvenanceService', sourceProvenanceService);
@@ -404,6 +415,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     authUserSyncService,
   });
   await app.register(registerAuthRoutes);
+  await app.register(registerArchiveRoutes);
   await app.register(registerProjectRoutes);
   await app.register(registerProcessRoutes);
   await app.register(registerReviewRoutes);

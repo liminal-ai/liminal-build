@@ -1,4 +1,5 @@
 import type {
+  ArchivePage,
   CreateSourceAttachmentRequest,
   ListProcessSourceProvenanceResponse,
   ProcessWorkSurfaceResponse,
@@ -12,6 +13,8 @@ import type {
   SourceAttachmentSummary,
 } from '../../shared/contracts/index.js';
 import {
+  archivePageSchema,
+  buildProcessArchiveApiPath,
   createSourceAttachmentRequestSchema,
   buildProcessResponseApiPath,
   buildProcessRebuildApiPath,
@@ -80,7 +83,45 @@ function buildFallbackRequestError(response: Response): RequestError {
   }
 }
 
-async function parseRequestError(response: Response) {
+function buildArchiveFallbackRequestError(response: Response): RequestError {
+  switch (response.status) {
+    case 401:
+      return {
+        code: 'UNAUTHENTICATED',
+        message: 'Authenticated access is required.',
+        status: 401,
+      };
+    case 403:
+      return {
+        code: 'PROJECT_FORBIDDEN',
+        message: 'You do not have access to this process archive.',
+        status: 403,
+      };
+    case 404:
+      return {
+        code: 'PROCESS_NOT_FOUND',
+        message: 'The requested process archive could not be found.',
+        status: 404,
+      };
+    case 422:
+      return {
+        code: 'INVALID_ARCHIVE_REQUEST',
+        message: 'Archive pagination parameters were invalid.',
+        status: 422,
+      };
+    default:
+      return {
+        code: 'PROCESS_ACTION_FAILED',
+        message: 'The process archive could not be loaded right now. Try again or reload the page.',
+        status: response.status >= 400 ? response.status : 500,
+      };
+  }
+}
+
+async function parseRequestError(
+  response: Response,
+  buildFallback: (response: Response) => RequestError = buildFallbackRequestError,
+) {
   const body = await response.json().catch(() => null);
   const parsed = requestErrorSchema.safeParse(body);
 
@@ -88,7 +129,7 @@ async function parseRequestError(response: Response) {
     return parsed.data;
   }
 
-  return buildFallbackRequestError(response);
+  return buildFallback(response);
 }
 
 export async function getProcessWorkSurface(args: {
@@ -110,6 +151,27 @@ export async function getProcessWorkSurface(args: {
   }
 
   return processWorkSurfaceResponseSchema.parse(await response.json());
+}
+
+export async function getProcessArchive(args: {
+  projectId: string;
+  processId: string;
+}): Promise<ArchivePage> {
+  const response = await fetch(
+    buildProcessArchiveApiPath({
+      projectId: args.projectId,
+      processId: args.processId,
+    }),
+    {
+      credentials: 'include',
+    },
+  );
+
+  if (!response.ok) {
+    throw new ApiRequestError(await parseRequestError(response, buildArchiveFallbackRequestError));
+  }
+
+  return archivePageSchema.parse(await response.json());
 }
 
 export async function getProcessSourceProvenance(args: {

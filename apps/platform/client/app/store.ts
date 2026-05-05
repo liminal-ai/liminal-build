@@ -53,6 +53,15 @@ export const defaultAppState: AppState = appStateSchema.parse({
       error: null,
     },
   },
+  archiveSurface: {
+    projectId: null,
+    processId: null,
+    project: null,
+    process: null,
+    archive: null,
+    isLoading: false,
+    error: null,
+  },
   reviewWorkspace: {
     projectId: null,
     processId: null,

@@ -1,4 +1,5 @@
 import {
+  buildProcessArchivePath,
   buildReviewWorkspacePath,
   buildProcessWorkSurfacePath,
   type ParsedRoute,
@@ -56,6 +57,20 @@ export function parseRoute(url: URL): ParsedRoute {
     });
   }
 
+  const archiveMatch = pathname.match(/^\/projects\/([^/]+)\/processes\/([^/]+)\/archive$/);
+
+  if (archiveMatch !== null) {
+    const [, projectId, processId] = archiveMatch;
+
+    return parsedRouteSchema.parse({
+      kind: 'process-archive',
+      projectId,
+      selectedProcessId: null,
+      processId,
+      reviewSelection: null,
+    });
+  }
+
   const projectMatch = pathname.match(/^\/projects\/([^/]+)$/);
 
   if (projectMatch !== null) {
@@ -86,6 +101,13 @@ export function buildRouteHref(route: ParsedRoute): string {
 
   if (route.kind === 'process-work-surface') {
     return buildProcessWorkSurfacePath({
+      projectId: route.projectId ?? '',
+      processId: route.processId ?? '',
+    });
+  }
+
+  if (route.kind === 'process-archive') {
+    return buildProcessArchivePath({
       projectId: route.projectId ?? '',
       processId: route.processId ?? '',
     });

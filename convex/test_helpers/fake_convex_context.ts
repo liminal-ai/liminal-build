@@ -8,10 +8,18 @@ type SeedTables = Record<string, TestDoc[]>;
 
 type EqBuilder = {
   eq(field: string, value: unknown): EqBuilder;
+  gt(field: string, value: unknown): EqBuilder;
+  gte(field: string, value: unknown): EqBuilder;
+  lt(field: string, value: unknown): EqBuilder;
+  lte(field: string, value: unknown): EqBuilder;
 };
 
 class FakeQueryBuilder {
-  private readonly criteria: Array<{ field: string; value: unknown }> = [];
+  private readonly criteria: Array<{
+    field: string;
+    operator: 'eq' | 'gt' | 'gte' | 'lt' | 'lte';
+    value: unknown;
+  }> = [];
   private direction: 'asc' | 'desc' = 'asc';
   private indexName: string | null = null;
 
@@ -21,7 +29,23 @@ class FakeQueryBuilder {
     this.indexName = indexName;
     const builder: EqBuilder = {
       eq: (field, value) => {
-        this.criteria.push({ field, value });
+        this.criteria.push({ field, operator: 'eq', value });
+        return builder;
+      },
+      gt: (field, value) => {
+        this.criteria.push({ field, operator: 'gt', value });
+        return builder;
+      },
+      gte: (field, value) => {
+        this.criteria.push({ field, operator: 'gte', value });
+        return builder;
+      },
+      lt: (field, value) => {
+        this.criteria.push({ field, operator: 'lt', value });
+        return builder;
+      },
+      lte: (field, value) => {
+        this.criteria.push({ field, operator: 'lte', value });
         return builder;
       },
     };
@@ -55,21 +79,21 @@ class FakeQueryBuilder {
 
   private results(): TestDoc[] {
     const filtered = this.rows.filter((row) =>
-      this.criteria.every((criterion) => row[criterion.field] === criterion.value),
+      this.criteria.every((criterion) =>
+        matchesCriterion(row[criterion.field], criterion.operator, criterion.value),
+      ),
     );
     const sortField = this.resolveSortField(filtered);
 
     return [...filtered].sort((left, right) => {
-      const leftValue =
-        sortField === '_creationTime' ? left._creationTime : String(left[sortField]);
-      const rightValue =
-        sortField === '_creationTime' ? right._creationTime : String(right[sortField]);
+      const leftValue = sortField === '_creationTime' ? left._creationTime : left[sortField];
+      const rightValue = sortField === '_creationTime' ? right._creationTime : right[sortField];
+      const comparison = compareValues(leftValue, rightValue);
 
-      if (leftValue === rightValue) {
+      if (comparison === 0) {
         return 0;
       }
 
-      const comparison = leftValue < rightValue ? -1 : 1;
       return this.direction === 'asc' ? comparison : -comparison;
     });
   }
@@ -113,6 +137,42 @@ class FakeQueryBuilder {
       yield row;
     }
   }
+}
+
+function matchesCriterion(
+  fieldValue: unknown,
+  operator: 'eq' | 'gt' | 'gte' | 'lt' | 'lte',
+  criterionValue: unknown,
+): boolean {
+  const comparison = compareValues(fieldValue, criterionValue);
+
+  switch (operator) {
+    case 'eq':
+      return comparison === 0;
+    case 'gt':
+      return comparison > 0;
+    case 'gte':
+      return comparison >= 0;
+    case 'lt':
+      return comparison < 0;
+    case 'lte':
+      return comparison <= 0;
+  }
+}
+
+function compareValues(left: unknown, right: unknown): number {
+  if (typeof left === 'number' && typeof right === 'number') {
+    return left === right ? 0 : left < right ? -1 : 1;
+  }
+
+  const normalizedLeft = String(left);
+  const normalizedRight = String(right);
+
+  if (normalizedLeft === normalizedRight) {
+    return 0;
+  }
+
+  return normalizedLeft < normalizedRight ? -1 : 1;
 }
 
 class FakeDb {

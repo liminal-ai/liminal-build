@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from 'vitest';
+import { createAppStore } from '../../../apps/platform/client/app/store.js';
+import { renderProcessArchivePage } from '../../../apps/platform/client/features/processes/process-archive-page.js';
+import { renderArchiveSection } from '../../../apps/platform/client/features/processes/archive-section.js';
 import {
   getDerivedArchiveViewsRouteSchema,
   getProcessArchiveRouteSchema,
@@ -27,6 +30,7 @@ import {
   readyArchiveTurnPageFixture,
   readyDerivedArchiveViewsFixture,
   refreshedDerivedArchiveViewsFixture,
+  userArchiveEntryFixture,
 } from '../../fixtures/archive.js';
 import {
   processEventHistoryFixture,
@@ -216,5 +220,100 @@ describe('Epic 07 Story 0 archive foundation contracts', () => {
         historyItem: progressUpdateHistoryFixture,
       }),
     ).toBeNull();
+  });
+});
+
+function buildArchiveStore() {
+  return createAppStore({
+    auth: {
+      actor: {
+        id: 'user:workos-user-1',
+        email: 'lee@example.com',
+        displayName: 'Lee Moore',
+      },
+      isResolved: true,
+      csrfToken: 'csrf-token',
+    },
+    route: {
+      pathname: '/projects/project-archive-001/processes/process-archive-001/archive',
+      projectId: readyArchivePageFixture.entries[0]?.projectId ?? null,
+      selectedProcessId: null,
+    },
+    archiveSurface: {
+      projectId: readyArchivePageFixture.entries[0]?.projectId ?? null,
+      processId: readyArchivePageFixture.entries[0]?.processId ?? null,
+      project: {
+        projectId: readyArchivePageFixture.entries[0]?.projectId ?? 'project-archive-001',
+        name: 'Archive Story Project',
+        role: 'owner',
+      },
+      process: {
+        processId: readyArchivePageFixture.entries[0]?.processId ?? 'process-archive-001',
+        displayLabel: 'Archive replay process',
+        processType: 'FeatureSpecification',
+        status: 'completed',
+        phaseLabel: 'Completed',
+        nextActionLabel: null,
+        availableActions: ['review'],
+        controls: [],
+        hasEnvironment: false,
+        updatedAt: '2026-05-05T09:05:00.000Z',
+      },
+      archive: readyArchivePageFixture,
+      isLoading: false,
+      error: null,
+    },
+  });
+}
+
+describe('archive section rendering', () => {
+  it('TC-3.1a archive entries visible', () => {
+    const view = renderArchiveSection({
+      archive: readyArchivePageFixture,
+      targetDocument: document,
+    });
+
+    expect(view.querySelector('[data-archive-entry-kind="user_message"]')?.textContent).toContain(
+      userArchiveEntryFixture.bodyText ?? '',
+    );
+    expect(view.querySelector('[data-archive-page-state="true"]')?.textContent).toContain(
+      'Showing 8 finalized archive entries.',
+    );
+  });
+
+  it('TC-3.1b empty archive state visible', () => {
+    const view = renderArchiveSection({
+      archive: {
+        entries: [],
+        page: {
+          cursor: null,
+          nextCursor: null,
+          hasMore: false,
+        },
+      },
+      targetDocument: document,
+    });
+
+    expect(view.querySelector('[data-archive-empty-state="true"]')?.textContent).toContain(
+      'No archived entries yet.',
+    );
+  });
+
+  it('renders degraded archive metadata without hiding healthy entries', () => {
+    const store = buildArchiveStore();
+    const view = renderProcessArchivePage({
+      store,
+      targetDocument: document,
+      targetWindow: window,
+      onOpenProcess: () => {},
+    });
+
+    expect(view.textContent).toContain('Archive replay process archive');
+    expect(view.querySelector('[data-archive-entry-status="ready"]')?.textContent).toContain(
+      userArchiveEntryFixture.bodyText ?? '',
+    );
+    expect(view.querySelector('[data-archive-entry-status="degraded"]')?.textContent).toContain(
+      'Related artifact version is unavailable.',
+    );
   });
 });
