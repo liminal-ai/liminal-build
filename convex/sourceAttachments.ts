@@ -1,6 +1,7 @@
 import { v } from 'convex/values';
 import type { Doc, Id } from './_generated/dataModel.js';
 import { type MutationCtx, mutation, type QueryCtx, query } from './_generated/server.js';
+import { computeWorkingSetFingerprint } from './processEnvironmentStates.js';
 
 export const sourceAttachmentsTableFields = {
   projectId: v.string(),
@@ -50,7 +51,7 @@ export const listProjectSourceAttachmentSummaries = query({
         indexQuery.eq('projectId', args.projectId),
       )
       .order('desc')
-      .take(200);
+      .collect();
 
     return Promise.all(
       sourceAttachments.map(async (sourceAttachment: Doc<'sourceAttachments'>) => {
@@ -300,14 +301,38 @@ export const detachSourceAttachment = mutation({
       updatedAt: detachedAt,
     });
 
+    const processRecords: Doc<'processes'>[] =
+      sourceAttachment.processId === null
+        ? await ctx.db
+            .query('processes')
+            .withIndex('by_projectId', (query) =>
+              query.eq('projectId', sourceAttachment.projectId as Id<'projects'>),
+            )
+            .collect()
+        : [];
+
+    if (sourceAttachment.processId !== null) {
+      const attachedProcess = await getProcessRecord(ctx, sourceAttachment.processId);
+      if (attachedProcess !== null) {
+        processRecords.push(attachedProcess);
+      }
+    }
+
+    for (const processRecord of processRecords) {
+      await removeCurrentProcessSourceRef(ctx, {
+        processRecord,
+        sourceAttachmentId: sourceAttachment._id,
+        updatedAt: detachedAt,
+      });
+      await removeHydrationPlanSourceRef(ctx, {
+        processId: processRecord._id,
+        sourceAttachmentId: sourceAttachment._id,
+        updatedAt: detachedAt,
+      });
+    }
+
     if (sourceAttachment.processId === null) {
       await touchProject(ctx, sourceAttachment.projectId as Id<'projects'>, detachedAt);
-    } else {
-      const processRecord = await getProcessRecord(ctx, sourceAttachment.processId);
-
-      if (processRecord !== null) {
-        await touchProcessAndProject(ctx, processRecord, detachedAt);
-      }
     }
 
     return {
@@ -461,6 +486,75 @@ async function appendCurrentProcessSourceRef(
     updatedAt: args.updatedAt,
   });
   await touchProcessAndProject(ctx, args.processRecord, args.updatedAt);
+}
+
+async function removeCurrentProcessSourceRef(
+  ctx: MutationCtx,
+  args: {
+    processRecord: Doc<'processes'>;
+    sourceAttachmentId: Id<'sourceAttachments'>;
+    updatedAt: string;
+  },
+): Promise<void> {
+  const existingSourceAttachmentIds = await resolveCurrentProcessSourceAttachmentIds(
+    ctx,
+    args.processRecord,
+  );
+  const nextSourceAttachmentIds = existingSourceAttachmentIds.filter(
+    (sourceAttachmentId) => sourceAttachmentId !== args.sourceAttachmentId,
+  );
+
+  if (nextSourceAttachmentIds.length === existingSourceAttachmentIds.length) {
+    return;
+  }
+
+  await writeCurrentProcessSourceAttachmentIds(ctx, args.processRecord, {
+    sourceAttachmentIds: nextSourceAttachmentIds,
+    updatedAt: args.updatedAt,
+  });
+  await touchProcessAndProject(ctx, args.processRecord, args.updatedAt);
+}
+
+async function removeHydrationPlanSourceRef(
+  ctx: MutationCtx,
+  args: {
+    processId: Id<'processes'>;
+    sourceAttachmentId: Id<'sourceAttachments'>;
+    updatedAt: string;
+  },
+): Promise<void> {
+  const environmentState = await ctx.db
+    .query('processEnvironmentStates')
+    .withIndex('by_processId', (query) => query.eq('processId', args.processId))
+    .unique();
+
+  if (environmentState?.workingSetPlan === null || environmentState === null) {
+    return;
+  }
+
+  const nextSourceAttachmentIds = environmentState.workingSetPlan.sourceAttachmentIds.filter(
+    (sourceAttachmentId) => sourceAttachmentId !== args.sourceAttachmentId,
+  );
+
+  if (
+    nextSourceAttachmentIds.length === environmentState.workingSetPlan.sourceAttachmentIds.length
+  ) {
+    return;
+  }
+
+  await ctx.db.patch(environmentState._id, {
+    workingSetPlan: {
+      artifactIds: environmentState.workingSetPlan.artifactIds,
+      outputIds: environmentState.workingSetPlan.outputIds,
+      sourceAttachmentIds: nextSourceAttachmentIds,
+    },
+    updatedAt: args.updatedAt,
+  });
+
+  const workingSetFingerprint = await computeWorkingSetFingerprint(ctx, args.processId);
+  await ctx.db.patch(environmentState._id, {
+    workingSetFingerprint,
+  });
 }
 
 async function resolveCurrentProcessSourceAttachmentIds(

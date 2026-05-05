@@ -4,11 +4,18 @@ import {
   type SourceAttachmentSummary,
   type SourceProvenanceEntry,
 } from '../../../shared/contracts/index.js';
+import {
+  buildSourceAttachmentShadowKey,
+  resolveActiveProcessSourceAttachments,
+  resolveCanonicalProcessSourceAttachment,
+} from '../processes/active-process-sources.js';
 import type { CodeCheckpointTarget } from '../processes/environment/checkpoint-types.js';
 import type { PlatformStore, StoredSourceProvenanceRecord } from '../projects/platform-store.js';
+import type { SourceRefreshService } from './source-refresh.service.js';
 
 type SourceProvenancePlatformStore = PlatformStore & {
   createSourceProvenance: NonNullable<PlatformStore['createSourceProvenance']>;
+  getCurrentProcessMaterialRefs: NonNullable<PlatformStore['getCurrentProcessMaterialRefs']>;
   listProcessSourceProvenance: NonNullable<PlatformStore['listProcessSourceProvenance']>;
 };
 
@@ -16,6 +23,7 @@ export interface SourceProvenanceService {
   recordInformedWorkForCurrentSources(args: {
     projectId: string;
     processId: string;
+    usedSourceAttachmentIds: string[];
     eventId?: string | null;
   }): Promise<void>;
   recordReceivedCodeUpdates(args: {
@@ -31,13 +39,24 @@ export interface SourceProvenanceService {
 }
 
 export class DefaultSourceProvenanceService implements SourceProvenanceService {
-  constructor(private readonly platformStore: SourceProvenancePlatformStore) {}
+  constructor(
+    private readonly platformStore: SourceProvenancePlatformStore,
+    private readonly sourceRefreshService?: Pick<
+      SourceRefreshService,
+      'synchronizeProjectSourceAttachments'
+    >,
+  ) {}
 
   async recordInformedWorkForCurrentSources(args: {
     projectId: string;
     processId: string;
+    usedSourceAttachmentIds: string[];
     eventId?: string | null;
   }): Promise<void> {
+    if (args.usedSourceAttachmentIds.length === 0) {
+      return;
+    }
+
     const [currentMaterialRefs, projectSourceAttachments] = await Promise.all([
       this.platformStore.getCurrentProcessMaterialRefs({
         processId: args.processId,
@@ -46,30 +65,40 @@ export class DefaultSourceProvenanceService implements SourceProvenanceService {
         projectId: args.projectId,
       }),
     ]);
-    const sourceAttachmentsById = new Map(
+    const rawSourceAttachmentsById = new Map(
       projectSourceAttachments.map((sourceAttachment) => [
         sourceAttachment.sourceAttachmentId,
         sourceAttachment,
       ]),
     );
+    const usedSourceAttachmentIds = new Set(args.usedSourceAttachmentIds);
+    const usedShadowKeys = new Set(
+      args.usedSourceAttachmentIds
+        .map((sourceAttachmentId) => rawSourceAttachmentsById.get(sourceAttachmentId))
+        .filter((sourceAttachment): sourceAttachment is SourceAttachmentSummary => {
+          return sourceAttachment !== undefined;
+        })
+        .map((sourceAttachment) => buildSourceAttachmentShadowKey(sourceAttachment)),
+    );
+    const activeSourceAttachments = resolveActiveProcessSourceAttachments({
+      sourceAttachments: projectSourceAttachments,
+      processId: args.processId,
+      currentSourceAttachmentIds: currentMaterialRefs.sourceAttachmentIds,
+    }).filter(
+      (sourceAttachment) =>
+        usedSourceAttachmentIds.has(sourceAttachment.sourceAttachmentId) ||
+        usedShadowKeys.has(buildSourceAttachmentShadowKey(sourceAttachment)),
+    );
 
     await Promise.all(
-      Array.from(new Set(currentMaterialRefs.sourceAttachmentIds)).map(
-        async (sourceAttachmentId) => {
-          const sourceAttachment = sourceAttachmentsById.get(sourceAttachmentId);
-
-          if (sourceAttachment === undefined || sourceAttachment.detachedAt != null) {
-            return;
-          }
-
-          await this.createProvenanceRecord({
-            projectId: args.projectId,
-            processId: args.processId,
-            sourceAttachment,
-            relationshipKind: 'informed_work',
-            eventId: args.eventId ?? null,
-          });
-        },
+      activeSourceAttachments.map((sourceAttachment) =>
+        this.createProvenanceRecord({
+          projectId: args.projectId,
+          processId: args.processId,
+          sourceAttachment,
+          relationshipKind: 'informed_work',
+          eventId: args.eventId ?? null,
+        }),
       ),
     );
   }
@@ -123,14 +152,24 @@ export class DefaultSourceProvenanceService implements SourceProvenanceService {
     projectId: string;
     processId: string;
   }): Promise<ListProcessSourceProvenanceResponse> {
-    const [records, projectSourceAttachments] = await Promise.all([
+    const [records, currentMaterialRefs, rawProjectSourceAttachments] = await Promise.all([
       this.platformStore.listProcessSourceProvenance({
+        processId: args.processId,
+      }),
+      this.platformStore.getCurrentProcessMaterialRefs({
         processId: args.processId,
       }),
       this.platformStore.listProjectSourceAttachments({
         projectId: args.projectId,
       }),
     ]);
+    const projectSourceAttachments =
+      this.sourceRefreshService === undefined
+        ? rawProjectSourceAttachments
+        : await this.sourceRefreshService.synchronizeProjectSourceAttachments({
+            projectId: args.projectId,
+            sourceAttachments: rawProjectSourceAttachments,
+          });
     const sourceAttachmentsById = new Map(
       projectSourceAttachments.map((sourceAttachment) => [
         sourceAttachment.sourceAttachmentId,
@@ -140,12 +179,20 @@ export class DefaultSourceProvenanceService implements SourceProvenanceService {
 
     return listProcessSourceProvenanceResponseSchema.parse({
       entries: records.map((record) =>
-        this.buildSourceProvenanceEntry(
-          record,
-          record.sourceAttachmentId === null
-            ? null
-            : (sourceAttachmentsById.get(record.sourceAttachmentId) ?? null),
-        ),
+        this.buildSourceProvenanceEntry(record, {
+          currentAttachment:
+            resolveCanonicalProcessSourceAttachment({
+              sourceAttachments: projectSourceAttachments,
+              processId: args.processId,
+              currentSourceAttachmentIds: currentMaterialRefs.sourceAttachmentIds,
+              repositoryFullName: record.repositoryFullName,
+              targetRef: record.targetRef,
+            }) ?? null,
+          exactAttachment:
+            record.sourceAttachmentId === null
+              ? null
+              : (sourceAttachmentsById.get(record.sourceAttachmentId) ?? null),
+        }),
       ),
     });
   }
@@ -173,13 +220,20 @@ export class DefaultSourceProvenanceService implements SourceProvenanceService {
 
   private buildSourceProvenanceEntry(
     record: StoredSourceProvenanceRecord,
-    sourceAttachment: SourceAttachmentSummary | null,
+    args: {
+      currentAttachment: SourceAttachmentSummary | null;
+      exactAttachment: SourceAttachmentSummary | null;
+    },
   ): SourceProvenanceEntry {
+    const sourceAttachment = args.currentAttachment;
     if (
       record.entryStatus === 'ready' &&
       record.degradationReason === null &&
       sourceAttachment !== null &&
-      sourceAttachment.detachedAt == null
+      (args.exactAttachment === null || args.exactAttachment.detachedAt == null) &&
+      sourceAttachment.detachedAt == null &&
+      !isRedactedCurrentAttachment(sourceAttachment) &&
+      sourceAttachment.hydrationState !== 'unavailable'
     ) {
       return {
         provenanceId: record.provenanceId,
@@ -200,10 +254,11 @@ export class DefaultSourceProvenanceService implements SourceProvenanceService {
     }
 
     const currentAttachmentVisibility =
-      record.degradationReason === 'access_revoked'
-        ? 'redacted'
-        : sourceAttachment?.detachedAt != null || record.degradationReason === 'source_detached'
-          ? 'detached'
+      args.exactAttachment?.detachedAt != null || record.degradationReason === 'source_detached'
+        ? 'detached'
+        : record.degradationReason === 'access_revoked' ||
+            (sourceAttachment !== null && isRedactedCurrentAttachment(sourceAttachment))
+          ? 'redacted'
           : 'unavailable';
 
     return {
@@ -229,4 +284,12 @@ export class DefaultSourceProvenanceService implements SourceProvenanceService {
       recordedAt: record.recordedAt,
     };
   }
+}
+
+function isRedactedCurrentAttachment(sourceAttachment: SourceAttachmentSummary): boolean {
+  return (
+    sourceAttachment.hydrationState === 'unavailable' &&
+    (sourceAttachment.freshnessReason === 'repository_unavailable' ||
+      sourceAttachment.freshnessReason === 'access_revoked')
+  );
 }

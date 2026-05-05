@@ -1,0 +1,6 @@
+{
+  "rulingRequestId": "03-hydration-and-freshness-management-story-run-001-ruling-018",
+  "decision": "Disable/hide project-shell refresh unless a single current process target exists; continue implementation to make UI truthful.",
+  "rationale": "Project-shell rehydration should only be offered when ownership of the working copy is unambiguous. This keeps the UI truthful, matches the backend constraint already present in the runtime-backed refresh path, avoids presenting an action that immediately fails, and defers any cross-process project-level target selection to a later explicitly designed story.",
+  "source": "impl-lead"
+}

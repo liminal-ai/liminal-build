@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AppError } from '../../../apps/platform/server/errors/app-error.js';
+import { InMemoryProviderAdapter } from '../../../apps/platform/server/services/processes/environment/provider-adapter.js';
+import { SingleAdapterRegistry } from '../../../apps/platform/server/services/processes/environment/provider-adapter-registry.js';
 import {
   InMemoryPlatformStore,
   type CreateSourceAttachmentRecord,
@@ -12,6 +14,7 @@ import type {
 import { DefaultSourceManagementService } from '../../../apps/platform/server/services/sources/source-management.service.js';
 import {
   DefaultSourceRefreshService,
+  RuntimeSourceHydrationExecutor,
   type SourceHydrationExecutor,
 } from '../../../apps/platform/server/services/sources/source-refresh.service.js';
 import { DefaultSourceProvenanceService } from '../../../apps/platform/server/services/sources/source-provenance.service.js';
@@ -468,6 +471,59 @@ describe('source-management service', () => {
     });
   });
 
+  it('marks a recoverably missing working copy as stale with working_copy_missing on the production sync path', async () => {
+    const store = buildStore();
+    const created = await store.createProcessSourceAttachment({
+      projectId: projectSummary.projectId,
+      processId: processSummary.processId,
+      provider: 'github',
+      displayName: 'liminal-build',
+      purpose: 'implementation',
+      accessMode: 'read_only',
+      repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
+      repositoryFullName: 'liminal-ai/liminal-build',
+      targetRef: 'main',
+    });
+
+    await store.updateSourceAttachment({
+      projectId: projectSummary.projectId,
+      sourceAttachmentId: created.sourceAttachmentId,
+      purpose: created.purpose,
+      accessMode: created.accessMode,
+      targetRef: created.targetRef,
+      hydrationState: 'hydrated',
+      freshnessReason: null,
+      lastHydratedAt: '2026-05-01T12:00:00.000Z',
+      lastHydratedResolvedRef: 'a'.repeat(40),
+      lastObservedRemoteResolvedRef: 'a'.repeat(40),
+    });
+
+    const refreshService = buildRefreshService({ store });
+
+    const synchronized = await refreshService.synchronizeProjectSourceAttachments({
+      projectId: projectSummary.projectId,
+      sourceAttachments: await store.listProjectSourceAttachments({
+        projectId: projectSummary.projectId,
+      }),
+    });
+
+    expect(synchronized[0]).toMatchObject({
+      sourceAttachmentId: created.sourceAttachmentId,
+      hydrationState: 'stale',
+      freshnessReason: 'working_copy_missing',
+    });
+    await expect(
+      store.getProjectSourceAttachment({
+        projectId: projectSummary.projectId,
+        sourceAttachmentId: created.sourceAttachmentId,
+      }),
+    ).resolves.toMatchObject({
+      sourceAttachmentId: created.sourceAttachmentId,
+      hydrationState: 'stale',
+      freshnessReason: 'working_copy_missing',
+    });
+  });
+
   it('updates by sourceAttachmentId even when the project attachment list is capped before that row', async () => {
     const backingStore = buildStore();
 
@@ -564,6 +620,121 @@ describe('source-management service', () => {
       accessMode: 'read_write',
       targetRef: 'feature/story-205-updated',
     });
+  });
+
+  it('treats a project-scoped source as ineligible for refresh when a process shadow is canonical', async () => {
+    const store = buildStore();
+    const shadowedProjectSource = await store.createProjectSourceAttachment({
+      projectId: projectSummary.projectId,
+      provider: 'github',
+      displayName: 'shared repo',
+      purpose: 'implementation',
+      accessMode: 'read_only',
+      repositoryUrl: 'https://github.com/liminal-ai/shared-repo',
+      repositoryFullName: 'liminal-ai/shared-repo',
+      targetRef: 'main',
+    });
+    const processShadowSource = await store.createProcessSourceAttachment({
+      projectId: projectSummary.projectId,
+      processId: processSummary.processId,
+      provider: 'github',
+      displayName: 'shared repo process shadow',
+      purpose: 'implementation',
+      accessMode: 'read_only',
+      repositoryUrl: shadowedProjectSource.repositoryUrl,
+      repositoryFullName: shadowedProjectSource.repositoryFullName,
+      targetRef: shadowedProjectSource.targetRef,
+    });
+    await store.setCurrentProcessMaterialRefs({
+      processId: processSummary.processId,
+      artifactIds: [],
+      sourceAttachmentIds: [
+        shadowedProjectSource.sourceAttachmentId,
+        processShadowSource.sourceAttachmentId,
+      ],
+    });
+
+    const executor = new RuntimeSourceHydrationExecutor(
+      store,
+      new SingleAdapterRegistry(new InMemoryProviderAdapter()),
+      'local',
+    );
+
+    await expect(
+      executor.refreshRecoverableSource({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        projectId: projectSummary.projectId,
+        sourceAttachment: shadowedProjectSource,
+        repository: {
+          kind: 'resolved',
+          repositoryUrl: shadowedProjectSource.repositoryUrl,
+          repositoryFullName: shadowedProjectSource.repositoryFullName,
+          targetRef: shadowedProjectSource.targetRef,
+          targetRefKind: 'branch',
+          defaultBranch: 'main',
+          resolvedRef: 'f'.repeat(40),
+        },
+      }),
+    ).resolves.toEqual({
+      kind: 'not_available',
+      message:
+        'Refresh is not available because no single current process working copy owns this source attachment.',
+    });
+  });
+
+  it('records informed-work provenance only for the canonical shadowing source', async () => {
+    const store = buildStore();
+    const shadowedProjectSource = await store.createProjectSourceAttachment({
+      projectId: projectSummary.projectId,
+      provider: 'github',
+      displayName: 'shared repo',
+      purpose: 'implementation',
+      accessMode: 'read_only',
+      repositoryUrl: 'https://github.com/liminal-ai/shared-repo',
+      repositoryFullName: 'liminal-ai/shared-repo',
+      targetRef: 'main',
+    });
+    const processShadowSource = await store.createProcessSourceAttachment({
+      projectId: projectSummary.projectId,
+      processId: processSummary.processId,
+      provider: 'github',
+      displayName: 'shared repo process shadow',
+      purpose: 'implementation',
+      accessMode: 'read_only',
+      repositoryUrl: shadowedProjectSource.repositoryUrl,
+      repositoryFullName: shadowedProjectSource.repositoryFullName,
+      targetRef: shadowedProjectSource.targetRef,
+    });
+    await store.setCurrentProcessMaterialRefs({
+      processId: processSummary.processId,
+      artifactIds: [],
+      sourceAttachmentIds: [shadowedProjectSource.sourceAttachmentId],
+    });
+
+    const provenanceService = new DefaultSourceProvenanceService(store);
+
+    await provenanceService.recordInformedWorkForCurrentSources({
+      projectId: projectSummary.projectId,
+      processId: processSummary.processId,
+      usedSourceAttachmentIds: [shadowedProjectSource.sourceAttachmentId],
+    });
+
+    await expect(
+      store.listProcessSourceProvenance({
+        processId: processSummary.processId,
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        sourceAttachmentId: processShadowSource.sourceAttachmentId,
+        relationshipKind: 'informed_work',
+        repositoryFullName: processShadowSource.repositoryFullName,
+      }),
+    ]);
   });
 
   it('TC-4.3a read-only source not recorded as write target', async () => {

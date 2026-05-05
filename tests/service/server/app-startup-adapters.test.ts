@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { InMemoryPlatformStore } from '../../../apps/platform/server/services/projects/platform-store.js';
 import { buildApp } from '../../utils/build-app.js';
 
 type LogRecord = Record<string, unknown>;
@@ -24,22 +25,28 @@ afterEach(() => {
 });
 
 describe('server startup adapter validation', () => {
-  it('warns in production when null or in-memory adapters are active', async () => {
+  it('fails fast in production when NullPlatformStore would be used', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    await expect(
+      buildApp({
+        env: {
+          CONVEX_URL: 'https://story0.example.convex.cloud',
+        },
+      }),
+    ).rejects.toThrow('createApp cannot boot with NullPlatformStore in production.');
+  });
+
+  it('still warns in production when a non-shared live hub is active on an explicit durable store', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     const logs = createLogCapture();
     const app = await buildApp({
       logger: logs.logger,
-      env: {
-        CONVEX_URL: 'https://story0.example.convex.cloud',
-      },
+      platformStore: new InMemoryPlatformStore(),
     });
 
     try {
       expect(logs.records).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({
-            msg: 'Platform store is NullPlatformStore -- review features will return empty results. Set CONVEX_URL to enable live data.',
-          }),
           expect.objectContaining({
             msg: 'Process live hub is InMemoryProcessLiveHub -- live updates stay in-process only. Configure a shared live hub before running in production.',
           }),

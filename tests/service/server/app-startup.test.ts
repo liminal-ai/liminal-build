@@ -6,34 +6,11 @@ describe('app startup warnings', () => {
     vi.unstubAllEnvs();
   });
 
-  it('warns in production when review boot falls back to null or in-memory adapters', async () => {
-    const records: Array<Record<string, unknown>> = [];
+  it('fails fast in production when review boot would fall back to NullPlatformStore', async () => {
     vi.stubEnv('NODE_ENV', 'production');
 
-    const app = await buildApp({
-      logger: {
-        level: 'warn',
-        stream: {
-          write(line: string) {
-            records.push(JSON.parse(line) as Record<string, unknown>);
-          },
-        },
-      },
-    });
-
-    expect(records).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          level: 40,
-          msg: expect.stringContaining('Platform store is NullPlatformStore'),
-        }),
-        expect.objectContaining({
-          level: 40,
-          msg: expect.stringContaining('Process live hub is InMemoryProcessLiveHub'),
-        }),
-      ]),
+    await expect(buildApp()).rejects.toThrow(
+      'createApp cannot boot with NullPlatformStore in production.',
     );
-
-    await app.close();
   });
 });

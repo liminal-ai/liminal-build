@@ -22,6 +22,7 @@ import {
 } from '../../fixtures/processes.js';
 import { inaccessibleProjectId, populatedProjectSummary } from '../../fixtures/projects.js';
 import {
+  buildSourceAttachmentSummaryFixture,
   hydratedSourceFixture,
   notHydratedSourceFixture,
   staleSourceFixture,
@@ -276,6 +277,95 @@ describe('project shell bootstrap api', () => {
     expect(items.get(hydratedSourceFixture.sourceAttachmentId)).toBe(0);
     expect(items.get(staleSourceFixture.sourceAttachmentId)).toBe(1);
     expect(items.get(notHydratedSourceFixture.sourceAttachmentId)).toBe(2);
+
+    await app.close();
+  });
+
+  it('counts only canonical active sources for project-shell refresh eligibility when a process shadow exists', async () => {
+    const shadowedProjectSource = buildSourceAttachmentSummaryFixture({
+      sourceAttachmentId: 'source-shadow-project-eligibility-001',
+      displayName: 'shared repo',
+      repositoryUrl: 'https://github.com/liminal-ai/shared-repo',
+      repositoryFullName: 'liminal-ai/shared-repo',
+      targetRef: 'main',
+      hydrationState: 'stale',
+      freshnessReason: 'working_copy_missing',
+      updatedAt: '2026-05-03T12:00:00.000Z',
+    });
+    const processShadowSource = buildSourceAttachmentSummaryFixture({
+      sourceAttachmentId: 'source-shadow-process-eligibility-001',
+      displayName: 'shared repo process shadow',
+      repositoryUrl: shadowedProjectSource.repositoryUrl,
+      repositoryFullName: shadowedProjectSource.repositoryFullName,
+      targetRef: shadowedProjectSource.targetRef,
+      hydrationState: 'stale',
+      freshnessReason: 'working_copy_missing',
+      attachmentScope: 'process',
+      processId: waitingProcessFixture.processId,
+      processDisplayLabel: waitingProcessFixture.displayLabel,
+      updatedAt: '2026-05-03T12:05:00.000Z',
+    });
+    const platformStore = new InMemoryPlatformStore({
+      accessibleProjectsByUserId: {
+        'user:workos-user-1': [populatedProjectSummary],
+      },
+      projectAccessByProjectId: {
+        [populatedProjectSummary.projectId]: {
+          kind: 'accessible',
+          project: populatedProjectSummary,
+        },
+      },
+      processesByProjectId: {
+        [populatedProjectSummary.projectId]: [waitingProcessFixture],
+      },
+      sourceAttachmentsByProjectId: {
+        [populatedProjectSummary.projectId]: [processShadowSource, shadowedProjectSource],
+      },
+      currentMaterialRefsByProcessId: {
+        [waitingProcessFixture.processId]: {
+          artifactIds: [],
+          sourceAttachmentIds: [
+            shadowedProjectSource.sourceAttachmentId,
+            processShadowSource.sourceAttachmentId,
+          ],
+        },
+      },
+    });
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${populatedProjectSummary.projectId}`,
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const items = new Map(
+      response
+        .json()
+        .sourceAttachments.items.map(
+          (item: { projectRefreshTargetCount?: number; sourceAttachmentId: string }) => [
+            item.sourceAttachmentId,
+            item.projectRefreshTargetCount ?? 0,
+          ],
+        ),
+    );
+
+    expect(items.get(shadowedProjectSource.sourceAttachmentId)).toBe(0);
 
     await app.close();
   });

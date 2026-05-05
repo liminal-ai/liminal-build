@@ -39,6 +39,10 @@ class FakeQueryBuilder {
     return this.results().slice(0, limit);
   }
 
+  async collect(): Promise<TestDoc[]> {
+    return this.results();
+  }
+
   async unique(): Promise<TestDoc | null> {
     const results = this.results();
 
@@ -102,6 +106,12 @@ class FakeQueryBuilder {
         : trailingSegment;
 
     return sortField.length > 0 && rows.some((row) => sortField in row) ? sortField : null;
+  }
+
+  async *[Symbol.asyncIterator](): AsyncIterator<TestDoc> {
+    for (const row of this.results()) {
+      yield row;
+    }
   }
 }
 

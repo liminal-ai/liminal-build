@@ -4,17 +4,21 @@ function sortByUpdatedAtDesc<T extends { updatedAt: string }>(items: T[]): T[] {
   return [...items].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
-function buildShadowKey(
+export function buildSourceAttachmentShadowKey(
   sourceAttachment: Pick<SourceAttachmentSummary, 'repositoryFullName' | 'targetRef'>,
 ): string {
   return `${sourceAttachment.repositoryFullName}:${sourceAttachment.targetRef ?? ''}`;
 }
 
-export function resolveActiveProcessSourceAttachments(args: {
+type ResolveActiveProcessSourceAttachmentsArgs = {
   sourceAttachments: SourceAttachmentSummary[];
   processId: string;
   currentSourceAttachmentIds: string[];
-}): SourceAttachmentSummary[] {
+};
+
+function buildVisibleActiveSourceAttachments(
+  args: ResolveActiveProcessSourceAttachmentsArgs,
+): Map<string, SourceAttachmentSummary> {
   const currentSourceAttachmentIds = new Set(args.currentSourceAttachmentIds);
   const activeAttachments = args.sourceAttachments.filter((sourceAttachment) => {
     if (sourceAttachment.detachedAt != null) {
@@ -26,9 +30,18 @@ export function resolveActiveProcessSourceAttachments(args: {
       sourceAttachment.processId === args.processId
     );
   });
-  const processScopedRows = activeAttachments.filter(
-    (sourceAttachment) => sourceAttachment.processId === args.processId,
+  const processScopedRows = sortByUpdatedAtDesc(
+    activeAttachments.filter((sourceAttachment) => sourceAttachment.processId === args.processId),
   );
+  const processScopedRowByShadowKey = new Map<string, SourceAttachmentSummary>();
+
+  for (const sourceAttachment of processScopedRows) {
+    const shadowKey = buildSourceAttachmentShadowKey(sourceAttachment);
+    if (!processScopedRowByShadowKey.has(shadowKey)) {
+      processScopedRowByShadowKey.set(shadowKey, sourceAttachment);
+    }
+  }
+
   const visibleByShadowKey = new Map<string, SourceAttachmentSummary>();
 
   for (const sourceAttachment of processScopedRows) {
@@ -36,10 +49,13 @@ export function resolveActiveProcessSourceAttachments(args: {
       continue;
     }
 
-    visibleByShadowKey.set(buildShadowKey(sourceAttachment), sourceAttachment);
+    const shadowKey = buildSourceAttachmentShadowKey(sourceAttachment);
+    if (!visibleByShadowKey.has(shadowKey)) {
+      visibleByShadowKey.set(shadowKey, sourceAttachment);
+    }
   }
 
-  for (const sourceAttachment of activeAttachments) {
+  for (const sourceAttachment of sortByUpdatedAtDesc(activeAttachments)) {
     if (
       sourceAttachment.attachmentScope !== 'project' ||
       !currentSourceAttachmentIds.has(sourceAttachment.sourceAttachmentId)
@@ -47,17 +63,41 @@ export function resolveActiveProcessSourceAttachments(args: {
       continue;
     }
 
-    const processScopedSibling = processScopedRows.find(
-      (candidate) =>
-        candidate.repositoryFullName === sourceAttachment.repositoryFullName &&
-        candidate.targetRef === sourceAttachment.targetRef,
-    );
+    const shadowKey = buildSourceAttachmentShadowKey(sourceAttachment);
+    const processScopedShadow = processScopedRowByShadowKey.get(shadowKey);
 
-    visibleByShadowKey.set(
-      buildShadowKey(sourceAttachment),
-      processScopedSibling ?? sourceAttachment,
-    );
+    if (processScopedShadow !== undefined) {
+      visibleByShadowKey.set(shadowKey, processScopedShadow);
+      continue;
+    }
+
+    if (!visibleByShadowKey.has(shadowKey)) {
+      visibleByShadowKey.set(shadowKey, sourceAttachment);
+    }
   }
 
-  return sortByUpdatedAtDesc([...visibleByShadowKey.values()]);
+  return visibleByShadowKey;
+}
+
+export function resolveActiveProcessSourceAttachments(
+  args: ResolveActiveProcessSourceAttachmentsArgs,
+): SourceAttachmentSummary[] {
+  return sortByUpdatedAtDesc([...buildVisibleActiveSourceAttachments(args).values()]);
+}
+
+export function resolveCanonicalProcessSourceAttachment(args: {
+  sourceAttachments: SourceAttachmentSummary[];
+  processId: string;
+  currentSourceAttachmentIds: string[];
+  repositoryFullName: string;
+  targetRef: string | null;
+}): SourceAttachmentSummary | null {
+  return (
+    buildVisibleActiveSourceAttachments(args).get(
+      buildSourceAttachmentShadowKey({
+        repositoryFullName: args.repositoryFullName,
+        targetRef: args.targetRef,
+      }),
+    ) ?? null
+  );
 }

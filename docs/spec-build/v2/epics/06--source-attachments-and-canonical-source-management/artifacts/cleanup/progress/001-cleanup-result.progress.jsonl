@@ -1,0 +1,2 @@
+{"timestamp":"2026-05-04T23:42:22.358Z","command":"epic-cleanup","phase":"cleanup","event":"command-started","summary":"epic-cleanup started."}
+{"timestamp":"2026-05-04T23:42:22.375Z","command":"epic-cleanup","phase":"finalizing","event":"completed","summary":"epic-cleanup completed as a no-op because there were no approved cleanup items."}

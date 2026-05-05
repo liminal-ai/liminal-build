@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "command": "story-implement",
+  "status": "completed",
+  "phase": "finalizing",
+  "startedAt": "2026-05-04T22:34:44.511Z",
+  "updatedAt": "2026-05-04T22:44:16.002Z",
+  "lastOutputAt": "2026-05-04T22:44:15.893Z",
+  "providerLiveness": "completed",
+  "provider": "codex",
+  "pid": 20216,
+  "cwd": "/Users/leemoore/code/liminal-build",
+  "timeoutMs": 7200000,
+  "configuredStartupTimeoutMs": 300000,
+  "configuredSilenceTimeoutMs": 600000,
+  "artifactPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/05-detach-sources-and-preserve-prior-provenance/003-implementor.json",
+  "streamPaths": {
+    "stdoutPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/05-detach-sources-and-preserve-prior-provenance/streams/003-implementor.stdout.log",
+    "stderrPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/05-detach-sources-and-preserve-prior-provenance/streams/003-implementor.stderr.log"
+  },
+  "progressPaths": {
+    "statusPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/05-detach-sources-and-preserve-prior-provenance/progress/003-implementor.status.json",
+    "progressPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/05-detach-sources-and-preserve-prior-provenance/progress/003-implementor.progress.jsonl"
+  },
+  "lastEvent": "completed",
+  "lastEventSummary": "story-implement completed for 05-detach-sources-and-preserve-prior-provenance with outcome ready-for-verification.",
+  "selfReviewPassesCompleted": 0,
+  "selfReviewPassesPlanned": 0
+}

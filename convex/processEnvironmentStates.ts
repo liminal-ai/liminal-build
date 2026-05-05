@@ -242,14 +242,19 @@ export async function computeWorkingSetFingerprint(
     throw new Error('Process not found.');
   }
 
-  const materialRefs = await readCurrentProcessMaterialRefs(ctx, processRecord);
   const envState = await ctx.db
     .query('processEnvironmentStates')
     .withIndex('by_processId', (indexQuery) => indexQuery.eq('processId', processRecord._id))
     .unique();
+  const materialRefs = await readCurrentProcessMaterialRefs(ctx, processRecord);
+  const workingSetPlan = envState?.workingSetPlan ?? null;
+  const artifactIds = workingSetPlan?.artifactIds ?? materialRefs.artifactIds;
+  const sourceAttachmentIds =
+    workingSetPlan?.sourceAttachmentIds ?? materialRefs.sourceAttachmentIds;
+  const outputIds = new Set(workingSetPlan?.outputIds ?? []);
 
   const artifactInputs: FingerprintArtifactInput[] = [];
-  for (const artifactId of materialRefs.artifactIds) {
+  for (const artifactId of artifactIds) {
     const artifact = await ctx.db.get(artifactId as Id<'artifacts'>);
     if (artifact === null) {
       continue;
@@ -273,15 +278,17 @@ export async function computeWorkingSetFingerprint(
       indexQuery.eq('processId', processRecord._id),
     )
     .take(200);
-  const outputInputs: FingerprintOutputInput[] = outputs.map((output) => ({
-    outputId: output._id,
-    revisionLabel: output.revisionLabel,
-  }));
+  const outputInputs: FingerprintOutputInput[] = outputs
+    .filter((output) => workingSetPlan === null || outputIds.has(output._id))
+    .map((output) => ({
+      outputId: output._id,
+      revisionLabel: output.revisionLabel,
+    }));
 
   const sourceInputs: FingerprintSourceInput[] = [];
-  for (const sourceAttachmentId of materialRefs.sourceAttachmentIds) {
+  for (const sourceAttachmentId of sourceAttachmentIds) {
     const source = await ctx.db.get(sourceAttachmentId as Id<'sourceAttachments'>);
-    if (source === null) {
+    if (source === null || source.detachedAt != null) {
       continue;
     }
     sourceInputs.push({

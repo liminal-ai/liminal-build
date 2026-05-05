@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "command": "story-verify",
+  "status": "completed",
+  "phase": "finalizing",
+  "startedAt": "2026-05-04T23:26:05.674Z",
+  "updatedAt": "2026-05-04T23:28:05.359Z",
+  "lastOutputAt": "2026-05-04T23:28:04.776Z",
+  "providerLiveness": "completed",
+  "provider": "codex",
+  "pid": 82203,
+  "cwd": "/Users/leemoore/code/liminal-build",
+  "timeoutMs": 3600000,
+  "configuredStartupTimeoutMs": 300000,
+  "configuredSilenceTimeoutMs": 360000,
+  "artifactPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/06-reopen-and-degraded-source-state/007-verify.json",
+  "streamPaths": {
+    "stdoutPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/06-reopen-and-degraded-source-state/streams/007-verify.stdout.log",
+    "stderrPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/06-reopen-and-degraded-source-state/streams/007-verify.stderr.log"
+  },
+  "progressPaths": {
+    "statusPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/06-reopen-and-degraded-source-state/progress/007-verify.status.json",
+    "progressPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/06-reopen-and-degraded-source-state/progress/007-verify.progress.jsonl"
+  },
+  "lastEvent": "completed",
+  "lastEventSummary": "story-verify completed for 06-reopen-and-degraded-source-state with outcome pass.",
+  "verifiersCompleted": 1,
+  "verifiersPlanned": 1
+}

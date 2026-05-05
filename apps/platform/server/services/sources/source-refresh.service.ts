@@ -5,6 +5,7 @@ import type {
 import { AppError } from '../../errors/app-error.js';
 import type { AuthenticatedActor } from '../auth/auth-session.service.js';
 import type { PlatformStore, UpdateSourceAttachmentRecord } from '../projects/platform-store.js';
+import { resolveActiveProcessSourceAttachments } from '../processes/active-process-sources.js';
 import { planHydrationWorkingSet } from '../processes/environment/hydration-planner.js';
 import type { ProviderAdapterRegistry } from '../processes/environment/provider-adapter-registry.js';
 import type { HydrationPlan } from '../processes/environment/provider-adapter.js';
@@ -15,11 +16,19 @@ import type {
 } from './github-repository-resolver.js';
 
 type SourceRefreshPlatformStore = PlatformStore & {
+  getCurrentProcessMaterialRefs: NonNullable<PlatformStore['getCurrentProcessMaterialRefs']>;
+  getProcessEnvironmentSummary: NonNullable<PlatformStore['getProcessEnvironmentSummary']>;
   getProjectSourceAttachment: NonNullable<PlatformStore['getProjectSourceAttachment']>;
+  listProjectProcesses: NonNullable<PlatformStore['listProjectProcesses']>;
+  listProjectSourceAttachments: NonNullable<PlatformStore['listProjectSourceAttachments']>;
   updateSourceAttachment: NonNullable<PlatformStore['updateSourceAttachment']>;
 };
 
 type ResolvedRepository = Extract<GitHubRepositoryResolution, { kind: 'resolved' }>;
+
+type WorkingCopyStatus = {
+  missing: boolean;
+};
 
 export type SourceHydrationExecutorResult =
   | {
@@ -112,9 +121,19 @@ export class RuntimeSourceHydrationExecutor implements SourceHydrationExecutor {
           processId: targetProcessId,
         }),
       ]);
+    const activeSourceAttachments = resolveActiveProcessSourceAttachments({
+      sourceAttachments: await this.platformStore.listProjectSourceAttachments({
+        projectId: args.projectId,
+      }),
+      processId: targetProcessId,
+      currentSourceAttachmentIds: currentMaterialRefs.sourceAttachmentIds,
+    });
 
     if (
-      !currentMaterialRefs.sourceAttachmentIds.includes(args.sourceAttachment.sourceAttachmentId)
+      !activeSourceAttachments.some(
+        (sourceAttachment) =>
+          sourceAttachment.sourceAttachmentId === args.sourceAttachment.sourceAttachmentId,
+      )
     ) {
       return {
         kind: 'not_available',
@@ -143,7 +162,10 @@ export class RuntimeSourceHydrationExecutor implements SourceHydrationExecutor {
     }
 
     const plan = planHydrationWorkingSet({
-      ...currentMaterialRefs,
+      artifactIds: currentMaterialRefs.artifactIds,
+      sourceAttachmentIds: activeSourceAttachments.map(
+        (sourceAttachment) => sourceAttachment.sourceAttachmentId,
+      ),
       outputIds: currentOutputs.map((output) => output.outputId),
     });
     await this.platformStore.setProcessHydrationPlan({
@@ -223,14 +245,25 @@ export class RuntimeSourceHydrationExecutor implements SourceHydrationExecutor {
     const processes = await this.platformStore.listProjectProcesses({
       projectId: args.projectId,
     });
+    const projectSourceAttachments = await this.platformStore.listProjectSourceAttachments({
+      projectId: args.projectId,
+    });
     const candidateProcessIds = (
       await Promise.all(
         processes.map(async (process) => {
           const materialRefs = await this.platformStore.getCurrentProcessMaterialRefs({
             processId: process.processId,
           });
+          const activeSourceAttachments = resolveActiveProcessSourceAttachments({
+            sourceAttachments: projectSourceAttachments,
+            processId: process.processId,
+            currentSourceAttachmentIds: materialRefs.sourceAttachmentIds,
+          });
 
-          return materialRefs.sourceAttachmentIds.includes(args.sourceAttachment.sourceAttachmentId)
+          return activeSourceAttachments.some(
+            (sourceAttachment) =>
+              sourceAttachment.sourceAttachmentId === args.sourceAttachment.sourceAttachmentId,
+          )
             ? process.processId
             : null;
         }),
@@ -378,10 +411,20 @@ export class DefaultSourceRefreshService implements SourceRefreshService {
     projectId: string;
     sourceAttachments: SourceAttachmentSummary[];
   }): Promise<SourceAttachmentSummary[]> {
+    const workingCopyStatusBySourceAttachmentId = await this.buildWorkingCopyStatusMap(args);
+
     return Promise.all(
       args.sourceAttachments.map(async (sourceAttachment) => {
         try {
-          const evaluation = await this.evaluateSourceAttachment(args.projectId, sourceAttachment);
+          const evaluation = await this.evaluateSourceAttachment({
+            projectId: args.projectId,
+            sourceAttachment,
+            workingCopyStatus: workingCopyStatusBySourceAttachmentId.get(
+              sourceAttachment.sourceAttachmentId,
+            ) ?? {
+              missing: false,
+            },
+          });
           return evaluation.sourceAttachment;
         } catch {
           return buildUnavailableSourceAttachment(sourceAttachment);
@@ -408,10 +451,14 @@ export class DefaultSourceRefreshService implements SourceRefreshService {
       });
     }
 
-    const evaluation = await this.evaluateSourceAttachment(
-      args.projectId,
-      existingSourceAttachment,
-    );
+    const evaluation = await this.evaluateSourceAttachment({
+      projectId: args.projectId,
+      sourceAttachment: existingSourceAttachment,
+      workingCopyStatus: await this.resolveWorkingCopyStatus({
+        projectId: args.projectId,
+        sourceAttachment: existingSourceAttachment,
+      }),
+    });
     const sourceAttachment = evaluation.sourceAttachment;
 
     if (
@@ -514,36 +561,40 @@ export class DefaultSourceRefreshService implements SourceRefreshService {
     }
   }
 
-  private async evaluateSourceAttachment(
-    projectId: string,
-    sourceAttachment: SourceAttachmentSummary,
-  ): Promise<{
+  private async evaluateSourceAttachment(args: {
+    projectId: string;
+    sourceAttachment: SourceAttachmentSummary;
+    workingCopyStatus: WorkingCopyStatus;
+  }): Promise<{
     sourceAttachment: SourceAttachmentSummary;
     repository: ResolvedRepository | null;
   }> {
-    if (sourceAttachment.detachedAt != null) {
+    if (args.sourceAttachment.detachedAt != null) {
       return {
-        sourceAttachment,
+        sourceAttachment: args.sourceAttachment,
         repository: null,
       };
     }
 
     const repositoryResolution = await this.gitHubRepositoryResolver.resolveRepository({
-      repositoryUrl: sourceAttachment.repositoryUrl,
-      targetRef: sourceAttachment.targetRef,
+      repositoryUrl: args.sourceAttachment.repositoryUrl,
+      targetRef: args.sourceAttachment.targetRef,
     });
 
     if (repositoryResolution.kind !== 'resolved') {
-      const unavailablePatch = buildUnavailableSourceAttachment(sourceAttachment);
+      const unavailablePatch = buildUnavailableSourceAttachment(
+        args.sourceAttachment,
+        repositoryResolution,
+      );
       const unavailableSourceAttachment =
-        sourceAttachment.hydrationState === unavailablePatch.hydrationState &&
-        sourceAttachment.lastObservedRemoteResolvedRef ===
+        args.sourceAttachment.hydrationState === unavailablePatch.hydrationState &&
+        args.sourceAttachment.lastObservedRemoteResolvedRef ===
           unavailablePatch.lastObservedRemoteResolvedRef &&
-        sourceAttachment.freshnessReason === unavailablePatch.freshnessReason &&
-        sourceAttachment.refreshStatus === unavailablePatch.refreshStatus &&
-        sourceAttachment.refreshRequestedAt === unavailablePatch.refreshRequestedAt
-          ? sourceAttachment
-          : await this.persistSourceAttachment(projectId, sourceAttachment, {
+        args.sourceAttachment.freshnessReason === unavailablePatch.freshnessReason &&
+        args.sourceAttachment.refreshStatus === unavailablePatch.refreshStatus &&
+        args.sourceAttachment.refreshRequestedAt === unavailablePatch.refreshRequestedAt
+          ? args.sourceAttachment
+          : await this.persistSourceAttachment(args.projectId, args.sourceAttachment, {
               hydrationState: unavailablePatch.hydrationState,
               freshnessReason: unavailablePatch.freshnessReason,
               lastObservedRemoteResolvedRef: unavailablePatch.lastObservedRemoteResolvedRef,
@@ -558,30 +609,32 @@ export class DefaultSourceRefreshService implements SourceRefreshService {
     }
 
     const nextHydrationState = deriveHydrationState({
-      sourceAttachment,
+      sourceAttachment: args.sourceAttachment,
       repositoryResolution,
+      workingCopyMissing: args.workingCopyStatus.missing,
     });
     const nextFreshnessReason = deriveFreshnessReason({
-      sourceAttachment,
+      sourceAttachment: args.sourceAttachment,
       repositoryResolution,
       hydrationState: nextHydrationState,
+      workingCopyMissing: args.workingCopyStatus.missing,
     });
 
     const shouldPersist =
-      sourceAttachment.hydrationState !== nextHydrationState ||
-      sourceAttachment.freshnessReason !== nextFreshnessReason ||
-      sourceAttachment.lastObservedRemoteResolvedRef !== repositoryResolution.resolvedRef;
+      args.sourceAttachment.hydrationState !== nextHydrationState ||
+      args.sourceAttachment.freshnessReason !== nextFreshnessReason ||
+      args.sourceAttachment.lastObservedRemoteResolvedRef !== repositoryResolution.resolvedRef;
 
     if (!shouldPersist) {
       return {
-        sourceAttachment,
+        sourceAttachment: args.sourceAttachment,
         repository: repositoryResolution,
       };
     }
 
     const updatedSourceAttachment = await this.persistSourceAttachment(
-      projectId,
-      sourceAttachment,
+      args.projectId,
+      args.sourceAttachment,
       {
         hydrationState: nextHydrationState,
         freshnessReason: nextFreshnessReason,
@@ -593,6 +646,82 @@ export class DefaultSourceRefreshService implements SourceRefreshService {
       sourceAttachment: updatedSourceAttachment,
       repository: repositoryResolution,
     };
+  }
+
+  private async buildWorkingCopyStatusMap(args: {
+    projectId: string;
+    sourceAttachments: SourceAttachmentSummary[];
+  }): Promise<Map<string, WorkingCopyStatus>> {
+    const processes = await this.platformStore.listProjectProcesses({
+      projectId: args.projectId,
+    });
+    const activeProcessIdsBySourceAttachmentId = new Map<string, string[]>();
+
+    for (const process of processes) {
+      const materialRefs = await this.platformStore.getCurrentProcessMaterialRefs({
+        processId: process.processId,
+      });
+      const activeSourceAttachments = resolveActiveProcessSourceAttachments({
+        sourceAttachments: args.sourceAttachments,
+        processId: process.processId,
+        currentSourceAttachmentIds: materialRefs.sourceAttachmentIds,
+      });
+
+      for (const sourceAttachment of activeSourceAttachments) {
+        const existingProcessIds =
+          activeProcessIdsBySourceAttachmentId.get(sourceAttachment.sourceAttachmentId) ?? [];
+        activeProcessIdsBySourceAttachmentId.set(sourceAttachment.sourceAttachmentId, [
+          ...existingProcessIds,
+          process.processId,
+        ]);
+      }
+    }
+
+    const workingCopyStatusBySourceAttachmentId = new Map<string, WorkingCopyStatus>();
+
+    await Promise.all(
+      args.sourceAttachments.map(async (sourceAttachment) => {
+        const processIds =
+          activeProcessIdsBySourceAttachmentId.get(sourceAttachment.sourceAttachmentId) ?? [];
+        const targetProcessId = processIds.length === 1 ? (processIds[0] ?? null) : null;
+        const environment =
+          targetProcessId === null
+            ? null
+            : await this.platformStore.getProcessEnvironmentSummary({
+                processId: targetProcessId,
+              });
+
+        workingCopyStatusBySourceAttachmentId.set(sourceAttachment.sourceAttachmentId, {
+          missing:
+            targetProcessId !== null &&
+            sourceAttachment.lastHydratedAt !== null &&
+            sourceAttachment.hydrationState !== 'unavailable' &&
+            (environment?.state === 'absent' ||
+              environment?.state === 'lost' ||
+              environment?.environmentId === null),
+        });
+      }),
+    );
+
+    return workingCopyStatusBySourceAttachmentId;
+  }
+
+  private async resolveWorkingCopyStatus(args: {
+    projectId: string;
+    sourceAttachment: SourceAttachmentSummary;
+  }): Promise<WorkingCopyStatus> {
+    const sourceAttachments = await this.platformStore.listProjectSourceAttachments({
+      projectId: args.projectId,
+    });
+
+    return (
+      (
+        await this.buildWorkingCopyStatusMap({
+          projectId: args.projectId,
+          sourceAttachments,
+        })
+      ).get(args.sourceAttachment.sourceAttachmentId) ?? { missing: false }
+    );
   }
 
   private async persistSourceAttachment(
@@ -628,32 +757,49 @@ export class DefaultSourceRefreshService implements SourceRefreshService {
 
 function buildUnavailableSourceAttachment(
   sourceAttachment: SourceAttachmentSummary,
+  repositoryResolution?: Exclude<GitHubRepositoryResolution, { kind: 'resolved' }>,
 ): SourceAttachmentSummary {
   return {
     ...sourceAttachment,
     hydrationState: 'unavailable',
-    freshnessReason: deriveUnavailableFreshnessReason(sourceAttachment),
+    freshnessReason: deriveUnavailableFreshnessReason(sourceAttachment, repositoryResolution),
     lastObservedRemoteResolvedRef: null,
     refreshStatus: 'idle',
     refreshRequestedAt: null,
   };
 }
 
-function deriveUnavailableFreshnessReason(sourceAttachment: SourceAttachmentSummary): string {
+function deriveUnavailableFreshnessReason(
+  sourceAttachment: SourceAttachmentSummary,
+  repositoryResolution?: Exclude<GitHubRepositoryResolution, { kind: 'resolved' }>,
+): string {
+  if (
+    repositoryResolution?.kind === 'inaccessible' &&
+    !isTargetRefResolutionFailure(repositoryResolution.message)
+  ) {
+    return 'access_revoked';
+  }
+
   return sourceAttachment.targetRef === null ? 'repository_unavailable' : 'target_ref_unavailable';
 }
 
 function deriveHydrationState(args: {
   sourceAttachment: SourceAttachmentSummary;
   repositoryResolution: ResolvedRepository;
+  workingCopyMissing: boolean;
 }): SourceAttachmentSummary['hydrationState'] {
+  if (args.workingCopyMissing) {
+    return 'stale';
+  }
+
   if (isBranchHeadDrift(args)) {
     return 'stale';
   }
 
   if (
     args.sourceAttachment.hydrationState === 'stale' &&
-    args.sourceAttachment.freshnessReason === 'branch_head_moved'
+    (args.sourceAttachment.freshnessReason === 'branch_head_moved' ||
+      args.sourceAttachment.freshnessReason === 'working_copy_missing')
   ) {
     return 'hydrated';
   }
@@ -680,14 +826,20 @@ function deriveFreshnessReason(args: {
   sourceAttachment: SourceAttachmentSummary;
   repositoryResolution: ResolvedRepository;
   hydrationState: SourceAttachmentSummary['hydrationState'];
+  workingCopyMissing: boolean;
 }): string | null {
+  if (args.hydrationState === 'stale' && args.workingCopyMissing) {
+    return 'working_copy_missing';
+  }
+
   if (args.hydrationState === 'stale' && isBranchHeadDrift(args)) {
     return 'branch_head_moved';
   }
 
   if (
     args.sourceAttachment.hydrationState === 'stale' &&
-    args.sourceAttachment.freshnessReason === 'branch_head_moved' &&
+    (args.sourceAttachment.freshnessReason === 'branch_head_moved' ||
+      args.sourceAttachment.freshnessReason === 'working_copy_missing') &&
     args.hydrationState === 'hydrated'
   ) {
     return null;
@@ -716,5 +868,13 @@ function isBranchHeadDrift(args: {
     args.sourceAttachment.lastHydratedResolvedRef !== null &&
     args.repositoryResolution.resolvedRef !== null &&
     args.repositoryResolution.resolvedRef !== args.sourceAttachment.lastHydratedResolvedRef
+  );
+}
+
+function isTargetRefResolutionFailure(message: string): boolean {
+  return (
+    message.startsWith("GitHub branch '") ||
+    message.startsWith("GitHub tag '") ||
+    message.startsWith("GitHub commit '")
   );
 }

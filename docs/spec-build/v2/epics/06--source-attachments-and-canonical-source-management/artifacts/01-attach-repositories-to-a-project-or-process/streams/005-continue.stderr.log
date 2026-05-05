@@ -1,0 +1,17 @@
+2026-05-04T18:34:16.113451Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /Users/leemoore/code/liminal-build/apps/platform/client/features/projects/project-shell-page.ts:
+import { renderMissingSelectedProcessBanner } from './unavailable-state.js';
+2026-05-04T18:34:42.586638Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /Users/leemoore/code/liminal-build/apps/platform/client/app/shell-app.ts:
+                onSubmitProcessResponse: (projectId, processId, message) => {
+                  void options.onSubmitProcessResponse(projectId, processId, message);
+                },
+                onRetryLiveSubscription: (projectId, processId) => {
+                  void options.onRetryLiveSubscription(projectId, processId);
+                },
+              })
+2026-05-04T18:35:42.059859Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /Users/leemoore/code/liminal-build/apps/platform/client/app/bootstrap.ts:
+      error: null,
+    });
+  };
+
+  const root = getRequiredRootElement(targetWindow.document);
+  const shellApp = createShellApp({

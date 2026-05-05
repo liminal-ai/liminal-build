@@ -2326,16 +2326,23 @@ export class InMemoryPlatformStore implements PlatformStore {
       artifactIds: [],
       sourceAttachmentIds: [],
     };
+    const workingSetPlan = this.processHydrationPlansByProcessId.get(processId) ?? null;
     const projectArtifacts = this.artifactsByProjectId.get(processRecord.projectId) ?? [];
     const projectSources = this.sourceAttachmentsByProjectId.get(processRecord.projectId) ?? [];
-    const artifactIds = new Set(refs.artifactIds);
-    const sourceAttachmentIds = new Set(refs.sourceAttachmentIds);
+    const artifactIds = new Set(workingSetPlan?.artifactIds ?? refs.artifactIds);
+    const sourceAttachmentIds = new Set(
+      workingSetPlan?.sourceAttachmentIds ?? refs.sourceAttachmentIds,
+    );
+    const outputIds = new Set(workingSetPlan?.outputIds ?? []);
+    const outputs = this.processOutputsByProcessId.get(processId) ?? [];
 
     return computeWorkingSetFingerprint({
       artifacts: projectArtifacts.filter((artifact) => artifactIds.has(artifact.artifactId)),
-      outputs: this.processOutputsByProcessId.get(processId) ?? [],
-      sources: projectSources.filter((source) =>
-        sourceAttachmentIds.has(source.sourceAttachmentId),
+      outputs: outputs.filter(
+        (output) => workingSetPlan === null || outputIds.has(output.outputId),
+      ),
+      sources: projectSources.filter(
+        (source) => source.detachedAt == null && sourceAttachmentIds.has(source.sourceAttachmentId),
       ),
       providerKind: this.processEnvironmentProviderKindsByProcessId.get(processId) ?? null,
     });
@@ -2785,6 +2792,35 @@ export class InMemoryPlatformStore implements PlatformStore {
           : attachment,
       ),
     );
+    const affectedProcessIds =
+      existingAttachment.processId !== null
+        ? [existingAttachment.processId]
+        : (this.processesByProjectId.get(projectId) ?? []).map((process) => process.processId);
+
+    for (const processId of affectedProcessIds) {
+      const existingRefs = this.currentMaterialRefsByProcessId.get(processId);
+      if (existingRefs !== undefined) {
+        this.currentMaterialRefsByProcessId.set(processId, {
+          artifactIds: [...existingRefs.artifactIds],
+          sourceAttachmentIds: existingRefs.sourceAttachmentIds.filter(
+            (sourceAttachmentId) => sourceAttachmentId !== args.sourceAttachmentId,
+          ),
+        });
+      }
+
+      const existingPlan = this.processHydrationPlansByProcessId.get(processId);
+      if (existingPlan !== undefined) {
+        this.processHydrationPlansByProcessId.set(processId, {
+          artifactIds: [...existingPlan.artifactIds],
+          outputIds: [...existingPlan.outputIds],
+          sourceAttachmentIds: existingPlan.sourceAttachmentIds.filter(
+            (sourceAttachmentId) => sourceAttachmentId !== args.sourceAttachmentId,
+          ),
+        });
+      }
+
+      this.refreshStoredWorkingSetFingerprint(processId);
+    }
     this.bumpProjectSourceAttachmentCount(projectId);
 
     return {

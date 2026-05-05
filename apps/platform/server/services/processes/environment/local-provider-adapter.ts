@@ -359,6 +359,7 @@ function buildFailureExecutionResult(reason: string): ExecutionResult {
     sideWorkWrites: [],
     artifactCheckpointCandidates: [],
     codeCheckpointCandidates: [],
+    usedSourceAttachmentIds: [],
   };
 }
 
@@ -397,6 +398,14 @@ function validateExecutionResult(value: unknown): ValidationResult<ExecutionResu
     }
   }
 
+  if (
+    obj.usedSourceAttachmentIds !== undefined &&
+    (!Array.isArray(obj.usedSourceAttachmentIds) ||
+      obj.usedSourceAttachmentIds.some((value) => typeof value !== 'string' || value.length === 0))
+  ) {
+    return { ok: false, reason: 'Field usedSourceAttachmentIds must be an array of strings.' };
+  }
+
   const codeCandidateValidation = validateCodeCheckpointCandidates(
     obj.codeCheckpointCandidates as ExecutionResult['codeCheckpointCandidates'],
   );
@@ -415,6 +424,7 @@ function validateExecutionResult(value: unknown): ValidationResult<ExecutionResu
         obj.artifactCheckpointCandidates as ExecutionResult['artifactCheckpointCandidates'],
       codeCheckpointCandidates:
         obj.codeCheckpointCandidates as ExecutionResult['codeCheckpointCandidates'],
+      usedSourceAttachmentIds: obj.usedSourceAttachmentIds as string[] | undefined,
     },
   };
 }

@@ -7,7 +7,10 @@ import {
 import { AuthUserSyncService } from '../../../apps/platform/server/services/auth/auth-user-sync.service.js';
 import { ProcessEnvironmentService } from '../../../apps/platform/server/services/processes/environment/process-environment.service.js';
 import { CheckpointPlanner } from '../../../apps/platform/server/services/processes/environment/checkpoint-planner.js';
-import type { CodeCheckpointWriter } from '../../../apps/platform/server/services/processes/environment/code-checkpoint-writer.js';
+import {
+  type CodeCheckpointWriter,
+  StubCodeCheckpointWriter,
+} from '../../../apps/platform/server/services/processes/environment/code-checkpoint-writer.js';
 import {
   DefaultProviderAdapterRegistry,
   SingleAdapterRegistry,
@@ -24,6 +27,7 @@ import { ProcessAccessService } from '../../../apps/platform/server/services/pro
 import { ProjectAccessService } from '../../../apps/platform/server/services/projects/project-access.service.js';
 import { InMemoryPlatformStore } from '../../../apps/platform/server/services/projects/platform-store.js';
 import { MaterialsSectionReader } from '../../../apps/platform/server/services/processes/readers/materials-section.reader.js';
+import { DefaultSourceProvenanceService } from '../../../apps/platform/server/services/sources/source-provenance.service.js';
 import {
   type LiveProcessUpdateMessage,
   processSummarySchema,
@@ -150,9 +154,11 @@ function buildTestProcessEnvironmentService(args: {
     args.providerAdapterRegistry,
     args.processLiveHub,
     new ScriptExecutionService(args.providerAdapterRegistry),
-    undefined,
-    undefined,
+    new CheckpointPlanner(),
+    new StubCodeCheckpointWriter(),
     args.defaultProviderKind,
+    args.platformStore,
+    new DefaultSourceProvenanceService(args.platformStore),
   );
 }
 
@@ -621,6 +627,158 @@ describe('process execution orchestrator', () => {
     await app.close();
   });
 
+  it('records informed-work provenance for only the canonical source reported by runtime execution', async () => {
+    const platformStore = buildStore();
+    const shadowedProjectSource = await platformStore.createProjectSourceAttachment({
+      projectId,
+      provider: 'github',
+      displayName: 'shared repo',
+      purpose: 'implementation',
+      accessMode: 'read_only',
+      repositoryUrl: 'https://github.com/liminal-ai/shared-repo',
+      repositoryFullName: 'liminal-ai/shared-repo',
+      targetRef: 'main',
+    });
+    const processShadowSource = await platformStore.createProcessSourceAttachment({
+      projectId,
+      processId,
+      provider: 'github',
+      displayName: 'shared repo process shadow',
+      purpose: 'implementation',
+      accessMode: 'read_only',
+      repositoryUrl: shadowedProjectSource.repositoryUrl,
+      repositoryFullName: shadowedProjectSource.repositoryFullName,
+      targetRef: shadowedProjectSource.targetRef,
+    });
+    await platformStore.setCurrentProcessMaterialRefs({
+      processId,
+      artifactIds: [],
+      sourceAttachmentIds: [shadowedProjectSource.sourceAttachmentId],
+    });
+
+    const provider = buildProviderAdapter({
+      providerKind: 'local',
+      executionResult: buildExecutionResult('completed', {
+        usedSourceAttachmentIds: [shadowedProjectSource.sourceAttachmentId],
+      }),
+      calls: [],
+    });
+    const app = await buildExecutionApp({
+      platformStore,
+      processLiveHub: new InMemoryProcessLiveHub(),
+      providerAdapterRegistry: new SingleAdapterRegistry(provider),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectId}/processes/${processId}/start`,
+      cookies: { [sessionCookieName]: 'valid-session-cookie' },
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    await waitFor(
+      async () =>
+        (await platformStore.listProcessSourceProvenance({ processId })).some(
+          (entry) =>
+            entry.relationshipKind === 'informed_work' &&
+            entry.sourceAttachmentId === processShadowSource.sourceAttachmentId,
+        ),
+      2000,
+      'Timed out waiting for informed-work provenance to be recorded.',
+    );
+
+    await expect(platformStore.listProcessSourceProvenance({ processId })).resolves.toEqual([
+      expect.objectContaining({
+        relationshipKind: 'informed_work',
+        sourceAttachmentId: processShadowSource.sourceAttachmentId,
+        repositoryFullName: processShadowSource.repositoryFullName,
+      }),
+    ]);
+
+    await app.close();
+  });
+
+  it('records received-code-update provenance after a successful checkpoint write', async () => {
+    const platformStore = buildStore();
+    const writableSource = await platformStore.createProcessSourceAttachment({
+      projectId,
+      processId,
+      provider: 'github',
+      displayName: 'liminal-build writable',
+      purpose: 'implementation',
+      accessMode: 'read_write',
+      repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
+      repositoryFullName: 'liminal-ai/liminal-build',
+      targetRef: 'feature/runtime-provenance',
+    });
+    await platformStore.setCurrentProcessMaterialRefs({
+      processId,
+      artifactIds: [],
+      sourceAttachmentIds: [writableSource.sourceAttachmentId],
+    });
+
+    const provider = buildProviderAdapter({
+      providerKind: 'local',
+      executionResult: buildExecutionResult('completed', {
+        usedSourceAttachmentIds: [writableSource.sourceAttachmentId],
+        codeCheckpointCandidates: [
+          {
+            sourceAttachmentId: writableSource.sourceAttachmentId,
+            displayName: writableSource.displayName,
+            targetRef: writableSource.targetRef,
+            accessMode: 'read_write',
+            workspaceRef: 'mem://runtime-provenance/default-note.md',
+            filePath: 'default-note.md',
+            commitMessage: 'Record runtime provenance',
+          },
+        ],
+      }),
+      calls: [],
+    });
+    const app = await buildExecutionApp({
+      platformStore,
+      processLiveHub: new InMemoryProcessLiveHub(),
+      providerAdapterRegistry: new SingleAdapterRegistry(provider),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectId}/processes/${processId}/start`,
+      cookies: { [sessionCookieName]: 'valid-session-cookie' },
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    await waitFor(
+      async () => {
+        const entries = await platformStore.listProcessSourceProvenance({ processId });
+        return entries.some(
+          (entry) =>
+            entry.relationshipKind === 'received_code_update' &&
+            entry.sourceAttachmentId === writableSource.sourceAttachmentId,
+        );
+      },
+      2000,
+      'Timed out waiting for received-code-update provenance to be recorded.',
+    );
+
+    await expect(platformStore.listProcessSourceProvenance({ processId })).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          relationshipKind: 'informed_work',
+          sourceAttachmentId: writableSource.sourceAttachmentId,
+        }),
+        expect.objectContaining({
+          relationshipKind: 'received_code_update',
+          sourceAttachmentId: writableSource.sourceAttachmentId,
+        }),
+      ]),
+    );
+
+    await app.close();
+  });
+
   it('keeps the persisted providerKind authoritative after config changes for resume, rehydrate, rebuild, and resumed execution', async () => {
     const localCalls: ProviderCall[] = [];
     const daytonaCalls: ProviderCall[] = [];
@@ -886,7 +1044,7 @@ describe('process execution orchestrator', () => {
 
     expect(await platformStore.getProcessHydrationPlan({ processId })).toEqual({
       artifactIds: [],
-      sourceAttachmentIds: [sourceAttachment.sourceAttachmentId],
+      sourceAttachmentIds: [],
       outputIds: [],
     });
 
@@ -955,18 +1113,10 @@ describe('process execution orchestrator', () => {
       cookies: { [sessionCookieName]: 'valid-session-cookie' },
     });
 
-    expect(rebuildResponse.statusCode).toBe(200);
-
-    await waitFor(
-      () =>
-        localCalls.filter((call) => call.method === 'rebuildEnvironment').length ===
-        rebuildBefore + 1,
-      2000,
-      'Timed out waiting for detached-source rebuild planning.',
+    expect(rebuildResponse.statusCode).toBe(422);
+    expect(localCalls.filter((call) => call.method === 'rebuildEnvironment')).toHaveLength(
+      rebuildBefore,
     );
-    expect(
-      localCalls.find((call) => call.method === 'rebuildEnvironment')?.sourceAttachmentIds,
-    ).toEqual([]);
 
     const materials = await new MaterialsSectionReader(platformStore).read({
       projectId,

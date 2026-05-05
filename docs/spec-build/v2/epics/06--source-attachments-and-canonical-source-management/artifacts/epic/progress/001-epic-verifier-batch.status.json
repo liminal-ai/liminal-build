@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "command": "epic-verify",
+  "status": "failed",
+  "phase": "finalizing",
+  "startedAt": "2026-05-04T23:46:46.080Z",
+  "updatedAt": "2026-05-04T23:55:31.090Z",
+  "lastOutputAt": "2026-05-04T23:55:30.965Z",
+  "providerLiveness": "completed",
+  "provider": "codex",
+  "pid": 99677,
+  "cwd": "/Users/leemoore/code/liminal-build",
+  "timeoutMs": 3600000,
+  "configuredStartupTimeoutMs": 300000,
+  "configuredSilenceTimeoutMs": 600000,
+  "artifactPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/epic/001-epic-verifier-batch.json",
+  "streamPaths": {
+    "stdoutPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/epic/streams/001-epic-verifier-batch.stdout.log",
+    "stderrPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/epic/streams/001-epic-verifier-batch.stderr.log"
+  },
+  "progressPaths": {
+    "statusPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/epic/progress/001-epic-verifier-batch.status.json",
+    "progressPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/epic/progress/001-epic-verifier-batch.progress.jsonl"
+  },
+  "lastEvent": "failed",
+  "lastEventSummary": "epic-verify failed during provider execution.",
+  "verifiersCompleted": 1,
+  "verifiersPlanned": 2,
+  "verifierLanes": [
+    {
+      "label": "epic-verifier-1",
+      "provider": "codex",
+      "state": "completed",
+      "providerLiveness": "completed",
+      "lastOutputAt": "2026-05-04T23:55:30.965Z",
+      "lastEvent": "verifier-completed",
+      "lastEventSummary": "epic-verifier-1 completed for epic verification."
+    },
+    {
+      "label": "epic-verifier-2",
+      "provider": "claude-code",
+      "state": "failed",
+      "providerLiveness": "active-with-output",
+      "lastOutputAt": "2026-05-04T23:46:49.287Z",
+      "lastEvent": "failed",
+      "lastEventSummary": "epic-verifier-2 failed for epic verification."
+    }
+  ]
+}

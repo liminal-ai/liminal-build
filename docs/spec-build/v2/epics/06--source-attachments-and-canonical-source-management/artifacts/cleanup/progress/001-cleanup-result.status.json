@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "command": "epic-cleanup",
+  "status": "completed",
+  "phase": "finalizing",
+  "startedAt": "2026-05-04T23:42:22.358Z",
+  "updatedAt": "2026-05-04T23:42:22.375Z",
+  "lastOutputAt": null,
+  "providerLiveness": "starting",
+  "provider": "codex",
+  "pid": null,
+  "cwd": "/Users/leemoore/code/liminal-build",
+  "timeoutMs": 3600000,
+  "configuredStartupTimeoutMs": 300000,
+  "configuredSilenceTimeoutMs": 480000,
+  "artifactPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/cleanup/001-cleanup-result.json",
+  "streamPaths": {
+    "stdoutPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/cleanup/streams/001-cleanup-result.stdout.log",
+    "stderrPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/cleanup/streams/001-cleanup-result.stderr.log"
+  },
+  "progressPaths": {
+    "statusPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/cleanup/progress/001-cleanup-result.status.json",
+    "progressPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/cleanup/progress/001-cleanup-result.progress.jsonl"
+  },
+  "lastEvent": "completed",
+  "lastEventSummary": "epic-cleanup completed as a no-op because there were no approved cleanup items."
+}

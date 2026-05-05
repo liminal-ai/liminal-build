@@ -129,6 +129,7 @@ export interface ExecutionResult {
   sideWorkWrites: PlatformSideWorkWriteInput[];
   artifactCheckpointCandidates: ArtifactCheckpointCandidate[];
   codeCheckpointCandidates: CodeCheckpointCandidate[];
+  usedSourceAttachmentIds?: string[];
 }
 
 export interface ProviderAdapter {
@@ -229,6 +230,7 @@ export class InMemoryProviderAdapter implements ProviderAdapter {
           commitMessage: `Checkpoint ${processId} source update`,
         },
       ],
+      usedSourceAttachmentIds: [`${processId}:source-checkpoint-1`],
     };
   }
 

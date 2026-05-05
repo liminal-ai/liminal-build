@@ -1,10 +1,19 @@
+import { spawn } from 'node:child_process';
+import { promises as fs } from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import {
+  LocalProviderAdapter,
+  type LocalProviderRuntime,
+} from '../../../apps/platform/server/services/processes/environment/local-provider-adapter.js';
 import { SingleAdapterRegistry } from '../../../apps/platform/server/services/processes/environment/provider-adapter-registry.js';
 import type {
   ExecutionResult,
   ProviderAdapter,
 } from '../../../apps/platform/server/services/processes/environment/provider-adapter.js';
 import { ScriptExecutionService } from '../../../apps/platform/server/services/processes/environment/script-execution.service.js';
+import { InMemoryPlatformStore } from '../../../apps/platform/server/services/projects/platform-store.js';
 
 function buildProvider(result: ExecutionResult): ProviderAdapter {
   return {
@@ -92,5 +101,85 @@ describe('script execution service', () => {
         environmentId: 'environment-execution-002',
       }),
     ).resolves.toEqual(providerResult);
+  });
+
+  it('default payload emits used-source and writable checkpoint signals on the real local execution path', async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'liminal-build-script-exec-'));
+    const runtime: LocalProviderRuntime = {
+      cloneSource: async ({ destination }) => {
+        await fs.mkdir(destination, { recursive: true });
+        await fs.writeFile(path.join(destination, 'README.md'), '# cloned', 'utf8');
+        return null;
+      },
+      runScript: async ({ workingTree, scriptPath }) =>
+        await new Promise<number>((resolve) => {
+          const child = spawn('node', ['--experimental-strip-types', scriptPath], {
+            cwd: workingTree,
+            stdio: 'pipe',
+          });
+          child.on('error', () => resolve(1));
+          child.on('close', (code) => resolve(code ?? 1));
+        }),
+    };
+    const provider = new LocalProviderAdapter(new InMemoryPlatformStore(), {
+      workspaceRoot,
+      runtime,
+    });
+    const ensured = await provider.ensureEnvironment({
+      processId: 'process-script-exec-default-1',
+      providerKind: 'local',
+    });
+
+    await provider.hydrateEnvironment({
+      environmentId: ensured.environmentId,
+      plan: {
+        fingerprint: 'fp-script-exec-default-1',
+        artifactInputs: [],
+        outputInputs: [],
+        sourceInputs: [
+          {
+            sourceAttachmentId: 'source-script-exec-default-1',
+            displayName: 'liminal-build',
+            repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
+            targetRef: 'feature/default-runtime',
+            accessMode: 'read_write',
+          },
+        ],
+      },
+    });
+
+    try {
+      const service = new ScriptExecutionService(new SingleAdapterRegistry(provider));
+
+      await expect(
+        service.executeFor({
+          providerKind: 'local',
+          environmentId: ensured.environmentId,
+          currentSources: [
+            {
+              sourceAttachmentId: 'source-script-exec-default-1',
+              displayName: 'liminal-build',
+              targetRef: 'feature/default-runtime',
+              accessMode: 'read_write',
+            },
+          ],
+        }),
+      ).resolves.toMatchObject({
+        processStatus: 'completed',
+        usedSourceAttachmentIds: ['source-script-exec-default-1'],
+        codeCheckpointCandidates: [
+          expect.objectContaining({
+            sourceAttachmentId: 'source-script-exec-default-1',
+            filePath: 'liminal-build-default-execution-note.md',
+            commitMessage: 'Record default execution note',
+          }),
+        ],
+      });
+    } finally {
+      await provider.teardownEnvironment({
+        environmentId: ensured.environmentId,
+      });
+      await fs.rm(workspaceRoot, { recursive: true, force: true });
+    }
   });
 });

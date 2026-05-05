@@ -1,0 +1,6 @@
+Reading additional input from stdin...
+2026-05-04T22:18:44.465676Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /Users/leemoore/code/liminal-build/tests/service/server/process-live-updates.test.ts:
+    expect((failedCheckpointMessage?.payload as { blockedReason?: string } | null)?.blockedReason)
+      .toEqual(expect.any(String));
+  });
+});

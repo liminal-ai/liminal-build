@@ -544,6 +544,10 @@ export class ProcessEnvironmentService {
       const executionResult = await args.scriptExecutionService.executeFor({
         providerKind,
         environmentId: args.environmentId,
+        currentSources: await this.listCurrentExecutionSources({
+          projectId: currentProcess.projectId,
+          processId: args.processId,
+        }),
       });
 
       // Apply ExecutionResult side effects (history items, output writes, side-work writes)
@@ -565,6 +569,7 @@ export class ProcessEnvironmentService {
       await this.sourceProvenanceService?.recordInformedWorkForCurrentSources({
         projectId: currentProcess.projectId,
         processId: args.processId,
+        usedSourceAttachmentIds: deriveUsedSourceAttachmentIds(executionResult),
       });
 
       if (executionResult.processStatus === 'failed') {
@@ -696,6 +701,28 @@ export class ProcessEnvironmentService {
     });
 
     return { historyItems };
+  }
+
+  private async listCurrentExecutionSources(args: { projectId: string; processId: string }) {
+    const [existingMaterialRefs, projectSourceAttachments] = await Promise.all([
+      this.platformStore.getCurrentProcessMaterialRefs({
+        processId: args.processId,
+      }),
+      this.platformStore.listProjectSourceAttachments({
+        projectId: args.projectId,
+      }),
+    ]);
+
+    return resolveActiveProcessSourceAttachments({
+      sourceAttachments: projectSourceAttachments,
+      processId: args.processId,
+      currentSourceAttachmentIds: existingMaterialRefs.sourceAttachmentIds,
+    }).map((sourceAttachment) => ({
+      sourceAttachmentId: sourceAttachment.sourceAttachmentId,
+      displayName: sourceAttachment.displayName,
+      targetRef: sourceAttachment.targetRef,
+      accessMode: sourceAttachment.accessMode,
+    }));
   }
 
   private runCheckpointAsync(args: {
@@ -1558,6 +1585,18 @@ function resolveCheckpointTargetRef(
   }
 
   return target.targetRef ?? sourceSummariesById.get(target.sourceAttachmentId)?.targetRef ?? null;
+}
+
+function deriveUsedSourceAttachmentIds(executionResult: ExecutionResult): string[] {
+  if (executionResult.usedSourceAttachmentIds !== undefined) {
+    return Array.from(new Set(executionResult.usedSourceAttachmentIds));
+  }
+
+  return Array.from(
+    new Set(
+      executionResult.codeCheckpointCandidates.map((candidate) => candidate.sourceAttachmentId),
+    ),
+  );
 }
 
 function extractExecutionFailureReason(executionResult: ExecutionResult): string {

@@ -1,0 +1,14 @@
+{"timestamp":"2026-05-04T18:25:23.469Z","command":"story-verify","phase":"verifier-initial","event":"command-started","summary":"story-verify started."}
+{"timestamp":"2026-05-04T18:25:23.477Z","command":"story-verify","phase":"verifier-initial","event":"verifier-started","summary":"Story verifier started for 01-attach-repositories-to-a-project-or-process."}
+{"timestamp":"2026-05-04T18:25:23.488Z","command":"story-verify","phase":"verifier-initial","event":"provider-spawned","summary":"Provider spawned with pid 63702.","metadata":{"pid":63702}}
+{"timestamp":"2026-05-04T18:25:23.559Z","command":"story-verify","phase":"verifier-initial","event":"first-output-received","summary":"First provider stderr output received.","metadata":{"stream":"stderr"}}
+{"timestamp":"2026-05-04T18:25:55.202Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-05-04T18:26:30.866Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-05-04T18:27:03.567Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-05-04T18:27:37.781Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-05-04T18:28:20.123Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-05-04T18:28:51.748Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-05-04T18:31:15.928Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-05-04T18:31:16.274Z","command":"story-verify","phase":"verifier-initial","event":"provider-exit","summary":"Provider exited with code 0.","metadata":{"exitCode":0,"signal":null,"elapsedMs":352787,"configuredTimeoutMs":3600000}}
+{"timestamp":"2026-05-04T18:31:16.278Z","command":"story-verify","phase":"verifier-initial","event":"verifier-completed","summary":"Story verifier completed for 01-attach-repositories-to-a-project-or-process.","metadata":{"outcome":"revise"}}
+{"timestamp":"2026-05-04T18:31:16.295Z","command":"story-verify","phase":"finalizing","event":"completed","summary":"story-verify completed for 01-attach-repositories-to-a-project-or-process with outcome revise.","metadata":{"outcome":"revise","verifiersCompleted":1}}

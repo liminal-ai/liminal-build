@@ -203,8 +203,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   const projectIndexService = options.projectIndexService ?? new ProjectIndexService(platformStore);
   const processLiveHub = options.processLiveHub ?? new InMemoryProcessLiveHub();
   if (isProductionRuntime && platformStore instanceof NullPlatformStore) {
-    app.log.warn(
-      'Platform store is NullPlatformStore -- review features will return empty results. Set CONVEX_URL to enable live data.',
+    throw new Error(
+      'createApp cannot boot with NullPlatformStore in production. Configure live Convex credentials or provide a durable PlatformStore.',
     );
   }
   if (isProductionRuntime && processLiveHub instanceof InMemoryProcessLiveHub) {
@@ -274,28 +274,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   // rather than silently falling back to the stub.
   const codeCheckpointWriter =
     options.codeCheckpointWriter ?? new OctokitCodeCheckpointWriter({ token: env.GITHUB_TOKEN });
-  const sourceProvenanceService =
-    options.sourceProvenanceService ??
-    new DefaultSourceProvenanceService(
-      platformStore as PlatformStore & {
-        createSourceProvenance: NonNullable<PlatformStore['createSourceProvenance']>;
-        listProcessSourceProvenance: NonNullable<PlatformStore['listProcessSourceProvenance']>;
-      },
-    );
-  const processEnvironmentService =
-    options.processEnvironmentService ??
-    new ProcessEnvironmentService(
-      platformStore,
-      processAccessService,
-      providerAdapterRegistry,
-      processLiveHub,
-      scriptExecutionService,
-      checkpointPlanner,
-      codeCheckpointWriter,
-      env.DEFAULT_ENVIRONMENT_PROVIDER_KIND,
-      platformStore,
-      sourceProvenanceService,
-    );
   const sourceRefreshService =
     options.sourceRefreshService ??
     new DefaultSourceRefreshService(
@@ -319,6 +297,30 @@ export async function createApp(options: CreateAppOptions = {}) {
         providerAdapterRegistry,
         env.DEFAULT_ENVIRONMENT_PROVIDER_KIND,
       ),
+    );
+  const sourceProvenanceService =
+    options.sourceProvenanceService ??
+    new DefaultSourceProvenanceService(
+      platformStore as PlatformStore & {
+        createSourceProvenance: NonNullable<PlatformStore['createSourceProvenance']>;
+        getCurrentProcessMaterialRefs: NonNullable<PlatformStore['getCurrentProcessMaterialRefs']>;
+        listProcessSourceProvenance: NonNullable<PlatformStore['listProcessSourceProvenance']>;
+      },
+      sourceRefreshService,
+    );
+  const processEnvironmentService =
+    options.processEnvironmentService ??
+    new ProcessEnvironmentService(
+      platformStore,
+      processAccessService,
+      providerAdapterRegistry,
+      processLiveHub,
+      scriptExecutionService,
+      checkpointPlanner,
+      codeCheckpointWriter,
+      env.DEFAULT_ENVIRONMENT_PROVIDER_KIND,
+      platformStore,
+      sourceProvenanceService,
     );
   const projectShellService =
     options.projectShellService ??

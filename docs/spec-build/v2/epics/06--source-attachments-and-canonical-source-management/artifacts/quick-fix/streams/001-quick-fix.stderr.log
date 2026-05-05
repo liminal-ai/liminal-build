@@ -1,0 +1,30 @@
+Reading additional input from stdin...
+2026-05-04T19:05:00.373940Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /Users/leemoore/code/liminal-build/apps/platform/server/services/projects/platform-store.ts:
+  listProjectArtifactsByIds?(args: {
+    projectId: string;
+    artifactIds: string[];
+  }): Promise<ArtifactSummary[]>;
+  listProjectSourceAttachments(args: { projectId: string }): Promise<SourceAttachmentSummary[]>;
+  createProjectSourceAttachment?(
+    args: CreateSourceAttachmentRecord,
+  ): Promise<SourceAttachmentSummary>;
+2026-05-04T19:05:11.740174Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /Users/leemoore/code/liminal-build/apps/platform/server/services/projects/platform-store.ts:
+  listProjectArtifactsByIds?(args: {
+    projectId: string;
+    artifactIds: string[];
+  }): Promise<ArtifactSummary[]>;
+  listProjectSourceAttachments(args: { projectId: string }): Promise<SourceAttachmentSummary[]>;
+  createProjectSourceAttachment?(
+    args: CreateSourceAttachmentRecord,
+  ): Promise<SourceAttachmentSummary>;
+2026-05-04T19:06:59.465920Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /Users/leemoore/code/liminal-build/tests/service/server/source-management-service.test.ts:
+      serviceWithDotGit.attachProjectSource({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        projectId: projectSummary.projectId,
+        input: {
+2026-05-04T19:08:27.631035Z ERROR codex_core::tools::router: error=invalid agent id 85643: Error(ParseSimpleLength { len: 5 })

@@ -5,6 +5,7 @@ import {
 import type { AuthenticatedActor } from '../../auth/auth-session.service.js';
 import type { PlatformStore } from '../platform-store.js';
 import { buildSourceAttachmentSummary } from '../summary/source-summary.builder.js';
+import { resolveActiveProcessSourceAttachments } from '../../processes/active-process-sources.js';
 import type { SourceRefreshService } from '../../sources/source-refresh.service.js';
 
 export class SourceSectionReader {
@@ -40,10 +41,15 @@ export class SourceSectionReader {
         processId: process.processId,
       });
 
-      for (const sourceAttachmentId of materialRefs.sourceAttachmentIds) {
+      for (const sourceAttachment of resolveActiveProcessSourceAttachments({
+        sourceAttachments: synchronizedSourceAttachments,
+        processId: process.processId,
+        currentSourceAttachmentIds: materialRefs.sourceAttachmentIds,
+      })) {
         refreshTargetCountsBySourceAttachmentId.set(
-          sourceAttachmentId,
-          (refreshTargetCountsBySourceAttachmentId.get(sourceAttachmentId) ?? 0) + 1,
+          sourceAttachment.sourceAttachmentId,
+          (refreshTargetCountsBySourceAttachmentId.get(sourceAttachment.sourceAttachmentId) ?? 0) +
+            1,
         );
       }
     }

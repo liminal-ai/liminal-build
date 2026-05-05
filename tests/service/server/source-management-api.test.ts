@@ -1033,6 +1033,12 @@ describe('source-management api', () => {
       sourceAttachmentsByProjectId: {
         [projectSummary.projectId]: [availableSource, detachedSource],
       },
+      currentMaterialRefsByProcessId: {
+        [processSummary.processId]: {
+          artifactIds: [],
+          sourceAttachmentIds: [availableSource.sourceAttachmentId],
+        },
+      },
       sourceProvenanceByProcessId: {
         [processSummary.processId]: [
           {
@@ -1096,51 +1102,39 @@ describe('source-management api', () => {
     await app.close();
   });
 
-  it('S4-NT-1 redacts current attachment details when provenance enrichment access is revoked', async () => {
-    const redactedSource = buildSourceAttachmentSummaryFixture({
-      sourceAttachmentId: 'source-provenance-redacted-001',
-      attachmentScope: 'process',
+  it('S4-NT-1 redacts current attachment details when runtime provenance enrichment loses repository access', async () => {
+    const store = buildStore();
+    const redactedSource = await store.createProcessSourceAttachment({
+      projectId: projectSummary.projectId,
       processId: processSummary.processId,
-      processDisplayLabel: processSummary.displayLabel,
+      provider: 'github',
       displayName: 'redacted source should not leak',
-      detachedAt: null,
+      purpose: 'implementation',
+      accessMode: 'read_only',
+      repositoryUrl: 'https://github.com/liminal-ai/redacted-source',
+      repositoryFullName: 'liminal-ai/redacted-source',
+      targetRef: 'main',
     });
-    const seededStore = new InMemoryPlatformStore({
-      accessibleProjectsByUserId: {
-        'user:workos-user-1': [projectSummary],
-      },
-      projectAccessByProjectId: {
-        [projectSummary.projectId]: {
-          kind: 'accessible',
-          project: projectSummary,
-        },
-      },
-      processesByProjectId: {
-        [projectSummary.projectId]: [processSummary],
-      },
-      sourceAttachmentsByProjectId: {
-        [projectSummary.projectId]: [redactedSource],
-      },
-      sourceProvenanceByProcessId: {
-        [processSummary.processId]: [
-          {
-            provenanceId: 'provenance-redacted-001',
-            projectId: projectSummary.projectId,
-            processId: processSummary.processId,
-            sourceAttachmentId: redactedSource.sourceAttachmentId,
-            relationshipKind: 'informed_work',
-            repositoryFullName: redactedSource.repositoryFullName,
-            repositoryUrl: redactedSource.repositoryUrl,
-            targetRef: redactedSource.targetRef,
-            eventId: null,
-            entryStatus: 'degraded',
-            degradationReason: 'access_revoked',
-            recordedAt: '2026-05-02T12:10:00.000Z',
-          },
-        ],
-      },
+    await store.createSourceProvenance({
+      projectId: projectSummary.projectId,
+      processId: processSummary.processId,
+      sourceAttachmentId: redactedSource.sourceAttachmentId,
+      relationshipKind: 'informed_work',
+      repositoryFullName: redactedSource.repositoryFullName,
+      repositoryUrl: redactedSource.repositoryUrl,
+      targetRef: redactedSource.targetRef,
+      eventId: null,
+      entryStatus: 'ready',
+      degradationReason: null,
+      recordedAt: '2026-05-02T12:10:00.000Z',
     });
-    const { app } = await buildAuthenticatedApp({ store: seededStore });
+    const { app, platformStore } = await buildAuthenticatedApp({
+      store,
+      resolver: buildResolver(() => ({
+        kind: 'inaccessible',
+        message: 'GitHub rejected repository access with the current credentials.',
+      })),
+    });
 
     const response = await app.inject({
       method: 'GET',
@@ -1154,7 +1148,7 @@ describe('source-management api', () => {
     expect(response.json()).toEqual({
       entries: [
         expect.objectContaining({
-          provenanceId: 'provenance-redacted-001',
+          sourceAttachmentId: redactedSource.sourceAttachmentId,
           currentAttachmentDisplayName: null,
           currentAttachmentScope: null,
           currentAttachmentAccessMode: null,
@@ -1164,6 +1158,16 @@ describe('source-management api', () => {
           degradationReason: 'access_revoked',
         }),
       ],
+    });
+    await expect(
+      platformStore.getProjectSourceAttachment({
+        projectId: projectSummary.projectId,
+        sourceAttachmentId: redactedSource.sourceAttachmentId,
+      }),
+    ).resolves.toMatchObject({
+      sourceAttachmentId: redactedSource.sourceAttachmentId,
+      hydrationState: 'unavailable',
+      freshnessReason: 'access_revoked',
     });
 
     await app.close();

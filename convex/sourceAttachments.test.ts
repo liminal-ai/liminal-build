@@ -115,6 +115,39 @@ function buildSourceAttachmentsSeed() {
         updatedAt: '2026-04-15T12:00:00.000Z',
       },
     ],
+    processFeatureImplementationStates: [
+      {
+        _id: 'process-feature-implementation-state-sources-1',
+        _creationTime: 3,
+        processId: 'process-sources-1',
+        currentArtifactIds: [],
+        currentSourceAttachmentIds: ['source-readonly-project-1', 'source-writable-process-1'],
+        createdAt: '2026-04-15T12:00:00.000Z',
+        updatedAt: '2026-04-15T12:00:00.000Z',
+      },
+    ],
+    processEnvironmentStates: [
+      {
+        _id: 'process-environment-state-sources-1',
+        _creationTime: 4,
+        processId: 'process-sources-1',
+        providerKind: 'local',
+        environmentId: 'env-sources-1',
+        state: 'ready',
+        blockedReason: null,
+        lastHydratedAt: '2026-04-15T12:00:00.000Z',
+        lastCheckpointAt: null,
+        lastCheckpointResult: null,
+        workingSetPlan: {
+          artifactIds: [],
+          sourceAttachmentIds: ['source-readonly-project-1', 'source-writable-process-1'],
+          outputIds: [],
+        },
+        workingSetFingerprint: 'seeded-fingerprint',
+        createdAt: '2026-04-15T12:00:00.000Z',
+        updatedAt: '2026-04-15T12:00:00.000Z',
+      },
+    ],
     sourceAttachments: [
       {
         _id: 'source-readonly-project-1',
@@ -415,5 +448,52 @@ describe('convex/sourceAttachments summaries', () => {
       detachedAt: detached.detachedAt,
       detachedByUserId: 'user-1',
     });
+    expect(db.list('processFeatureImplementationStates')[0]).toMatchObject({
+      currentSourceAttachmentIds: ['source-writable-process-1'],
+    });
+    expect(db.list('processEnvironmentStates')[0]).toMatchObject({
+      workingSetPlan: {
+        artifactIds: [],
+        sourceAttachmentIds: ['source-writable-process-1'],
+        outputIds: [],
+      },
+    });
+  });
+
+  it('lists more than 200 project source attachments without dropping older rows', async () => {
+    const { ctx } = createFakeConvexContext(buildSourceAttachmentsSeed());
+
+    for (let index = 0; index < 205; index += 1) {
+      await createProjectSourceAttachmentHandler(ctx, {
+        projectId: 'project-sources-1',
+        provider: 'github',
+        displayName: `bulk-source-${index}`,
+        purpose: 'research',
+        accessMode: 'read_only',
+        repositoryUrl: `https://github.com/liminal-ai/bulk-source-${index}`,
+        repositoryFullName: `liminal-ai/bulk-source-${index}`,
+        targetRef: `feature/bulk-${index}`,
+      });
+    }
+
+    const summaries = await listProjectSourceAttachmentSummariesHandler(ctx, {
+      projectId: 'project-sources-1',
+    });
+
+    expect(summaries).toHaveLength(208);
+    expect(
+      summaries.some(
+        (summary) =>
+          summary.repositoryFullName === 'liminal-ai/reference-repo' &&
+          summary.sourceAttachmentId === 'source-readonly-project-1',
+      ),
+    ).toBe(true);
+    expect(
+      summaries.some(
+        (summary) =>
+          summary.repositoryFullName === 'liminal-ai/bulk-source-204' &&
+          summary.targetRef === 'feature/bulk-204',
+      ),
+    ).toBe(true);
   });
 });

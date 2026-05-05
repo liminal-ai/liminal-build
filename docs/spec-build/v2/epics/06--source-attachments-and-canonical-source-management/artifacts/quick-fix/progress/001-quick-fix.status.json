@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "command": "quick-fix",
+  "status": "completed",
+  "phase": "finalizing",
+  "startedAt": "2026-05-04T19:00:43.668Z",
+  "updatedAt": "2026-05-04T19:09:21.045Z",
+  "lastOutputAt": "2026-05-04T19:09:20.932Z",
+  "providerLiveness": "completed",
+  "provider": "codex",
+  "pid": 14356,
+  "cwd": "/Users/leemoore/code/liminal-build",
+  "timeoutMs": 1800000,
+  "configuredStartupTimeoutMs": 300000,
+  "configuredSilenceTimeoutMs": 300000,
+  "artifactPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/quick-fix/001-quick-fix.json",
+  "streamPaths": {
+    "stdoutPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/quick-fix/streams/001-quick-fix.stdout.log",
+    "stderrPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/quick-fix/streams/001-quick-fix.stderr.log"
+  },
+  "progressPaths": {
+    "statusPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/quick-fix/progress/001-quick-fix.status.json",
+    "progressPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/quick-fix/progress/001-quick-fix.progress.jsonl"
+  },
+  "lastEvent": "completed",
+  "lastEventSummary": "quick-fix completed and is ready for verification."
+}

@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "command": "epic-verify",
+  "status": "completed",
+  "phase": "finalizing",
+  "startedAt": "2026-05-05T00:48:19.505Z",
+  "updatedAt": "2026-05-05T00:56:43.122Z",
+  "lastOutputAt": "2026-05-05T00:56:42.965Z",
+  "providerLiveness": "completed",
+  "provider": "codex",
+  "pid": 55978,
+  "cwd": "/Users/leemoore/code/liminal-build",
+  "timeoutMs": 3600000,
+  "configuredStartupTimeoutMs": 300000,
+  "configuredSilenceTimeoutMs": 600000,
+  "artifactPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/epic/003-epic-verifier-batch.json",
+  "streamPaths": {
+    "stdoutPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/epic/streams/003-epic-verifier-batch.stdout.log",
+    "stderrPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/epic/streams/003-epic-verifier-batch.stderr.log"
+  },
+  "progressPaths": {
+    "statusPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/epic/progress/003-epic-verifier-batch.status.json",
+    "progressPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/epic/progress/003-epic-verifier-batch.progress.jsonl"
+  },
+  "lastEvent": "completed",
+  "lastEventSummary": "epic-verify completed with outcome block.",
+  "verifiersCompleted": 2,
+  "verifiersPlanned": 2,
+  "verifierLanes": [
+    {
+      "label": "epic-verifier-1",
+      "provider": "codex",
+      "state": "completed",
+      "providerLiveness": "completed",
+      "lastOutputAt": "2026-05-05T00:56:42.965Z",
+      "lastEvent": "verifier-completed",
+      "lastEventSummary": "epic-verifier-1 completed for epic verification."
+    },
+    {
+      "label": "epic-verifier-2",
+      "provider": "codex",
+      "state": "completed",
+      "providerLiveness": "completed",
+      "lastOutputAt": "2026-05-05T00:55:58.245Z",
+      "lastEvent": "verifier-completed",
+      "lastEventSummary": "epic-verifier-2 completed for epic verification."
+    }
+  ]
+}

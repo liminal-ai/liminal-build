@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "command": "story-verify",
+  "status": "completed",
+  "phase": "finalizing",
+  "startedAt": "2026-05-04T21:29:38.979Z",
+  "updatedAt": "2026-05-04T21:31:26.558Z",
+  "lastOutputAt": "2026-05-04T21:31:26.406Z",
+  "providerLiveness": "completed",
+  "provider": "codex",
+  "pid": 48726,
+  "cwd": "/Users/leemoore/code/liminal-build",
+  "timeoutMs": 3600000,
+  "configuredStartupTimeoutMs": 300000,
+  "configuredSilenceTimeoutMs": 360000,
+  "artifactPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/03-hydration-and-freshness-management/010-verify.json",
+  "streamPaths": {
+    "stdoutPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/03-hydration-and-freshness-management/streams/010-verify.stdout.log",
+    "stderrPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/03-hydration-and-freshness-management/streams/010-verify.stderr.log"
+  },
+  "progressPaths": {
+    "statusPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/03-hydration-and-freshness-management/progress/010-verify.status.json",
+    "progressPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management/artifacts/03-hydration-and-freshness-management/progress/010-verify.progress.jsonl"
+  },
+  "lastEvent": "completed",
+  "lastEventSummary": "story-verify completed for 03-hydration-and-freshness-management with outcome pass.",
+  "verifiersCompleted": 1,
+  "verifiersPlanned": 1
+}
