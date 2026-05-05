@@ -3,7 +3,7 @@
 ## Run Overview
 - State: BETWEEN_STORIES
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views
-- Current Story: 02-finalization-boundary-between-live-state-and-archive
+- Current Story: 03-archive-read-and-reopen-surface
 - Current Phase: none
 
 ## Run Configuration
@@ -37,15 +37,15 @@
 
 ## Current Continuation Handles
 - Story Implementor:
-  - Story: 01-canonical-archive-entry-persistence
+  - Story: 02-finalization-boundary-between-live-state-and-archive
   - Provider: codex
-  - Session ID: 019df60d-fe28-78c2-89a0-54aa6e77481e
-  - Result Artifact: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/015-continue.json
+  - Session ID: 019df646-e074-7f90-9808-50acca9910a9
+  - Result Artifact: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/02-finalization-boundary-between-live-state-and-archive/003-implementor.json
 - Story Verifier:
-  - Story: 01-canonical-archive-entry-persistence
+  - Story: 02-finalization-boundary-between-live-state-and-archive
   - Provider: codex
-  - Session ID: 019df617-f545-7c12-973a-19e600231531
-  - Result Artifact: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/018-verify.json
+  - Session ID: 019df66a-060e-7fd1-906a-9cee34ec3e12
+  - Result Artifact: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/02-finalization-boundary-between-live-state-and-archive/014-verify.json
 
 ## Story Receipts
 ### 00-foundation
@@ -85,10 +85,33 @@
 - Baseline After: 641
 - Commit: 5330c0d
 
+### 02-finalization-boundary-between-live-state-and-archive
+- Story Title: Story 2: Finalization Boundary Between Live State and Archive
+- Implementor Evidence:
+  - /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/02-finalization-boundary-between-live-state-and-archive/003-implementor.json
+- Verifier Evidence:
+  - /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/02-finalization-boundary-between-live-state-and-archive/005-verify.json
+  - /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/02-finalization-boundary-between-live-state-and-archive/008-verify.json
+  - /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/02-finalization-boundary-between-live-state-and-archive/011-verify.json
+  - /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/02-finalization-boundary-between-live-state-and-archive/014-verify.json
+- Story Gate: corepack pnpm run green-verify — pass
+- Completion Gate: corepack pnpm run verify-all — pass
+- Dispositions:
+  - story2-user-message-bridge-finalization-key: fixed
+  - story2-user-message-bridge-key-mismatch: fixed
+  - story2-green-verify-format-failure: fixed
+  - story2-live-archive-separation-proof-missing: fixed
+  - story-02-history-bridge-identity-mismatch: fixed
+- Open Risks:
+  - none
+- Baseline Before: 663
+- Baseline After: 670
+- Commit: f44ae1f
+
 ## Cumulative Baselines
-- Baseline Before Current Story: 641
+- Baseline Before Current Story: 670
 - Expected After Current Story: unknown
-- Latest Actual Total: 641
+- Latest Actual Total: 670
 
 ## Cleanup / Epic Verification
 - Cleanup Artifact: none
@@ -125,6 +148,11 @@
 - Story 1 implementor continuation artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/015-continue.json`; implementor restored `appendArchiveEntry` and `listArchiveEntries`, reran the targeted Story 1 suite, and passed `corepack pnpm run green-verify`.
 - Story 1 second follow-up verifier artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/018-verify.json`; outcome `pass`, finding `S1-F3` resolved, no open findings remain under ruling 012.
 - Story 1 story-lead had one recoverable planner-output interruption after artifact `015-continue.json`; `story-orchestrate resume` replayed from the last valid artifact boundary and completed the missing verifier step with a fresh child provider session.
+- Story 2 validation artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/02-finalization-boundary-between-live-state-and-archive/001-story-validate.json`; outcome `ready`, story-run selection `start-new`, baseline seed `566`.
+- Story 2 implementor artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/02-finalization-boundary-between-live-state-and-archive/003-implementor.json`; completed with outcome `ready-for-verification`.
+- Story 2 initial verifier artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/02-finalization-boundary-between-live-state-and-archive/005-verify.json`; verifier surfaced the initial compatibility-bridge finalization-key blocker.
+- Story 2 quick-fix artifacts: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/quick-fix/002-quick-fix.json`, `003-quick-fix.json`, and `004-quick-fix.json`; these iteratively repaired bridge finalization-key reuse, live/archive separation coverage, formatting, and persisted-history identity handling in the execution-result finalization path.
+- Story 2 follow-up verifier artifacts: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/02-finalization-boundary-between-live-state-and-archive/008-verify.json`, `011-verify.json`, and `014-verify.json`; final verifier outcome `pass`, all open findings resolved, `green-verify` and `verify-all` both passed.
 - Convex rule: before any Convex code work, read `convex/_generated/ai/guidelines.md`.
 
 ## Spec-Pack Carry-Forward Notes
