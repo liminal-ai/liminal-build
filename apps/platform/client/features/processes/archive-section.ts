@@ -16,6 +16,34 @@ function describeArchiveBody(entry: ArchivePage['entries'][number]): string {
   return 'No archived body content.';
 }
 
+function describeArtifactProvenance(entry: ArchivePage['entries'][number]): string | null {
+  const provenance = entry.relatedArtifactProvenance;
+  if (provenance === undefined) {
+    return null;
+  }
+
+  return `Artifact version: ${provenance.versionLabel} (${provenance.versionId})`;
+}
+
+function describeProducingProcess(entry: ArchivePage['entries'][number]): string | null {
+  const provenance = entry.relatedArtifactProvenance;
+  if (provenance === undefined) {
+    return null;
+  }
+
+  return `Produced by: ${provenance.producedByProcessDisplayLabel ?? provenance.producedByProcessId} (${provenance.producedByProcessId})`;
+}
+
+function describeSourceProvenance(entry: ArchivePage['entries'][number]): string | null {
+  const provenance = entry.relatedSourceProvenance;
+  if (provenance === undefined) {
+    return null;
+  }
+
+  const repositoryRef = provenance.targetRef === null ? '' : ` @ ${provenance.targetRef}`;
+  return `Source: ${provenance.repositoryFullName}${repositoryRef}`;
+}
+
 export function renderArchiveSection(args: {
   archive: ArchivePage | null;
   targetDocument: Document;
@@ -63,6 +91,30 @@ export function renderArchiveSection(args: {
     body.textContent = describeArchiveBody(entry);
     meta.textContent = `Recorded: ${entry.recordedAt}`;
     item.append(heading, body, meta);
+
+    const artifactProvenance = describeArtifactProvenance(entry);
+    if (artifactProvenance !== null) {
+      const artifact = args.targetDocument.createElement('p');
+      artifact.setAttribute('data-archive-artifact-provenance', 'true');
+      artifact.textContent = artifactProvenance;
+      item.append(artifact);
+    }
+
+    const producingProcess = describeProducingProcess(entry);
+    if (producingProcess !== null) {
+      const producedBy = args.targetDocument.createElement('p');
+      producedBy.setAttribute('data-archive-artifact-producing-process', 'true');
+      producedBy.textContent = producingProcess;
+      item.append(producedBy);
+    }
+
+    const sourceProvenance = describeSourceProvenance(entry);
+    if (sourceProvenance !== null) {
+      const source = args.targetDocument.createElement('p');
+      source.setAttribute('data-archive-source-provenance', 'true');
+      source.textContent = sourceProvenance;
+      item.append(source);
+    }
 
     if (entry.entryStatus === 'degraded') {
       const degraded = args.targetDocument.createElement('p');

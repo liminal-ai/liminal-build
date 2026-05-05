@@ -8,6 +8,8 @@ import {
   derivedTurnSchema,
   requestErrorSchema,
 } from '../../apps/platform/shared/contracts/index.js';
+import { currentArtifactVersionFixture } from './artifact-versions.js';
+import { readySourceProvenanceFixture } from './sources.js';
 
 export const userArchiveEntryFixture = archiveEntrySchema.parse({
   archiveEntryId: 'archive-entry-user-001',
@@ -171,6 +173,36 @@ export const degradedArchiveEntryFixture = archiveEntrySchema.parse({
   entryStatus: 'degraded',
   degradationReason: 'Related artifact version is unavailable.',
   recordedAt: '2026-05-01T12:00:08.000Z',
+});
+
+export const archiveEntryWithArtifactProvenanceFixture = archiveEntrySchema.parse({
+  ...processEventArchiveEntryFixture,
+  relatedSourceProvenanceId: null,
+  relatedArtifactProvenance: {
+    versionId: currentArtifactVersionFixture.versionId,
+    artifactId: 'artifact-001',
+    versionLabel: currentArtifactVersionFixture.versionLabel,
+    createdAt: currentArtifactVersionFixture.createdAt,
+    producedByProcessId: currentArtifactVersionFixture.producedByProcessId,
+    producedByProcessDisplayLabel: currentArtifactVersionFixture.producedByProcessDisplayLabel,
+  },
+});
+
+export const archiveEntryWithSourceProvenanceFixture = archiveEntrySchema.parse({
+  ...processEventArchiveEntryFixture,
+  relatedArtifactVersionId: null,
+  relatedSourceProvenanceId: readySourceProvenanceFixture.provenanceId,
+  relatedSourceProvenance: {
+    provenanceId: readySourceProvenanceFixture.provenanceId,
+    sourceAttachmentId: readySourceProvenanceFixture.sourceAttachmentId,
+    relationshipKind: readySourceProvenanceFixture.relationshipKind,
+    repositoryFullName: readySourceProvenanceFixture.repositoryFullName,
+    repositoryUrl: readySourceProvenanceFixture.repositoryUrl,
+    targetRef: readySourceProvenanceFixture.targetRef,
+    entryStatus: readySourceProvenanceFixture.entryStatus,
+    degradationReason: readySourceProvenanceFixture.degradationReason,
+    recordedAt: readySourceProvenanceFixture.recordedAt,
+  },
 });
 
 export const allArchiveEntryKindsFixture = [

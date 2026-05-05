@@ -5,7 +5,11 @@ import {
   sessionCookieName,
 } from '../../../apps/platform/server/services/auth/auth-session.service.js';
 import { AuthUserSyncService } from '../../../apps/platform/server/services/auth/auth-user-sync.service.js';
-import { InMemoryPlatformStore } from '../../../apps/platform/server/services/projects/platform-store.js';
+import {
+  InMemoryPlatformStore,
+  type ArtifactVersionRecord,
+  type StoredSourceProvenanceRecord,
+} from '../../../apps/platform/server/services/projects/platform-store.js';
 import {
   buildProcessArchiveApiPath,
   buildProcessDerivedArchiveViewsRefreshApiPath,
@@ -14,13 +18,18 @@ import {
   type DerivedArchiveView,
 } from '../../../apps/platform/shared/contracts/index.js';
 import {
+  archiveEntryWithArtifactProvenanceFixture,
+  archiveEntryWithSourceProvenanceFixture,
   degradedArchiveEntryFixture,
   modelArchiveEntryFixture,
+  processEventArchiveEntryFixture,
   readyArchivePageFixture,
   userArchiveEntryFixture,
 } from '../../fixtures/archive.js';
+import { currentArtifactVersionFixture } from '../../fixtures/artifact-versions.js';
 import { lostEnvironmentFixture } from '../../fixtures/process-environment.js';
 import { completedProcessFixture } from '../../fixtures/processes.js';
+import { readySourceProvenanceFixture } from '../../fixtures/sources.js';
 import { buildApp } from '../../utils/build-app.js';
 
 function createTestAuthSessionService(resolution: SessionResolution) {
@@ -71,15 +80,52 @@ const processSummary = processSummarySchema.parse({
   updatedAt: '2026-05-05T09:05:00.000Z',
 });
 
-function buildStore(
+const artifactProducingProcessSummary = processSummarySchema.parse({
+  ...completedProcessFixture,
+  processId: currentArtifactVersionFixture.producedByProcessId,
+  displayLabel:
+    currentArtifactVersionFixture.producedByProcessDisplayLabel ?? 'Feature Specification #1',
+  updatedAt: '2026-04-22T12:00:00.000Z',
+});
+
+const resolvedArtifactVersionRecord: ArtifactVersionRecord = {
+  versionId: currentArtifactVersionFixture.versionId,
+  artifactId: 'artifact-001',
+  versionLabel: currentArtifactVersionFixture.versionLabel,
+  contentStorageId: 'storage-001',
+  contentKind: 'markdown',
+  bytes: 128,
+  createdAt: currentArtifactVersionFixture.createdAt,
+  createdByProcessId: currentArtifactVersionFixture.producedByProcessId,
+};
+
+const storedResolvedSourceProvenance: StoredSourceProvenanceRecord = {
+  provenanceId: 'provenance-001',
+  projectId,
+  processId,
+  sourceAttachmentId: readySourceProvenanceFixture.sourceAttachmentId,
+  relationshipKind: readySourceProvenanceFixture.relationshipKind,
+  repositoryFullName: readySourceProvenanceFixture.repositoryFullName,
+  repositoryUrl: readySourceProvenanceFixture.repositoryUrl,
+  targetRef: readySourceProvenanceFixture.targetRef,
+  eventId: null,
+  entryStatus: 'ready',
+  degradationReason: null,
+  recordedAt: readySourceProvenanceFixture.recordedAt,
+};
+
+function buildStoreSeed(
   args: {
     access?: 'accessible' | 'forbidden' | 'project_not_found';
     includeProcess?: boolean;
     archiveEntries?: Array<(typeof readyArchivePageFixture.entries)[number]>;
+    extraProcesses?: Array<typeof processSummary>;
+    artifactVersionsByArtifactId?: Record<string, ArtifactVersionRecord[]>;
+    sourceProvenanceByProcessId?: Record<string, StoredSourceProvenanceRecord[]>;
     environmentLost?: boolean;
   } = {},
 ) {
-  return new InMemoryPlatformStore({
+  return {
     accessibleProjectsByUserId: {
       [`user:${actor.workosUserId}`]: args.access === 'accessible' ? [projectSummary] : [],
     },
@@ -95,17 +141,40 @@ function buildStore(
               },
     },
     processesByProjectId: {
-      [projectId]: args.includeProcess === false ? [] : [processSummary],
+      [projectId]:
+        args.includeProcess === false
+          ? []
+          : [processSummary, artifactProducingProcessSummary, ...(args.extraProcesses ?? [])],
     },
     archiveEntriesByProcessId: {
       [processId]: args.archiveEntries ?? readyArchivePageFixture.entries,
+    },
+    artifactVersionsByArtifactId: args.artifactVersionsByArtifactId ?? {
+      [resolvedArtifactVersionRecord.artifactId]: [resolvedArtifactVersionRecord],
+    },
+    sourceProvenanceByProcessId: args.sourceProvenanceByProcessId ?? {
+      [processId]: [storedResolvedSourceProvenance],
     },
     processEnvironmentSummariesByProcessId: args.environmentLost
       ? {
           [processId]: lostEnvironmentFixture,
         }
       : undefined,
-  });
+  };
+}
+
+function buildStore(
+  args: {
+    access?: 'accessible' | 'forbidden' | 'project_not_found';
+    includeProcess?: boolean;
+    archiveEntries?: Array<(typeof readyArchivePageFixture.entries)[number]>;
+    extraProcesses?: Array<typeof processSummary>;
+    artifactVersionsByArtifactId?: Record<string, ArtifactVersionRecord[]>;
+    sourceProvenanceByProcessId?: Record<string, StoredSourceProvenanceRecord[]>;
+    environmentLost?: boolean;
+  } = {},
+) {
+  return new InMemoryPlatformStore(buildStoreSeed(args));
 }
 
 async function buildArchiveApp(
@@ -147,7 +216,46 @@ class ConflictDuringDerivedViewRefreshStore extends InMemoryPlatformStore {
   }
 }
 
+class ThrowingArtifactVersionLookupStore extends InMemoryPlatformStore {
+  override async getArtifactVersion(args: {
+    versionId: string;
+  }): Promise<ArtifactVersionRecord | null> {
+    if (args.versionId === currentArtifactVersionFixture.versionId) {
+      throw new Error('Artifact version lookup failed.');
+    }
+
+    return super.getArtifactVersion(args);
+  }
+}
+
+class ThrowingSourceProvenanceLookupStore extends InMemoryPlatformStore {
+  override async listProcessSourceProvenance(args: {
+    processId: string;
+  }): Promise<StoredSourceProvenanceRecord[]> {
+    if (args.processId === processId) {
+      throw new Error('Source provenance lookup failed.');
+    }
+
+    return super.listProcessSourceProvenance(args);
+  }
+}
+
 describe('archive API', () => {
+  const storedReadySourceProvenance = {
+    provenanceId: readySourceProvenanceFixture.provenanceId,
+    projectId,
+    processId,
+    sourceAttachmentId: readySourceProvenanceFixture.sourceAttachmentId,
+    relationshipKind: readySourceProvenanceFixture.relationshipKind,
+    repositoryFullName: readySourceProvenanceFixture.repositoryFullName,
+    repositoryUrl: readySourceProvenanceFixture.repositoryUrl,
+    targetRef: readySourceProvenanceFixture.targetRef,
+    eventId: null,
+    entryStatus: readySourceProvenanceFixture.entryStatus,
+    degradationReason: readySourceProvenanceFixture.degradationReason,
+    recordedAt: readySourceProvenanceFixture.recordedAt,
+  } as const;
+
   it('TC-3.2a archive survives reload', async () => {
     const store = buildStore();
     const app = await buildArchiveApp(store);
@@ -304,6 +412,201 @@ describe('archive API', () => {
       message: 'Archive pagination parameters were invalid.',
       status: 422,
     });
+
+    await app.close();
+  });
+
+  it('TC-6.1a artifact provenance visible from archive entry', async () => {
+    const store = buildStore({
+      archiveEntries: [
+        {
+          ...processEventArchiveEntryFixture,
+          relatedSourceProvenanceId: null,
+        },
+      ],
+      artifactVersionsByArtifactId: {
+        'artifact-001': [
+          {
+            versionId: currentArtifactVersionFixture.versionId,
+            artifactId: 'artifact-001',
+            versionLabel: currentArtifactVersionFixture.versionLabel,
+            contentStorageId: 'storage-001',
+            contentKind: 'markdown',
+            bytes: 128,
+            createdAt: currentArtifactVersionFixture.createdAt,
+            createdByProcessId: currentArtifactVersionFixture.producedByProcessId,
+          },
+        ],
+      },
+    });
+    const app = await buildArchiveApp(store);
+    const response = await app.inject({
+      method: 'GET',
+      url: buildProcessArchiveApiPath({ projectId, processId }),
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      entries: [archiveEntryWithArtifactProvenanceFixture],
+    });
+
+    await app.close();
+  });
+
+  it('TC-6.2a source provenance visible from archive entry', async () => {
+    const store = buildStore({
+      archiveEntries: [
+        {
+          ...processEventArchiveEntryFixture,
+          relatedArtifactVersionId: null,
+          relatedSourceProvenanceId: readySourceProvenanceFixture.provenanceId,
+        },
+      ],
+      sourceProvenanceByProcessId: {
+        [processId]: [storedReadySourceProvenance],
+      },
+    });
+    const app = await buildArchiveApp(store);
+    const response = await app.inject({
+      method: 'GET',
+      url: buildProcessArchiveApiPath({ projectId, processId }),
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      entries: [archiveEntryWithSourceProvenanceFixture],
+    });
+
+    await app.close();
+  });
+
+  it('TC-6.3a missing source context degrades one entry', async () => {
+    const store = buildStore({
+      archiveEntries: [
+        userArchiveEntryFixture,
+        {
+          ...processEventArchiveEntryFixture,
+          relatedArtifactVersionId: null,
+          relatedSourceProvenanceId: 'provenance-missing-001',
+        },
+      ],
+    });
+    const app = await buildArchiveApp(store);
+    const response = await app.inject({
+      method: 'GET',
+      url: buildProcessArchiveApiPath({ projectId, processId }),
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      entries: [
+        expect.objectContaining({
+          archiveEntryId: userArchiveEntryFixture.archiveEntryId,
+          entryStatus: 'ready',
+        }),
+        expect.objectContaining({
+          archiveEntryId: processEventArchiveEntryFixture.archiveEntryId,
+          entryStatus: 'degraded',
+          degradationReason: 'Related source provenance is unavailable.',
+        }),
+      ],
+    });
+
+    await app.close();
+  });
+
+  it('source provenance lookup failure degrades one entry without failing the archive page', async () => {
+    const store = new ThrowingSourceProvenanceLookupStore(
+      buildStoreSeed({
+        archiveEntries: [
+          userArchiveEntryFixture,
+          {
+            ...processEventArchiveEntryFixture,
+            relatedArtifactVersionId: null,
+            relatedSourceProvenanceId: readySourceProvenanceFixture.provenanceId,
+          },
+        ],
+      }),
+    );
+    const app = await buildArchiveApp(store);
+    const response = await app.inject({
+      method: 'GET',
+      url: buildProcessArchiveApiPath({ projectId, processId }),
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      entries: [
+        expect.objectContaining({
+          archiveEntryId: userArchiveEntryFixture.archiveEntryId,
+          entryStatus: 'ready',
+        }),
+        expect.objectContaining({
+          archiveEntryId: processEventArchiveEntryFixture.archiveEntryId,
+          entryStatus: 'degraded',
+          degradationReason: 'Related source provenance is unavailable.',
+        }),
+      ],
+    });
+
+    await app.close();
+  });
+
+  it('TC-6.3b artifact lookup failure degrades one entry', async () => {
+    const store = new ThrowingArtifactVersionLookupStore(
+      buildStoreSeed({
+        archiveEntries: [
+          userArchiveEntryFixture,
+          {
+            ...processEventArchiveEntryFixture,
+            relatedSourceProvenanceId: null,
+          },
+        ],
+      }),
+    );
+    const app = await buildArchiveApp(store);
+    const response = await app.inject({
+      method: 'GET',
+      url: buildProcessArchiveApiPath({ projectId, processId }),
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      entries: [
+        expect.objectContaining({
+          archiveEntryId: userArchiveEntryFixture.archiveEntryId,
+          entryStatus: 'ready',
+        }),
+        expect.objectContaining({
+          archiveEntryId: processEventArchiveEntryFixture.archiveEntryId,
+          entryStatus: 'degraded',
+          degradationReason: 'Related artifact version is unavailable.',
+        }),
+      ],
+    });
+    expect(
+      response
+        .json()
+        .entries.find(
+          (entry: { archiveEntryId: string }) =>
+            entry.archiveEntryId === processEventArchiveEntryFixture.archiveEntryId,
+        ),
+    ).not.toHaveProperty('relatedArtifactProvenance');
 
     await app.close();
   });

@@ -23,6 +23,8 @@ import {
 } from '../../../apps/platform/shared/contracts/index.js';
 import {
   allArchiveEntryKindsFixture,
+  archiveEntryWithArtifactProvenanceFixture,
+  archiveEntryWithSourceProvenanceFixture,
   archiveDerivationConflictErrorFixture,
   degradedArchiveEntryFixture,
   invalidArchiveRequestErrorFixture,
@@ -316,6 +318,36 @@ describe('archive section rendering', () => {
     );
     expect(view.querySelector('[data-archive-entry-status="degraded"]')?.textContent).toContain(
       'Related artifact version is unavailable.',
+    );
+  });
+
+  it('renders related artifact and source provenance when archive entries are enriched', () => {
+    const view = renderArchiveSection({
+      archive: {
+        entries: [
+          archiveEntryWithArtifactProvenanceFixture,
+          archiveEntryWithSourceProvenanceFixture,
+        ],
+        page: {
+          cursor: null,
+          nextCursor: null,
+          hasMore: false,
+        },
+      },
+      targetDocument: document,
+    });
+
+    expect(view.querySelector('[data-archive-artifact-provenance="true"]')?.textContent).toContain(
+      archiveEntryWithArtifactProvenanceFixture.relatedArtifactProvenance?.versionLabel ?? '',
+    );
+    expect(
+      view.querySelector('[data-archive-artifact-producing-process="true"]')?.textContent,
+    ).toContain(
+      archiveEntryWithArtifactProvenanceFixture.relatedArtifactProvenance
+        ?.producedByProcessDisplayLabel ?? '',
+    );
+    expect(view.querySelector('[data-archive-source-provenance="true"]')?.textContent).toContain(
+      archiveEntryWithSourceProvenanceFixture.relatedSourceProvenance?.repositoryFullName ?? '',
     );
   });
 });

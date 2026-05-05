@@ -1,10 +1,10 @@
 # Team Implementation Log
 
 ## Run Overview
-- State: BETWEEN_STORIES
+- State: STORY_ACTIVE
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views
 - Current Story: 06-archive-provenance-coherence
-- Current Phase: none
+- Current Phase: accept
 
 ## Run Configuration
 - Primary Harness: claude-code
@@ -159,10 +159,28 @@
 - Baseline After: 701
 - Commit: 933b44e
 
+### 06-archive-provenance-coherence
+- Story Title: Story 6: Archive Provenance Coherence
+- Implementor Evidence:
+  - /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/06-archive-provenance-coherence/004-implementor.json
+- Verifier Evidence:
+  - /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/06-archive-provenance-coherence/005-verify.json
+  - /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/06-archive-provenance-coherence/009-verify.json
+- Story Gate: corepack pnpm run green-verify - pass
+- Completion Gate: corepack pnpm run verify-all - pass
+- Dispositions:
+  - SV-06-01: fixed
+  - SV-06-02: fixed
+- Open Risks:
+  - none
+- Baseline Before: 572
+- Baseline After: 572
+- Commit: pending
+
 ## Cumulative Baselines
-- Baseline Before Current Story: 701
-- Expected After Current Story: unknown
-- Latest Actual Total: 701
+- Baseline Before Current Story: 572
+- Expected After Current Story: 572
+- Latest Actual Total: 572
 
 ## Cleanup / Epic Verification
 - Cleanup Artifact: none
@@ -218,6 +236,11 @@
 - Story 5 initial verifier artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/05-minimal-structural-views-over-turns/007-verify.json`; verifier returned `revise` with blockers `SV-05-001` and `SV-05-002`.
 - Story 5 quick-fix artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/quick-fix/006-quick-fix.json`; quick-fix moved raw derived-archive-view storage behind api-key-checked wrappers and corrected degraded-view client proof to use real turn derivation + derived-view service output.
 - Story 5 follow-up verifier artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/05-minimal-structural-views-over-turns/011-verify.json`; outcome `pass`, `SV-05-001` and `SV-05-002` resolved, and no open findings remain.
+- Story 6 validation artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/06-archive-provenance-coherence/001-story-validate.json`; outcome `ready`, story-run selection `start-new`, baseline seed `572`.
+- Story 6 implementor artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/06-archive-provenance-coherence/004-implementor.json`; completed with outcome `ready-for-verification`.
+- Story 6 initial verifier artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/06-archive-provenance-coherence/005-verify.json`; verifier returned `revise` with blockers `SV-06-01` and `SV-06-02`.
+- Story 6 quick-fix artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/quick-fix/007-quick-fix.json`; quick-fix changed archive provenance enrichment to degrade affected entries instead of rejecting the whole read and corrected TC-6.3b to prove read-time artifact lookup degradation via a throwing enrichment dependency.
+- Story 6 follow-up verifier artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/06-archive-provenance-coherence/009-verify.json`; outcome `pass`, `SV-06-01` and `SV-06-02` resolved, and no open findings remain.
 - Convex rule: before any Convex code work, read `convex/_generated/ai/guidelines.md`.
 
 ## Spec-Pack Carry-Forward Notes

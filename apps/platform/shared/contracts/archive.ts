@@ -107,6 +107,39 @@ export const archiveEntryBodyDataSchema = z.object({
 });
 export type ArchiveEntryBodyData = z.infer<typeof archiveEntryBodyDataSchema>;
 
+export const archiveEntryArtifactProvenanceSchema = z.object({
+  versionId: z.string().min(1),
+  artifactId: z.string().min(1),
+  versionLabel: z.string().min(1),
+  createdAt: iso8601UtcString,
+  producedByProcessId: z.string().min(1),
+  producedByProcessDisplayLabel: z.string().min(1).nullable(),
+});
+export type ArchiveEntryArtifactProvenance = z.infer<typeof archiveEntryArtifactProvenanceSchema>;
+
+export const archiveEntrySourceProvenanceSchema = z
+  .object({
+    provenanceId: z.string().min(1),
+    sourceAttachmentId: z.string().min(1).nullable(),
+    relationshipKind: z.enum(['informed_work', 'received_code_update']),
+    repositoryFullName: z.string().min(1),
+    repositoryUrl: z.string().min(1),
+    targetRef: z.string().min(1).nullable(),
+    entryStatus: archiveEntryStatusSchema,
+    degradationReason: z.string().min(1).nullable(),
+    recordedAt: iso8601UtcString,
+  })
+  .superRefine((value, context) => {
+    if (value.entryStatus === 'degraded' && value.degradationReason === null) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Degraded source provenance must include a degradation reason.',
+        path: ['degradationReason'],
+      });
+    }
+  });
+export type ArchiveEntrySourceProvenance = z.infer<typeof archiveEntrySourceProvenanceSchema>;
+
 export const archivePageInfoSchema = z.object({
   cursor: archivePageCursorSchema,
   nextCursor: archivePageCursorSchema,
@@ -130,6 +163,8 @@ export const archiveEntrySchema = z
     relatedArtifactVersionId: z.string().min(1).nullable(),
     relatedSourceProvenanceId: z.string().min(1).nullable(),
     relatedToolCallId: z.string().min(1).nullable(),
+    relatedArtifactProvenance: archiveEntryArtifactProvenanceSchema.optional(),
+    relatedSourceProvenance: archiveEntrySourceProvenanceSchema.optional(),
     entryStatus: archiveEntryStatusSchema,
     degradationReason: z.string().min(1).nullable(),
     recordedAt: iso8601UtcString,
