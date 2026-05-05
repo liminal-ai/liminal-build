@@ -3,7 +3,7 @@
 ## Run Overview
 - State: BETWEEN_STORIES
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views
-- Current Story: 01-canonical-archive-entry-persistence
+- Current Story: 02-finalization-boundary-between-live-state-and-archive
 - Current Phase: none
 
 ## Run Configuration
@@ -37,15 +37,15 @@
 
 ## Current Continuation Handles
 - Story Implementor:
-  - Story: none
-  - Provider: none
-  - Session ID: none
-  - Result Artifact: none
+  - Story: 01-canonical-archive-entry-persistence
+  - Provider: codex
+  - Session ID: 019df60d-fe28-78c2-89a0-54aa6e77481e
+  - Result Artifact: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/015-continue.json
 - Story Verifier:
-  - Story: none
-  - Provider: none
-  - Session ID: none
-  - Result Artifact: none
+  - Story: 01-canonical-archive-entry-persistence
+  - Provider: codex
+  - Session ID: 019df617-f545-7c12-973a-19e600231531
+  - Result Artifact: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/018-verify.json
 
 ## Story Receipts
 ### 00-foundation
@@ -64,10 +64,31 @@
 - Baseline After: 630
 - Commit: bea8512
 
+### 01-canonical-archive-entry-persistence
+- Story Title: Story 1: Canonical Archive Entry Persistence
+- Implementor Evidence:
+  - /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/004-implementor.json
+  - /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/015-continue.json
+- Verifier Evidence:
+  - /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/008-verify.json
+  - /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/014-verify.json
+  - /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/018-verify.json
+- Story Gate: corepack pnpm run green-verify — pass
+- Completion Gate: corepack pnpm run verify-all — pass
+- Dispositions:
+  - S1-F1: fixed
+  - S1-F2: fixed
+  - S1-F3: fixed
+- Open Risks:
+  - none
+- Baseline Before: 634
+- Baseline After: 641
+- Commit: 5330c0d
+
 ## Cumulative Baselines
-- Baseline Before Current Story: 624
-- Expected After Current Story: 630
-- Latest Actual Total: 630
+- Baseline Before Current Story: 641
+- Expected After Current Story: unknown
+- Latest Actual Total: 641
 
 ## Cleanup / Epic Verification
 - Cleanup Artifact: none
@@ -97,6 +118,13 @@
 - Root `test:integration` was corrected to `corepack pnpm exec vitest run --dir tests/integration --environment node`, preserving the pnpm workspace exclusion for virtual package `packages/lbuild-impl`.
 - App integration test `OctokitCodeCheckpointWriter` now retries transient GitHub 502/503/504 responses during disposable branch creation.
 - Completion gate `corepack pnpm run verify-all` passed after the root integration command fix and GitHub retry hardening.
+- Story 1 validation artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/002-story-validate.json`; outcome `ready`, story-run selection `start-new`, baseline seed `565`.
+- Story 1 implementor artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/004-implementor.json`; completed with outcome `ready-for-verification`.
+- Story 1 caller ruling artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/012-caller-ruling.json`; ruling `primitive-only evidence is sufficient; defer TC-1.1/TC-1.4 service/API proof`.
+- Story 1 follow-up verifier artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/014-verify.json`; verifier resolved the scope dispute and surfaced blocking finding `S1-F3` because the primitive exports were absent from the tracked runtime surface.
+- Story 1 implementor continuation artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/015-continue.json`; implementor restored `appendArchiveEntry` and `listArchiveEntries`, reran the targeted Story 1 suite, and passed `corepack pnpm run green-verify`.
+- Story 1 second follow-up verifier artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/018-verify.json`; outcome `pass`, finding `S1-F3` resolved, no open findings remain under ruling 012.
+- Story 1 story-lead had one recoverable planner-output interruption after artifact `015-continue.json`; `story-orchestrate resume` replayed from the last valid artifact boundary and completed the missing verifier step with a fresh child provider session.
 - Convex rule: before any Convex code work, read `convex/_generated/ai/guidelines.md`.
 
 ## Spec-Pack Carry-Forward Notes
@@ -108,4 +136,4 @@
 - Story 5 owns non-summarizing structural derived views over turns, list/refresh routes, provenance to turns/archive entries, degraded/conflict behavior, and client rendering.
 - Story 6 owns read-time artifact/source provenance enrichment and per-entry related-context degradation without copying or owning related domain records.
 - Story 7 owns reload/environment-loss hardening, derived-failure isolation, bounded read limits, pagination state, and feasible observability.
-- Test plan expects 51 planned automated tests: 41 named TC tests and 10 non-TC guard tests across Convex, Fastify service/API, client, and existing live/process separation tests.
+- Test plan now expects 52 planned automated tests: 41 named TC tests and 11 non-TC guard tests across Convex, Fastify service/API, client, and existing live/process separation tests.
