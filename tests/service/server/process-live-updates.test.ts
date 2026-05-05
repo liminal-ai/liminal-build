@@ -303,6 +303,78 @@ describe('process live updates websocket', () => {
     await app.close();
   });
 
+  it('live history websocket publications do not create canonical archive rows', async () => {
+    const processLiveHub = new InMemoryProcessLiveHub();
+    const platformStore = buildPopulatedStore();
+    const app = await buildApp({
+      authSessionService: createTestAuthSessionService({
+        actor: {
+          userId: 'workos-user-1',
+          workosUserId: 'workos-user-1',
+          email: 'lee@example.com',
+          displayName: 'Lee Moore',
+        },
+        reason: null,
+      }),
+      authUserSyncService: new AuthUserSyncService(platformStore),
+      platformStore,
+      processLiveHub,
+    });
+    await app.listen({
+      port: 0,
+      host: '127.0.0.1',
+    });
+    const address = app.server.address();
+
+    if (address === null || typeof address === 'string') {
+      throw new Error('Expected an ephemeral address for websocket tests.');
+    }
+
+    const messages = [] as Array<ReturnType<typeof liveProcessUpdateMessageSchema.parse>>;
+    const socket = new WebSocket(
+      `ws://127.0.0.1:${address.port}/ws/projects/${projectSummary.projectId}/processes/${waitingProcessSummary.processId}`,
+    );
+
+    socket.addEventListener('message', (event) => {
+      messages.push(liveProcessUpdateMessageSchema.parse(JSON.parse(String(event.data))));
+    });
+
+    await waitFor(() => messages.length >= 11);
+
+    processLiveHub.publish({
+      projectId: projectSummary.projectId,
+      processId: waitingProcessSummary.processId,
+      publication: {
+        messageType: 'upsert',
+        historyItems: [
+          {
+            ...progressUpdateHistoryFixture,
+            historyItemId: 'history-progress-live-archive-separation-001',
+            createdAt: '2026-04-13T12:13:00.000Z',
+          },
+        ],
+      },
+    });
+
+    await waitFor(() =>
+      messages.some(
+        (message) =>
+          message.entityType === 'history' &&
+          message.entityId === 'history-progress-live-archive-separation-001',
+      ),
+    );
+
+    const archivePage = await platformStore.listArchiveEntries({
+      processId: waitingProcessSummary.processId,
+      limit: 20,
+    });
+
+    expect(archivePage.entries).toEqual([]);
+
+    socket.close();
+    await app.close();
+  });
+
   it('rejects websocket subscribe without an authenticated session', async () => {
     const app = await buildApp({
       authSessionService: createTestAuthSessionService({

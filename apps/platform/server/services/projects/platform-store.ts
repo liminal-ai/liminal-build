@@ -326,6 +326,7 @@ export interface PlatformStore {
     relatedSideWorkId?: string | null;
     relatedArtifactId?: string | null;
     clientRequestId?: string | null;
+    providerHistoryItemId?: string | null;
   }): Promise<ProcessHistoryItem>;
   appendArchiveEntry(args: ArchiveEntryWriteInput): Promise<ArchiveEntry>;
   listArchiveEntries(args: {
@@ -528,6 +529,11 @@ function computeWorkingSetFingerprint(args: {
 function buildCheckpointVersionLabel(producedAt: string): string {
   const compact = producedAt.replaceAll(/[-:.TZ]/g, '').slice(0, 14);
   return compact.length > 0 ? `checkpoint-${compact}` : 'checkpoint';
+}
+
+function normalizeStoredProviderHistoryItemId(value: string | null | undefined): string | null {
+  const trimmed = value?.trim() ?? '';
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function decodeArchiveCursor(cursor: string | null | undefined): number | null {
@@ -753,6 +759,7 @@ const appendProcessHistoryItemMutation = makeFunctionReference<
     relatedSideWorkId?: string | null;
     relatedArtifactId?: string | null;
     clientRequestId?: string | null;
+    providerHistoryItemId?: string | null;
   },
   ProcessHistoryItem
 >('processHistoryItems:appendProcessHistoryItem');
@@ -1424,6 +1431,7 @@ export class NullPlatformStore implements PlatformStore {
     relatedSideWorkId?: string | null;
     relatedArtifactId?: string | null;
     clientRequestId?: string | null;
+    providerHistoryItemId?: string | null;
   }): Promise<ProcessHistoryItem> {
     const now = new Date().toISOString();
 
@@ -1933,6 +1941,7 @@ export class ConvexPlatformStore implements PlatformStore {
     relatedSideWorkId?: string | null;
     relatedArtifactId?: string | null;
     clientRequestId?: string | null;
+    providerHistoryItemId?: string | null;
   }): Promise<ProcessHistoryItem> {
     return this.client.mutation(appendProcessHistoryItemMutation, args, {
       skipQueue: true,
@@ -2281,6 +2290,10 @@ export class InMemoryPlatformStore implements PlatformStore {
   private readonly sourceAttachmentsByProjectId = new Map<string, SourceAttachmentSummary[]>();
   private readonly sourceProvenanceByProcessId = new Map<string, StoredSourceProvenanceRecord[]>();
   private readonly processHistoryItemsByProcessId = new Map<string, ProcessHistoryItem[]>();
+  private readonly historyItemIdsByProviderHistoryItemIdByProcessId = new Map<
+    string,
+    Map<string, string>
+  >();
   private readonly archiveEntriesByProcessId = new Map<string, ArchiveEntry[]>();
   private readonly archiveTurnsByProcessId = new Map<string, DerivedTurn[]>();
   private readonly derivedArchiveViewsByProcessId = new Map<string, DerivedArchiveView[]>();
@@ -3140,8 +3153,25 @@ export class InMemoryPlatformStore implements PlatformStore {
     relatedSideWorkId?: string | null;
     relatedArtifactId?: string | null;
     clientRequestId?: string | null;
+    providerHistoryItemId?: string | null;
   }): Promise<ProcessHistoryItem> {
     const existingHistory = this.processHistoryItemsByProcessId.get(args.processId) ?? [];
+    const providerHistoryItemId = normalizeStoredProviderHistoryItemId(args.providerHistoryItemId);
+
+    if (providerHistoryItemId !== null) {
+      const existingHistoryItemId = this.historyItemIdsByProviderHistoryItemIdByProcessId
+        .get(args.processId)
+        ?.get(providerHistoryItemId);
+      const existingHistoryItem =
+        existingHistoryItemId === undefined
+          ? null
+          : (existingHistory.find((item) => item.historyItemId === existingHistoryItemId) ?? null);
+
+      if (existingHistoryItem !== null) {
+        return existingHistoryItem;
+      }
+    }
+
     const historyItem: ProcessHistoryItem = {
       historyItemId: `${args.processId}:history-${args.kind}-${existingHistory.length + 1}`,
       kind: args.kind,
@@ -3155,6 +3185,15 @@ export class InMemoryPlatformStore implements PlatformStore {
       left.createdAt.localeCompare(right.createdAt),
     );
     this.processHistoryItemsByProcessId.set(args.processId, nextHistory);
+    if (providerHistoryItemId !== null) {
+      const historyItemIdsByProviderHistoryItemId =
+        this.historyItemIdsByProviderHistoryItemIdByProcessId.get(args.processId) ?? new Map();
+      historyItemIdsByProviderHistoryItemId.set(providerHistoryItemId, historyItem.historyItemId);
+      this.historyItemIdsByProviderHistoryItemIdByProcessId.set(
+        args.processId,
+        historyItemIdsByProviderHistoryItemId,
+      );
+    }
 
     return historyItem;
   }

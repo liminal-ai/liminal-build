@@ -20,6 +20,7 @@ import {
   processEnvironmentPrerequisiteMissingErrorCode,
   processEnvironmentUnavailableErrorCode,
 } from '../../../errors/codes.js';
+import { ArchiveFinalizationService } from '../../archive/archive-finalization.service.js';
 import type { AuthenticatedActor } from '../../auth/auth-session.service.js';
 import type { PlatformStore, WorkingSetPlan } from '../../projects/platform-store.js';
 import type { SourceProvenanceService } from '../../sources/source-provenance.service.js';
@@ -60,6 +61,10 @@ export class ProcessEnvironmentService {
       'persistCheckpointArtifacts'
     > = platformStore,
     private readonly sourceProvenanceService?: SourceProvenanceService,
+    private readonly archiveFinalizationService: Pick<
+      ArchiveFinalizationService,
+      'appendFromProcessHistoryItem'
+    > = new ArchiveFinalizationService(platformStore),
   ) {}
 
   /**
@@ -207,6 +212,7 @@ export class ProcessEnvironmentService {
       lastHydratedAt: existingEnvironment.lastHydratedAt,
     });
     const rebuildHistoryItem = await this.appendProcessEvent({
+      projectId: access.project.projectId,
       processId: access.process.processId,
       text: 'Environment rebuild started.',
     });
@@ -285,6 +291,7 @@ export class ProcessEnvironmentService {
       plan: resolvedPlan,
     });
     const preparationHistoryItem = await this.appendProcessEvent({
+      projectId: args.projectId,
       processId: args.processId,
       text: 'Environment preparation started.',
     });
@@ -554,6 +561,7 @@ export class ProcessEnvironmentService {
       // before deciding the next env state. These produce durable process-facing updates
       // even when the run failed, so the process surface reflects what happened.
       const sideEffects = await this.applyExecutionResultSideEffects({
+        projectId: args.projectId,
         processId: args.processId,
         executionResult,
       });
@@ -586,6 +594,7 @@ export class ProcessEnvironmentService {
           lastHydratedAt: runningEnvironment.lastHydratedAt,
         });
         const executionFailedHistoryItem = await this.appendProcessEvent({
+          projectId: args.projectId,
           processId: args.processId,
           text: 'Execution failed.',
         });
@@ -644,6 +653,7 @@ export class ProcessEnvironmentService {
           lastHydratedAt,
         });
         const executionFailedHistoryItem = await this.appendProcessEvent({
+          projectId: args.projectId,
           processId: args.processId,
           text: 'Execution failed.',
         });
@@ -671,23 +681,29 @@ export class ProcessEnvironmentService {
   }
 
   private async applyExecutionResultSideEffects(args: {
+    projectId: string;
     processId: string;
     executionResult: ExecutionResult;
   }): Promise<{ historyItems: ProcessHistoryItem[] }> {
     const historyItems: ProcessHistoryItem[] = [];
 
     for (const historyItem of args.executionResult.processHistoryItems) {
-      historyItems.push(
-        await this.platformStore.appendProcessHistoryItem({
-          processId: args.processId,
-          kind: historyItem.kind,
-          lifecycleState: historyItem.lifecycleState,
-          text: historyItem.text,
-          relatedSideWorkId: historyItem.relatedSideWorkId,
-          relatedArtifactId: historyItem.relatedArtifactId,
-          clientRequestId: null,
-        }),
-      );
+      const storedHistoryItem = await this.platformStore.appendProcessHistoryItem({
+        processId: args.processId,
+        kind: historyItem.kind,
+        lifecycleState: historyItem.lifecycleState,
+        text: historyItem.text,
+        relatedSideWorkId: historyItem.relatedSideWorkId,
+        relatedArtifactId: historyItem.relatedArtifactId,
+        clientRequestId: null,
+        providerHistoryItemId: historyItem.historyItemId,
+      });
+      historyItems.push(storedHistoryItem);
+      await this.archiveFinalizationService.appendFromProcessHistoryItem({
+        projectId: args.projectId,
+        processId: args.processId,
+        historyItem: storedHistoryItem,
+      });
     }
 
     await this.platformStore.replaceCurrentProcessOutputs({
@@ -890,6 +906,7 @@ export class ProcessEnvironmentService {
             lastCheckpointResult: failedCodeResult,
           });
           const checkpointFailedHistoryItem = await this.appendProcessEvent({
+            projectId: args.projectId,
             processId: args.processId,
             text: 'Checkpoint failed.',
           });
@@ -926,6 +943,7 @@ export class ProcessEnvironmentService {
           lastCheckpointResult: finalCheckpointResult,
         });
         const checkpointSucceededHistoryItem = await this.appendProcessEvent({
+          projectId: args.projectId,
           processId: args.processId,
           text: 'Checkpoint succeeded.',
         });
@@ -964,6 +982,7 @@ export class ProcessEnvironmentService {
           lastCheckpointResult: failedReadOnlyResult,
         });
         const checkpointFailedHistoryItem = await this.appendProcessEvent({
+          projectId: args.projectId,
           processId: args.processId,
           text: 'Checkpoint failed.',
         });
@@ -991,6 +1010,7 @@ export class ProcessEnvironmentService {
         artifactCheckpointResult === null
           ? null
           : await this.appendProcessEvent({
+              projectId: args.projectId,
               processId: args.processId,
               text: 'Checkpoint succeeded.',
             });
@@ -1023,6 +1043,7 @@ export class ProcessEnvironmentService {
         lastCheckpointResult: failedCheckpointResult,
       });
       const checkpointFailedHistoryItem = await this.appendProcessEvent({
+        projectId: args.projectId,
         processId: args.processId,
         text: 'Checkpoint failed.',
       });
@@ -1391,10 +1412,11 @@ export class ProcessEnvironmentService {
   }
 
   private async appendProcessEvent(args: {
+    projectId: string;
     processId: string;
     text: string;
   }): Promise<ProcessHistoryItem> {
-    return this.platformStore.appendProcessHistoryItem({
+    const historyItem = await this.platformStore.appendProcessHistoryItem({
       processId: args.processId,
       kind: 'process_event',
       lifecycleState: 'finalized',
@@ -1403,6 +1425,14 @@ export class ProcessEnvironmentService {
       relatedArtifactId: null,
       clientRequestId: null,
     });
+
+    await this.archiveFinalizationService.appendFromProcessHistoryItem({
+      projectId: args.projectId,
+      processId: args.processId,
+      historyItem,
+    });
+
+    return historyItem;
   }
 
   private publishHistoryUpsert(args: {

@@ -32,6 +32,7 @@ import {
   processEventHistoryFixture,
   processMessageHistoryFixture,
   progressUpdateHistoryFixture,
+  userMessageHistoryFixture,
 } from '../../fixtures/process-history.js';
 
 describe('Epic 07 Story 0 archive foundation contracts', () => {
@@ -181,11 +182,22 @@ describe('Epic 07 Story 0 archive foundation contracts', () => {
       compatService.mapHistoryItemToArchiveSeed({
         projectId: 'project-1',
         processId: 'process-1',
+        historyItem: userMessageHistoryFixture,
+      }),
+    ).toMatchObject({
+      entryKind: 'user_message',
+      finalizationKey: `response:${userMessageHistoryFixture.historyItemId}`,
+      bodyText: userMessageHistoryFixture.text,
+    });
+    expect(
+      compatService.mapHistoryItemToArchiveSeed({
+        projectId: 'project-1',
+        processId: 'process-1',
         historyItem: processMessageHistoryFixture,
       }),
     ).toMatchObject({
       entryKind: 'model_message',
-      finalizationKey: `history:${processMessageHistoryFixture.historyItemId}`,
+      finalizationKey: `model:${processMessageHistoryFixture.historyItemId}`,
       bodyText: processMessageHistoryFixture.text,
     });
     expect(

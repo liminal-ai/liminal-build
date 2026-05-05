@@ -40,7 +40,10 @@ export class ProcessHistoryCompatService {
       projectId: args.projectId,
       processId: args.processId,
       entryKind,
-      finalizationKey: `history:${args.historyItem.historyItemId}`,
+      finalizationKey: buildHistoryItemArchiveFinalizationKey({
+        entryKind,
+        sourceObjectId: args.historyItem.historyItemId,
+      }),
       sourceObjectId: args.historyItem.historyItemId,
       bodyText: bodyFormat === 'none' ? null : args.historyItem.text,
       bodyData: null,
@@ -53,4 +56,24 @@ export class ProcessHistoryCompatService {
       recordedAt: args.historyItem.createdAt,
     };
   }
+}
+
+export function buildHistoryItemArchiveFinalizationKey(args: {
+  entryKind: ArchiveEntryKind;
+  sourceObjectId: string;
+}): string {
+  switch (args.entryKind) {
+    case 'user_message':
+      return buildAcceptedUserResponseArchiveFinalizationKey(args.sourceObjectId);
+    case 'model_message':
+      return `model:${args.sourceObjectId}`;
+    case 'process_event':
+      return `event:${args.sourceObjectId}`;
+    default:
+      return `history:${args.sourceObjectId}`;
+  }
+}
+
+export function buildAcceptedUserResponseArchiveFinalizationKey(historyItemId: string): string {
+  return `response:${historyItemId}`;
 }

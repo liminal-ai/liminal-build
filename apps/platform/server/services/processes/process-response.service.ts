@@ -7,17 +7,23 @@ import {
   submitProcessResponseResponseSchema,
 } from '../../../shared/contracts/index.js';
 import { AppError } from '../../errors/app-error.js';
+import { ArchiveFinalizationService } from '../archive/archive-finalization.service.js';
+import { buildAcceptedUserResponseArchiveFinalizationKey } from '../archive/process-history-compat.service.js';
 import type { AuthenticatedActor } from '../auth/auth-session.service.js';
-import type { ProcessLiveHub } from './live/process-live-hub.js';
 import type { PlatformStore } from '../projects/platform-store.js';
-import { buildProcessSurfaceSummaryWithReviewability } from './process-work-surface.service.js';
+import type { ProcessLiveHub } from './live/process-live-hub.js';
 import type { ProcessAccessService } from './process-access.service.js';
+import { buildProcessSurfaceSummaryWithReviewability } from './process-work-surface.service.js';
 
 export class ProcessResponseService {
   constructor(
     private readonly platformStore: PlatformStore,
     private readonly processAccessService: ProcessAccessService,
     private readonly processLiveHub: ProcessLiveHub,
+    private readonly archiveFinalizationService: Pick<
+      ArchiveFinalizationService,
+      'appendFinalizedEntry'
+    > = new ArchiveFinalizationService(platformStore),
   ) {}
 
   async respond(args: {
@@ -44,6 +50,11 @@ export class ProcessResponseService {
     });
 
     if (existing !== null) {
+      await this.archiveAcceptedUserResponse({
+        projectId: access.project.projectId,
+        processId: access.process.processId,
+        historyItem: existing.historyItem,
+      });
       const environment = await this.platformStore.getProcessEnvironmentSummary({
         processId: access.process.processId,
       });
@@ -74,6 +85,11 @@ export class ProcessResponseService {
       const result = await this.platformStore.submitProcessResponse({
         processId: access.process.processId,
         ...normalizedRequest,
+      });
+      await this.archiveAcceptedUserResponse({
+        projectId: access.project.projectId,
+        processId: access.process.processId,
+        historyItem: result.historyItem,
       });
       const environment = await this.platformStore.getProcessEnvironmentSummary({
         processId: access.process.processId,
@@ -119,6 +135,37 @@ export class ProcessResponseService {
       clientRequestId: request.clientRequestId.trim(),
       message: request.message.trim(),
     };
+  }
+
+  private async archiveAcceptedUserResponse(args: {
+    projectId: string;
+    processId: string;
+    historyItem: {
+      historyItemId: string;
+      text: string;
+      createdAt: string;
+    };
+  }): Promise<void> {
+    const bodyText = args.historyItem.text.trim();
+
+    await this.archiveFinalizationService.appendFinalizedEntry({
+      projectId: args.projectId,
+      processId: args.processId,
+      entryKind: 'user_message',
+      finalizationKey: buildAcceptedUserResponseArchiveFinalizationKey(
+        args.historyItem.historyItemId,
+      ),
+      sourceObjectId: args.historyItem.historyItemId,
+      bodyText,
+      bodyData: null,
+      bodyFormat: bodyText.length > 0 ? 'plain_text' : 'none',
+      relatedArtifactVersionId: null,
+      relatedSourceProvenanceId: null,
+      relatedToolCallId: null,
+      entryStatus: 'ready',
+      degradationReason: null,
+      recordedAt: args.historyItem.createdAt,
+    });
   }
 }
 

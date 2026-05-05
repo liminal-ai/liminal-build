@@ -36,6 +36,7 @@ export default defineSchema({
   processHistoryItems: defineTable(processHistoryItemsTableFields)
     .index('by_processId_and_createdAt', ['processId', 'createdAt'])
     .index('by_processId_and_clientRequestId', ['processId', 'clientRequestId'])
+    .index('by_processId_and_providerHistoryItemId', ['processId', 'providerHistoryItemId'])
     .index('by_processId_and_requestState_and_createdAt', [
       'processId',
       'requestState',

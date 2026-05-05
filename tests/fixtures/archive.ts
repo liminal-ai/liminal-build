@@ -16,7 +16,7 @@ export const userArchiveEntryFixture = archiveEntrySchema.parse({
   entryKind: 'user_message',
   sequence: 0,
   lifecycleState: 'finalized',
-  finalizationKey: 'response:req-001',
+  finalizationKey: 'response:history-user-001',
   sourceObjectId: 'history-user-001',
   bodyText: 'Please continue with the archive implementation.',
   bodyData: null,

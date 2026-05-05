@@ -479,6 +479,7 @@ export const submitProcessResponse = mutation({
       relatedSideWorkId: null,
       relatedArtifactId: null,
       clientRequestId: trimmedClientRequestId,
+      providerHistoryItemId: null,
       createdAt: now,
       finalizedAt: now,
     });

@@ -7,14 +7,14 @@ import { renderProcessEnvironmentPanel } from '../../../apps/platform/client/fea
 import { buildProcessSurfaceSummary } from '../../../apps/platform/server/services/processes/process-work-surface.service.js';
 import {
   liveProcessUpdateMessageSchema,
-  sourceAttachmentSummarySchema,
   processSummarySchema,
+  processSurfaceStateSchema,
+  processSurfaceSummarySchema,
   processWorkSurfaceResponseSchema,
   rebuildProcessResponseSchema,
   rehydrateProcessResponseSchema,
   resumeProcessResponseSchema,
-  processSurfaceStateSchema,
-  processSurfaceSummarySchema,
+  sourceAttachmentSummarySchema,
   startProcessResponseSchema,
 } from '../../../apps/platform/shared/contracts/index.js';
 import {
@@ -22,8 +22,8 @@ import {
   connectedProcessSurfaceStateFixture,
   environmentFailedUpsertLiveFixture,
   environmentPreparingUpsertLiveFixture,
-  environmentRehydratingUpsertLiveFixture,
   environmentReadyUpsertLiveFixture,
+  environmentRehydratingUpsertLiveFixture,
   environmentRunningUpsertLiveFixture,
   historyUpsertLiveFixture,
   materialsClearedSnapshotLiveFixture,
@@ -39,16 +39,20 @@ import {
   readyProcessMaterialsFixture,
   revisedOutputProcessMaterialsFixture,
 } from '../../fixtures/materials.js';
-import { hydratedSourceFixture } from '../../fixtures/sources.js';
 import {
   buildEnvironmentSummaryFixture,
   checkpointSucceededEnvironmentFixture,
   failedEnvironmentFixture,
-  rehydratingEnvironmentFixture,
   readyEnvironmentFixture,
   rebuildingEnvironmentFixture,
+  rehydratingEnvironmentFixture,
   runningEnvironmentFixture,
 } from '../../fixtures/process-environment.js';
+import {
+  progressUpdateHistoryFixture,
+  readyProcessHistoryFixture,
+  userMessageHistoryFixture,
+} from '../../fixtures/process-history.js';
 import {
   completedProcessSurfaceFixture,
   failedProcessSurfaceFixture,
@@ -62,12 +66,8 @@ import {
   startedProcessResponseFixture,
   waitingProcessSurfaceFixture,
 } from '../../fixtures/process-surface.js';
-import {
-  progressUpdateHistoryFixture,
-  readyProcessHistoryFixture,
-  userMessageHistoryFixture,
-} from '../../fixtures/process-history.js';
 import { readySideWorkFixture } from '../../fixtures/side-work.js';
+import { hydratedSourceFixture } from '../../fixtures/sources.js';
 
 function buildRunningSurfaceState() {
   return processSurfaceStateSchema.parse({
@@ -238,6 +238,40 @@ describe('process live foundation', () => {
       blockedReason: expect.stringContaining('Preparation failed'),
       lastCheckpointResult: null,
     });
+  });
+
+  it('live history upserts stay on the current process surface without creating archive state', () => {
+    const nextState = applyLiveProcessMessage({
+      state: {
+        ...connectedProcessSurfaceStateFixture,
+        history: {
+          status: 'ready',
+          items: [progressUpdateHistoryFixture],
+        },
+        live: {
+          connectionState: 'connected',
+          subscriptionId: 'subscription-001',
+          lastSequenceNumber: 1,
+          error: null,
+        },
+      },
+      message: buildLiveProcessMessageFixture({
+        messageType: 'upsert',
+        entityType: 'history',
+        entityId: userMessageHistoryFixture.historyItemId,
+        sequenceNumber: 2,
+        payload: userMessageHistoryFixture,
+      }),
+    });
+
+    expect(nextState.history).toMatchObject({
+      status: 'ready',
+      items: expect.arrayContaining([
+        expect.objectContaining({ historyItemId: progressUpdateHistoryFixture.historyItemId }),
+        expect.objectContaining({ historyItemId: userMessageHistoryFixture.historyItemId }),
+      ]),
+    });
+    expect(Object.hasOwn(nextState, 'archive')).toBe(false);
   });
 
   it('TC-2.4a running begins after readiness', () => {

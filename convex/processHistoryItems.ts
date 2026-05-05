@@ -33,6 +33,7 @@ export const processHistoryItemsTableFields = {
   relatedSideWorkId: v.union(v.id('processSideWorkItems'), v.null()),
   relatedArtifactId: v.union(v.id('artifacts'), v.null()),
   clientRequestId: v.union(v.string(), v.null()),
+  providerHistoryItemId: v.union(v.string(), v.null()),
   createdAt: v.string(),
   finalizedAt: v.union(v.string(), v.null()),
 };
@@ -81,6 +82,7 @@ export const appendProcessHistoryItem = mutation({
     relatedSideWorkId: v.optional(v.union(v.string(), v.null())),
     relatedArtifactId: v.optional(v.union(v.string(), v.null())),
     clientRequestId: v.optional(v.union(v.string(), v.null())),
+    providerHistoryItemId: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args): Promise<ProcessHistoryItem> => {
     const processId = args.processId as Id<'processes'>;
@@ -88,6 +90,23 @@ export const appendProcessHistoryItem = mutation({
 
     if (processRecord === null) {
       throw new Error('Process not found.');
+    }
+
+    const trimmedProviderHistoryItemId = args.providerHistoryItemId?.trim() ?? '';
+
+    if (trimmedProviderHistoryItemId.length > 0) {
+      const existingHistoryItem = await ctx.db
+        .query('processHistoryItems')
+        .withIndex('by_processId_and_providerHistoryItemId', (indexQuery) =>
+          indexQuery
+            .eq('processId', processId)
+            .eq('providerHistoryItemId', trimmedProviderHistoryItemId),
+        )
+        .unique();
+
+      if (existingHistoryItem !== null) {
+        return buildProcessHistoryItem(existingHistoryItem);
+      }
     }
 
     const now = new Date().toISOString();
@@ -107,6 +126,8 @@ export const appendProcessHistoryItem = mutation({
           ? null
           : (args.relatedArtifactId as Id<'artifacts'>),
       clientRequestId: args.clientRequestId ?? null,
+      providerHistoryItemId:
+        trimmedProviderHistoryItemId.length > 0 ? trimmedProviderHistoryItemId : null,
       createdAt: now,
       finalizedAt: lifecycleState === 'finalized' ? now : null,
     });
