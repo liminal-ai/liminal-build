@@ -19,3 +19,5 @@ export const sourceAttachmentRefreshNotAvailableErrorCode =
   'SOURCE_ATTACHMENT_REFRESH_NOT_AVAILABLE' as const;
 export const invalidSourceAttachmentErrorCode = 'INVALID_SOURCE_ATTACHMENT' as const;
 export const sourceAttachmentUnavailableErrorCode = 'SOURCE_ATTACHMENT_UNAVAILABLE' as const;
+export const archiveDerivationConflictErrorCode = 'ARCHIVE_DERIVATION_CONFLICT' as const;
+export const invalidArchiveRequestErrorCode = 'INVALID_ARCHIVE_REQUEST' as const;

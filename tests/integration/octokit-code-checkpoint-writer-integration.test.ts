@@ -89,6 +89,30 @@ let octokit: Octokit | null = null;
 let token: string | null = null;
 let defaultBranch: string | null = null;
 
+function isRetryableGitHubError(error: unknown): boolean {
+  const status = (error as { status?: number }).status;
+  return status === 502 || status === 503 || status === 504;
+}
+
+async function withRetry<T>(operation: () => Promise<T>): Promise<T> {
+  const maxAttempts = 3;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableGitHubError(error) || attempt === maxAttempts) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+    }
+  }
+
+  throw lastError;
+}
+
 loadWorkspaceEnvFiles();
 
 beforeAll(async () => {
@@ -145,12 +169,14 @@ async function createDisposableTestBranch(args: {
     ref: `heads/${args.baseBranch}`,
   });
   const branch = generateBranchName();
-  await args.octokit.git.createRef({
-    owner: TEST_OWNER,
-    repo: TEST_REPO,
-    ref: `refs/heads/${branch}`,
-    sha: baseRef.object.sha,
-  });
+  await withRetry(() =>
+    args.octokit.git.createRef({
+      owner: TEST_OWNER,
+      repo: TEST_REPO,
+      ref: `refs/heads/${branch}`,
+      sha: baseRef.object.sha,
+    }),
+  );
   createdBranches.push({ branch, startSha: baseRef.object.sha, filePath: '' });
   return branch;
 }

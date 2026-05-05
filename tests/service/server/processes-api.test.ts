@@ -6,6 +6,7 @@ import {
 } from '../../../apps/platform/server/services/auth/auth-session.service.js';
 import { AuthUserSyncService } from '../../../apps/platform/server/services/auth/auth-user-sync.service.js';
 import type {
+  ArchiveEntryWriteInput,
   CurrentProcessMaterialRefs,
   PlatformProcessOutputSummary,
   PlatformStore,
@@ -17,9 +18,14 @@ import type {
   StoredPlatformUser,
 } from '../../../apps/platform/server/services/projects/platform-store.js';
 import {
-  defaultEnvironmentSummary,
+  type ArchiveEntry,
+  type ArchivePage,
+  type ArchiveTurnPage,
   type ArtifactSummary,
   type CurrentProcessRequest,
+  type DerivedArchiveView,
+  type DerivedTurn,
+  defaultEnvironmentSummary,
   type EnvironmentSummary,
   type ProcessHistoryItem,
   type ProcessSummary,
@@ -261,6 +267,66 @@ class RecordingPlatformStore implements PlatformStore {
       relatedSideWorkId: args.relatedSideWorkId ?? null,
       relatedArtifactId: args.relatedArtifactId ?? null,
     };
+  }
+
+  async appendArchiveEntry(args: ArchiveEntryWriteInput): Promise<ArchiveEntry> {
+    return {
+      archiveEntryId: `${args.processId}:archive:0`,
+      projectId: args.projectId,
+      processId: args.processId,
+      entryKind: args.entryKind,
+      sequence: 0,
+      lifecycleState: 'finalized',
+      finalizationKey: args.finalizationKey,
+      sourceObjectId: args.sourceObjectId ?? null,
+      bodyText: args.bodyText ?? null,
+      bodyData: args.bodyData ?? null,
+      bodyFormat: args.bodyFormat,
+      relatedArtifactVersionId: args.relatedArtifactVersionId ?? null,
+      relatedSourceProvenanceId: args.relatedSourceProvenanceId ?? null,
+      relatedToolCallId: args.relatedToolCallId ?? null,
+      entryStatus: args.entryStatus ?? 'ready',
+      degradationReason: args.degradationReason ?? null,
+      recordedAt: args.recordedAt ?? '2026-04-13T12:06:00.000Z',
+    };
+  }
+
+  async listArchiveEntries(): Promise<ArchivePage> {
+    return {
+      entries: [],
+      page: {
+        cursor: null,
+        nextCursor: null,
+        hasMore: false,
+      },
+    };
+  }
+
+  async upsertArchiveTurns(_args: {
+    projectId: string;
+    processId: string;
+    turns: DerivedTurn[];
+  }): Promise<void> {}
+
+  async listArchiveTurns(): Promise<ArchiveTurnPage> {
+    return {
+      turns: [],
+      page: {
+        cursor: null,
+        nextCursor: null,
+        hasMore: false,
+      },
+    };
+  }
+
+  async replaceDerivedArchiveViews(_args: {
+    projectId: string;
+    processId: string;
+    views: DerivedArchiveView[];
+  }): Promise<void> {}
+
+  async listDerivedArchiveViews(): Promise<DerivedArchiveView[]> {
+    return [];
   }
 
   async getCurrentProcessRequest(): Promise<CurrentProcessRequest | null> {

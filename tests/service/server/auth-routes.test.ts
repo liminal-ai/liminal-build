@@ -537,6 +537,52 @@ describe('auth routes', () => {
           relatedArtifactId: args.relatedArtifactId ?? null,
         };
       },
+      async appendArchiveEntry(args) {
+        return {
+          archiveEntryId: `${args.processId}:archive:0`,
+          projectId: args.projectId,
+          processId: args.processId,
+          entryKind: args.entryKind,
+          sequence: 0,
+          lifecycleState: 'finalized',
+          finalizationKey: args.finalizationKey,
+          sourceObjectId: args.sourceObjectId ?? null,
+          bodyText: args.bodyText ?? null,
+          bodyData: args.bodyData ?? null,
+          bodyFormat: args.bodyFormat,
+          relatedArtifactVersionId: args.relatedArtifactVersionId ?? null,
+          relatedSourceProvenanceId: args.relatedSourceProvenanceId ?? null,
+          relatedToolCallId: args.relatedToolCallId ?? null,
+          entryStatus: args.entryStatus ?? 'ready',
+          degradationReason: args.degradationReason ?? null,
+          recordedAt: args.recordedAt ?? '2026-04-13T12:06:00.000Z',
+        };
+      },
+      async listArchiveEntries() {
+        return {
+          entries: [],
+          page: {
+            cursor: null,
+            nextCursor: null,
+            hasMore: false,
+          },
+        };
+      },
+      async upsertArchiveTurns() {},
+      async listArchiveTurns() {
+        return {
+          turns: [],
+          page: {
+            cursor: null,
+            nextCursor: null,
+            hasMore: false,
+          },
+        };
+      },
+      async replaceDerivedArchiveViews() {},
+      async listDerivedArchiveViews() {
+        return [];
+      },
       async getCurrentProcessRequest() {
         return null;
       },

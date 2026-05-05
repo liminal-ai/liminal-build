@@ -1,6 +1,9 @@
 import { defineSchema, defineTable } from 'convex/server';
+import { archiveEntriesTableFields } from './archiveEntries.js';
+import { archiveTurnsTableFields } from './archiveTurns.js';
 import { artifactsTableFields } from './artifacts.js';
 import { artifactVersionsTableFields } from './artifactVersions.js';
+import { derivedArchiveViewsTableFields } from './derivedArchiveViews.js';
 import { packageSnapshotMembersTableFields } from './packageSnapshotMembers.js';
 import { packageSnapshotsTableFields } from './packageSnapshots.js';
 import { processEnvironmentStatesTableFields } from './processEnvironmentStates.js';
@@ -84,6 +87,17 @@ export default defineSchema({
   packageSnapshotMembers: defineTable(packageSnapshotMembersTableFields).index(
     'by_packageSnapshotId_position',
     ['packageSnapshotId', 'position'],
+  ),
+  archiveEntries: defineTable(archiveEntriesTableFields)
+    .index('by_processId_and_sequence', ['processId', 'sequence'])
+    .index('by_processId_and_finalizationKey', ['processId', 'finalizationKey'])
+    .index('by_projectId_and_processId_and_recordedAt', ['projectId', 'processId', 'recordedAt']),
+  archiveTurns: defineTable(archiveTurnsTableFields)
+    .index('by_processId_and_turnId', ['processId', 'turnId'])
+    .index('by_processId_and_turnIndex', ['processId', 'turnIndex']),
+  derivedArchiveViews: defineTable(derivedArchiveViewsTableFields).index(
+    'by_processId_and_updatedAt',
+    ['processId', 'updatedAt'],
   ),
   sourceAttachments: defineTable(sourceAttachmentsTableFields)
     .index('by_projectId', ['projectId'])

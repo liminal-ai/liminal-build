@@ -94,6 +94,8 @@ export const requestErrorCodeSchema = z.enum([
   'SOURCE_ATTACHMENT_REFRESH_NOT_AVAILABLE',
   'INVALID_SOURCE_ATTACHMENT',
   'SOURCE_ATTACHMENT_UNAVAILABLE',
+  'ARCHIVE_DERIVATION_CONFLICT',
+  'INVALID_ARCHIVE_REQUEST',
 ]);
 export type RequestErrorCode = z.infer<typeof requestErrorCodeSchema>;
 
@@ -333,6 +335,8 @@ const requestErrorStatusByCode = {
   SOURCE_ATTACHMENT_REFRESH_NOT_AVAILABLE: [409],
   INVALID_SOURCE_ATTACHMENT: [422],
   SOURCE_ATTACHMENT_UNAVAILABLE: [503],
+  ARCHIVE_DERIVATION_CONFLICT: [409],
+  INVALID_ARCHIVE_REQUEST: [422],
 } satisfies Record<RequestErrorCode, readonly number[]>;
 
 export const requestErrorSchema = z

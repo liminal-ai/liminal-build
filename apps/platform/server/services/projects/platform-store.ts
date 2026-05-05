@@ -1,10 +1,22 @@
 import { ConvexHttpClient } from 'convex/browser';
 import { makeFunctionReference } from 'convex/server';
 import {
+  type ArchiveBodyFormat,
+  type ArchiveEntry,
+  type ArchiveEntryKind,
+  type ArchivePage,
+  type ArchiveTurnPage,
   type ArtifactSummary,
+  archiveEntrySchema,
+  archivePageSchema,
+  archiveTurnPageSchema,
   artifactSummarySchema,
   type CurrentProcessRequest,
+  type DerivedArchiveView,
+  type DerivedTurn,
   defaultEnvironmentSummary,
+  derivedArchiveViewSchema,
+  derivedTurnSchema,
   deriveEnvironmentStatusLabel,
   type EnvironmentSummary,
   environmentSummarySchema,
@@ -125,6 +137,23 @@ export type CreateSourceProvenanceRecord = Omit<
   StoredSourceProvenanceRecord,
   'provenanceId' | 'recordedAt'
 > & {
+  recordedAt?: string;
+};
+
+export type ArchiveEntryWriteInput = {
+  projectId: string;
+  processId: string;
+  entryKind: ArchiveEntryKind;
+  finalizationKey: string;
+  sourceObjectId?: string | null;
+  bodyText?: string | null;
+  bodyData?: { jsonText: string } | null;
+  bodyFormat: ArchiveBodyFormat;
+  relatedArtifactVersionId?: string | null;
+  relatedSourceProvenanceId?: string | null;
+  relatedToolCallId?: string | null;
+  entryStatus?: ArchiveEntry['entryStatus'];
+  degradationReason?: string | null;
   recordedAt?: string;
 };
 
@@ -298,6 +327,28 @@ export interface PlatformStore {
     relatedArtifactId?: string | null;
     clientRequestId?: string | null;
   }): Promise<ProcessHistoryItem>;
+  appendArchiveEntry(args: ArchiveEntryWriteInput): Promise<ArchiveEntry>;
+  listArchiveEntries(args: {
+    processId: string;
+    cursor?: string | null;
+    limit: number;
+  }): Promise<ArchivePage>;
+  upsertArchiveTurns(args: {
+    projectId: string;
+    processId: string;
+    turns: DerivedTurn[];
+  }): Promise<void>;
+  listArchiveTurns(args: {
+    processId: string;
+    cursor?: string | null;
+    limit: number;
+  }): Promise<ArchiveTurnPage>;
+  replaceDerivedArchiveViews(args: {
+    projectId: string;
+    processId: string;
+    views: DerivedArchiveView[];
+  }): Promise<void>;
+  listDerivedArchiveViews(args: { processId: string }): Promise<DerivedArchiveView[]>;
   getCurrentProcessRequest(args: { processId: string }): Promise<CurrentProcessRequest | null>;
   getProcessEnvironmentSummary(args: { processId: string }): Promise<EnvironmentSummary>;
   getProcessEnvironmentProviderKind(args: {
@@ -477,6 +528,43 @@ function computeWorkingSetFingerprint(args: {
 function buildCheckpointVersionLabel(producedAt: string): string {
   const compact = producedAt.replaceAll(/[-:.TZ]/g, '').slice(0, 14);
   return compact.length > 0 ? `checkpoint-${compact}` : 'checkpoint';
+}
+
+function decodeArchiveCursor(cursor: string | null | undefined): number | null {
+  if (cursor == null) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(cursor, 10);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function paginateArchiveCollection<TItem>(args: {
+  items: TItem[];
+  cursor?: string | null;
+  limit: number;
+  getCursorValue: (item: TItem) => number;
+}): {
+  items: TItem[];
+  page: ArchivePage['page'];
+} {
+  const decodedCursor = decodeArchiveCursor(args.cursor);
+  const filtered =
+    decodedCursor === null
+      ? args.items
+      : args.items.filter((item) => args.getCursorValue(item) > decodedCursor);
+  const pageItems = filtered.slice(0, args.limit);
+  const hasMore = filtered.length > args.limit;
+  const lastItem = pageItems.at(-1);
+
+  return {
+    items: pageItems,
+    page: {
+      cursor: args.cursor ?? null,
+      nextCursor: hasMore && lastItem !== undefined ? String(args.getCursorValue(lastItem)) : null,
+      hasMore,
+    },
+  };
 }
 
 const upsertUserMutation = makeFunctionReference<
@@ -668,6 +756,60 @@ const appendProcessHistoryItemMutation = makeFunctionReference<
   },
   ProcessHistoryItem
 >('processHistoryItems:appendProcessHistoryItem');
+
+const appendArchiveEntryMutation = makeFunctionReference<
+  'mutation',
+  ArchiveEntryWriteInput,
+  ArchiveEntry
+>('archiveEntries:appendArchiveEntry');
+
+const listArchiveEntriesQuery = makeFunctionReference<
+  'query',
+  {
+    processId: string;
+    cursor?: string | null;
+    limit: number;
+  },
+  ArchivePage
+>('archiveEntries:listArchiveEntries');
+
+const upsertArchiveTurnsMutation = makeFunctionReference<
+  'mutation',
+  {
+    projectId: string;
+    processId: string;
+    turns: DerivedTurn[];
+  },
+  null
+>('archiveTurns:upsertArchiveTurns');
+
+const listArchiveTurnsQuery = makeFunctionReference<
+  'query',
+  {
+    processId: string;
+    cursor?: string | null;
+    limit: number;
+  },
+  ArchiveTurnPage
+>('archiveTurns:listArchiveTurns');
+
+const replaceDerivedArchiveViewsMutation = makeFunctionReference<
+  'mutation',
+  {
+    projectId: string;
+    processId: string;
+    views: DerivedArchiveView[];
+  },
+  null
+>('derivedArchiveViews:replaceDerivedArchiveViews');
+
+const listDerivedArchiveViewsQuery = makeFunctionReference<
+  'query',
+  {
+    processId: string;
+  },
+  DerivedArchiveView[]
+>('derivedArchiveViews:listDerivedArchiveViews');
 
 const getCurrentProcessRequestQuery = makeFunctionReference<
   'query',
@@ -1296,6 +1438,58 @@ export class NullPlatformStore implements PlatformStore {
     };
   }
 
+  async appendArchiveEntry(args: ArchiveEntryWriteInput): Promise<ArchiveEntry> {
+    return archiveEntrySchema.parse({
+      archiveEntryId: `${args.processId}:archive:0`,
+      projectId: args.projectId,
+      processId: args.processId,
+      entryKind: args.entryKind,
+      sequence: 0,
+      lifecycleState: 'finalized',
+      finalizationKey: args.finalizationKey,
+      sourceObjectId: args.sourceObjectId ?? null,
+      bodyText: args.bodyText ?? null,
+      bodyData: args.bodyData ?? null,
+      bodyFormat: args.bodyFormat,
+      relatedArtifactVersionId: args.relatedArtifactVersionId ?? null,
+      relatedSourceProvenanceId: args.relatedSourceProvenanceId ?? null,
+      relatedToolCallId: args.relatedToolCallId ?? null,
+      entryStatus: args.entryStatus ?? 'ready',
+      degradationReason: args.degradationReason ?? null,
+      recordedAt: args.recordedAt ?? new Date().toISOString(),
+    });
+  }
+
+  async listArchiveEntries(): Promise<ArchivePage> {
+    return archivePageSchema.parse({
+      entries: [],
+      page: {
+        cursor: null,
+        nextCursor: null,
+        hasMore: false,
+      },
+    });
+  }
+
+  async upsertArchiveTurns(): Promise<void> {}
+
+  async listArchiveTurns(): Promise<ArchiveTurnPage> {
+    return archiveTurnPageSchema.parse({
+      turns: [],
+      page: {
+        cursor: null,
+        nextCursor: null,
+        hasMore: false,
+      },
+    });
+  }
+
+  async replaceDerivedArchiveViews(): Promise<void> {}
+
+  async listDerivedArchiveViews(): Promise<DerivedArchiveView[]> {
+    return [];
+  }
+
   async getCurrentProcessRequest(): Promise<CurrentProcessRequest | null> {
     return null;
   }
@@ -1745,6 +1939,52 @@ export class ConvexPlatformStore implements PlatformStore {
     });
   }
 
+  async appendArchiveEntry(args: ArchiveEntryWriteInput): Promise<ArchiveEntry> {
+    return this.client.mutation(appendArchiveEntryMutation, args, {
+      skipQueue: true,
+    });
+  }
+
+  async listArchiveEntries(args: {
+    processId: string;
+    cursor?: string | null;
+    limit: number;
+  }): Promise<ArchivePage> {
+    return this.client.query(listArchiveEntriesQuery, args);
+  }
+
+  async upsertArchiveTurns(args: {
+    projectId: string;
+    processId: string;
+    turns: DerivedTurn[];
+  }): Promise<void> {
+    await this.client.mutation(upsertArchiveTurnsMutation, args, {
+      skipQueue: true,
+    });
+  }
+
+  async listArchiveTurns(args: {
+    processId: string;
+    cursor?: string | null;
+    limit: number;
+  }): Promise<ArchiveTurnPage> {
+    return this.client.query(listArchiveTurnsQuery, args);
+  }
+
+  async replaceDerivedArchiveViews(args: {
+    projectId: string;
+    processId: string;
+    views: DerivedArchiveView[];
+  }): Promise<void> {
+    await this.client.mutation(replaceDerivedArchiveViewsMutation, args, {
+      skipQueue: true,
+    });
+  }
+
+  async listDerivedArchiveViews(args: { processId: string }): Promise<DerivedArchiveView[]> {
+    return this.client.query(listDerivedArchiveViewsQuery, args);
+  }
+
   async getCurrentProcessRequest(args: {
     processId: string;
   }): Promise<CurrentProcessRequest | null> {
@@ -2041,6 +2281,9 @@ export class InMemoryPlatformStore implements PlatformStore {
   private readonly sourceAttachmentsByProjectId = new Map<string, SourceAttachmentSummary[]>();
   private readonly sourceProvenanceByProcessId = new Map<string, StoredSourceProvenanceRecord[]>();
   private readonly processHistoryItemsByProcessId = new Map<string, ProcessHistoryItem[]>();
+  private readonly archiveEntriesByProcessId = new Map<string, ArchiveEntry[]>();
+  private readonly archiveTurnsByProcessId = new Map<string, DerivedTurn[]>();
+  private readonly derivedArchiveViewsByProcessId = new Map<string, DerivedArchiveView[]>();
   private readonly currentRequestsByProcessId = new Map<string, CurrentProcessRequest | null>();
   private readonly processEnvironmentSummariesByProcessId = new Map<string, EnvironmentSummary>();
   private readonly processEnvironmentProviderKindsByProcessId = new Map<
@@ -2089,6 +2332,9 @@ export class InMemoryPlatformStore implements PlatformStore {
       sourceAttachmentsByProjectId?: Record<string, SourceAttachmentSummary[]>;
       sourceProvenanceByProcessId?: Record<string, StoredSourceProvenanceRecord[]>;
       processHistoryItemsByProcessId?: Record<string, ProcessHistoryItem[]>;
+      archiveEntriesByProcessId?: Record<string, ArchiveEntry[]>;
+      archiveTurnsByProcessId?: Record<string, DerivedTurn[]>;
+      derivedArchiveViewsByProcessId?: Record<string, DerivedArchiveView[]>;
       currentRequestsByProcessId?: Record<string, CurrentProcessRequest | null>;
       processEnvironmentSummariesByProcessId?: Record<string, EnvironmentSummary>;
       processEnvironmentProviderKindsByProcessId?: Record<string, EnvironmentProviderKind | null>;
@@ -2147,6 +2393,27 @@ export class InMemoryPlatformStore implements PlatformStore {
 
     for (const [processId, items] of Object.entries(args.processHistoryItemsByProcessId ?? {})) {
       this.processHistoryItemsByProcessId.set(processId, items);
+    }
+
+    for (const [processId, items] of Object.entries(args.archiveEntriesByProcessId ?? {})) {
+      this.archiveEntriesByProcessId.set(
+        processId,
+        [...items].sort((left, right) => left.sequence - right.sequence),
+      );
+    }
+
+    for (const [processId, turns] of Object.entries(args.archiveTurnsByProcessId ?? {})) {
+      this.archiveTurnsByProcessId.set(
+        processId,
+        [...turns].sort((left, right) => left.turnIndex - right.turnIndex),
+      );
+    }
+
+    for (const [processId, views] of Object.entries(args.derivedArchiveViewsByProcessId ?? {})) {
+      this.derivedArchiveViewsByProcessId.set(
+        processId,
+        [...views].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+      );
     }
 
     for (const [processId, request] of Object.entries(args.currentRequestsByProcessId ?? {})) {
@@ -2890,6 +3157,116 @@ export class InMemoryPlatformStore implements PlatformStore {
     this.processHistoryItemsByProcessId.set(args.processId, nextHistory);
 
     return historyItem;
+  }
+
+  async appendArchiveEntry(args: ArchiveEntryWriteInput): Promise<ArchiveEntry> {
+    const existingEntries = this.archiveEntriesByProcessId.get(args.processId) ?? [];
+    const duplicate = existingEntries.find(
+      (entry) => entry.finalizationKey === args.finalizationKey,
+    );
+
+    if (duplicate !== undefined) {
+      return duplicate;
+    }
+
+    const sequence = existingEntries.at(-1)?.sequence ?? -1;
+    const nextEntry = archiveEntrySchema.parse({
+      archiveEntryId: `${args.processId}:archive:${sequence + 1}`,
+      projectId: args.projectId,
+      processId: args.processId,
+      entryKind: args.entryKind,
+      sequence: sequence + 1,
+      lifecycleState: 'finalized',
+      finalizationKey: args.finalizationKey,
+      sourceObjectId: args.sourceObjectId ?? null,
+      bodyText: args.bodyText ?? null,
+      bodyData: args.bodyData ?? null,
+      bodyFormat: args.bodyFormat,
+      relatedArtifactVersionId: args.relatedArtifactVersionId ?? null,
+      relatedSourceProvenanceId: args.relatedSourceProvenanceId ?? null,
+      relatedToolCallId: args.relatedToolCallId ?? null,
+      entryStatus: args.entryStatus ?? 'ready',
+      degradationReason: args.degradationReason ?? null,
+      recordedAt: args.recordedAt ?? new Date().toISOString(),
+    });
+
+    this.archiveEntriesByProcessId.set(args.processId, [...existingEntries, nextEntry]);
+
+    return nextEntry;
+  }
+
+  async listArchiveEntries(args: {
+    processId: string;
+    cursor?: string | null;
+    limit: number;
+  }): Promise<ArchivePage> {
+    const entries = [...(this.archiveEntriesByProcessId.get(args.processId) ?? [])].sort(
+      (left, right) => left.sequence - right.sequence,
+    );
+    const paginated = paginateArchiveCollection({
+      items: entries,
+      cursor: args.cursor,
+      limit: args.limit,
+      getCursorValue: (entry) => entry.sequence,
+    });
+
+    return archivePageSchema.parse({
+      entries: paginated.items,
+      page: paginated.page,
+    });
+  }
+
+  async upsertArchiveTurns(args: {
+    projectId: string;
+    processId: string;
+    turns: DerivedTurn[];
+  }): Promise<void> {
+    void args.projectId;
+    this.archiveTurnsByProcessId.set(
+      args.processId,
+      args.turns
+        .map((turn) => derivedTurnSchema.parse(turn))
+        .sort((left, right) => left.turnIndex - right.turnIndex),
+    );
+  }
+
+  async listArchiveTurns(args: {
+    processId: string;
+    cursor?: string | null;
+    limit: number;
+  }): Promise<ArchiveTurnPage> {
+    const turns = [...(this.archiveTurnsByProcessId.get(args.processId) ?? [])].sort(
+      (left, right) => left.turnIndex - right.turnIndex,
+    );
+    const paginated = paginateArchiveCollection({
+      items: turns,
+      cursor: args.cursor,
+      limit: args.limit,
+      getCursorValue: (turn) => turn.turnIndex,
+    });
+
+    return archiveTurnPageSchema.parse({
+      turns: paginated.items,
+      page: paginated.page,
+    });
+  }
+
+  async replaceDerivedArchiveViews(args: {
+    projectId: string;
+    processId: string;
+    views: DerivedArchiveView[];
+  }): Promise<void> {
+    void args.projectId;
+    this.derivedArchiveViewsByProcessId.set(
+      args.processId,
+      args.views
+        .map((view) => derivedArchiveViewSchema.parse(view))
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+    );
+  }
+
+  async listDerivedArchiveViews(args: { processId: string }): Promise<DerivedArchiveView[]> {
+    return [...(this.derivedArchiveViewsByProcessId.get(args.processId) ?? [])];
   }
 
   async getCurrentProcessRequest(args: {
