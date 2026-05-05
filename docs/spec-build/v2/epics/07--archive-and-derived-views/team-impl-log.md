@@ -1,10 +1,10 @@
 # Team Implementation Log
 
 ## Run Overview
-- State: STORY_ACTIVE
+- State: BETWEEN_STORIES
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views
-- Current Story: 05-minimal-structural-views-over-turns
-- Current Phase: accept
+- Current Story: 06-archive-provenance-coherence
+- Current Phase: none
 
 ## Run Configuration
 - Primary Harness: claude-code
@@ -37,10 +37,10 @@
 
 ## Current Continuation Handles
 - Story Implementor:
-  - Story: 05-minimal-structural-views-over-turns
-  - Provider: pending
-  - Session ID: pending
-  - Result Artifact: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/05-minimal-structural-views-over-turns/003-implementor.json
+  - Story: none
+  - Provider: none
+  - Session ID: none
+  - Result Artifact: none
 - Story Verifier:
   - Story: none
   - Provider: none
@@ -157,11 +157,11 @@
   - none
 - Baseline Before: 692
 - Baseline After: 701
-- Commit: pending
+- Commit: 933b44e
 
 ## Cumulative Baselines
-- Baseline Before Current Story: 692
-- Expected After Current Story: 701
+- Baseline Before Current Story: 701
+- Expected After Current Story: unknown
 - Latest Actual Total: 701
 
 ## Cleanup / Epic Verification
