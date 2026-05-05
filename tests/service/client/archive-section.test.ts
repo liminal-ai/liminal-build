@@ -260,6 +260,7 @@ function buildArchiveStore() {
         updatedAt: '2026-05-05T09:05:00.000Z',
       },
       archive: readyArchivePageFixture,
+      turns: readyArchiveTurnPageFixture,
       isLoading: false,
       error: null,
     },

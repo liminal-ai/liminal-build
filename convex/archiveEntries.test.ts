@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { appendArchiveEntry, listArchiveEntries } from './archiveEntries.js';
+import { upsertArchiveTurns } from './archiveTurns.js';
 import { createFakeConvexContext } from './test_helpers/fake_convex_context.js';
 
 function getHandler<TArgs, TReturn>(
@@ -100,6 +101,24 @@ const listArchiveEntriesHandler = getHandler<
     };
   }
 >(listArchiveEntries);
+
+const upsertArchiveTurnsHandler = getHandler<
+  {
+    projectId: string;
+    processId: string;
+    turns: Array<{
+      turnId: string;
+      processId: string;
+      turnIndex: number;
+      archiveEntryIds: string[];
+      startedAt: string;
+      endedAt: string;
+      turnStatus: 'ready' | 'degraded';
+      degradationReason: string | null;
+    }>;
+  },
+  null
+>(upsertArchiveTurns);
 
 function buildArchiveSeed() {
   return {
@@ -433,6 +452,59 @@ describe('convex/archiveEntries', () => {
         relatedToolCallId: 'tool-call-missing',
       }),
     ]);
+  });
+
+  it('TC-4.3a archive unchanged after turn derivation', async () => {
+    const { ctx } = createFakeConvexContext({
+      ...buildArchiveSeed(),
+      archiveEntries: [],
+      archiveTurns: [],
+    });
+
+    const userEntry = await appendArchiveEntryHandler(
+      ctx,
+      buildAppendArgs({
+        entryKind: 'user_message',
+        finalizationKey: 'turn-derivation:user',
+        recordedAt: '2026-05-01T10:09:00.000Z',
+      }),
+    );
+    const modelEntry = await appendArchiveEntryHandler(
+      ctx,
+      buildAppendArgs({
+        entryKind: 'model_message',
+        finalizationKey: 'turn-derivation:model',
+        recordedAt: '2026-05-01T10:09:01.000Z',
+      }),
+    );
+    const before = await listArchiveEntriesHandler(ctx, {
+      processId: 'process-archive-1',
+      limit: 20,
+    });
+
+    await upsertArchiveTurnsHandler(ctx, {
+      projectId: 'project-archive-1',
+      processId: 'process-archive-1',
+      turns: [
+        {
+          turnId: 'process-archive-1:turn:0',
+          processId: 'process-archive-1',
+          turnIndex: 0,
+          archiveEntryIds: [userEntry.archiveEntryId, modelEntry.archiveEntryId],
+          startedAt: userEntry.recordedAt,
+          endedAt: modelEntry.recordedAt,
+          turnStatus: 'ready',
+          degradationReason: null,
+        },
+      ],
+    });
+
+    const after = await listArchiveEntriesHandler(ctx, {
+      processId: 'process-archive-1',
+      limit: 20,
+    });
+
+    expect(after).toEqual(before);
   });
 
   it('sequence assignment is atomic across same-process appends', async () => {

@@ -34,6 +34,7 @@ import { ApiRequestError, getAuthenticatedUser } from '../browser-api/auth-api.j
 import {
   attachProcessSource,
   getProcessArchive,
+  getProcessArchiveTurns,
   getProcessSourceProvenance,
   rebuildEnvironment,
   getProcessWorkSurface,
@@ -1108,12 +1109,16 @@ export async function bootstrapApp(
       });
 
       try {
-        const [surface, archive] = await Promise.all([
+        const [surface, archive, turns] = await Promise.all([
           getProcessWorkSurface({
             projectId: parsedRoute.projectId ?? '',
             processId: parsedRoute.processId ?? '',
           }),
           getProcessArchive({
+            projectId: parsedRoute.projectId ?? '',
+            processId: parsedRoute.processId ?? '',
+          }),
+          getProcessArchiveTurns({
             projectId: parsedRoute.projectId ?? '',
             processId: parsedRoute.processId ?? '',
           }),
@@ -1130,6 +1135,7 @@ export async function bootstrapApp(
           project: surface.project,
           process: surface.process,
           archive,
+          turns,
           isLoading: false,
           error: null,
         });

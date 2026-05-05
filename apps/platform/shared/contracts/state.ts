@@ -1,5 +1,5 @@
 import { z } from 'zod/v4';
-import { archivePageSchema } from './archive.js';
+import { archivePageSchema, archiveTurnPageSchema } from './archive.js';
 import {
   artifactSectionEnvelopeSchema,
   authenticatedUserSchema,
@@ -207,6 +207,7 @@ export const archiveSurfaceStateSchema = z.object({
   project: processSurfaceProjectSchema.nullable(),
   process: processSurfaceSummarySchema.nullable(),
   archive: archivePageSchema.nullable(),
+  turns: archiveTurnPageSchema.nullable().default(null),
   isLoading: z.boolean(),
   error: requestErrorSchema.nullable(),
 });

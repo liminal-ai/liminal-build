@@ -1,5 +1,6 @@
 import type {
   ArchivePage,
+  ArchiveTurnPage,
   CreateSourceAttachmentRequest,
   ListProcessSourceProvenanceResponse,
   ProcessWorkSurfaceResponse,
@@ -14,7 +15,9 @@ import type {
 } from '../../shared/contracts/index.js';
 import {
   archivePageSchema,
+  archiveTurnPageSchema,
   buildProcessArchiveApiPath,
+  buildProcessArchiveTurnsApiPath,
   createSourceAttachmentRequestSchema,
   buildProcessResponseApiPath,
   buildProcessRebuildApiPath,
@@ -172,6 +175,27 @@ export async function getProcessArchive(args: {
   }
 
   return archivePageSchema.parse(await response.json());
+}
+
+export async function getProcessArchiveTurns(args: {
+  projectId: string;
+  processId: string;
+}): Promise<ArchiveTurnPage> {
+  const response = await fetch(
+    buildProcessArchiveTurnsApiPath({
+      projectId: args.projectId,
+      processId: args.processId,
+    }),
+    {
+      credentials: 'include',
+    },
+  );
+
+  if (!response.ok) {
+    throw new ApiRequestError(await parseRequestError(response, buildArchiveFallbackRequestError));
+  }
+
+  return archiveTurnPageSchema.parse(await response.json());
 }
 
 export async function getProcessSourceProvenance(args: {

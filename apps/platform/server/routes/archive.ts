@@ -2,10 +2,14 @@ import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { buildShellBootstrapPayload } from '../config.js';
 import { AppError } from '../errors/app-error.js';
-import { getProcessArchiveRouteSchema } from '../schemas/archive.js';
+import {
+  getProcessArchiveRouteSchema,
+  getProcessArchiveTurnsRouteSchema,
+} from '../schemas/archive.js';
 import { sessionCookieName } from '../services/auth/auth-session.service.js';
 import {
   processArchiveApiPathnamePattern,
+  processArchiveTurnsApiPathnamePattern,
   processArchiveRoutePathnamePattern,
   type RequestError,
 } from '../../shared/contracts/index.js';
@@ -21,6 +25,7 @@ function buildRequestError(error: AppError): RequestError {
 export const archiveRoutePatterns = {
   shell: processArchiveRoutePathnamePattern,
   bootstrap: processArchiveApiPathnamePattern,
+  turns: processArchiveTurnsApiPathnamePattern,
 } as const;
 
 function buildLoginRedirectPath(returnTo: string): string {
@@ -115,6 +120,46 @@ export async function registerArchiveRoutes(app: FastifyInstance): Promise<void>
       });
 
       return reply.type('text/html').send(await app.renderShellDocument(payload, request.url));
+    },
+  );
+
+  typedApp.get(
+    '/api/projects/:projectId/processes/:processId/archive/turns',
+    {
+      schema: getProcessArchiveTurnsRouteSchema,
+    },
+    async (request, reply) => {
+      if (request.actor === null) {
+        if (request.authFailureReason === 'invalid_session') {
+          reply.clearCookie(sessionCookieName, { path: '/' });
+        }
+
+        return reply.code(401).send({
+          code: 'UNAUTHENTICATED',
+          message: 'Authenticated access is required.',
+          status: 401,
+        });
+      }
+
+      try {
+        const turns = await app.turnDerivationService.getTurns({
+          actor: request.actor,
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+          cursor: request.query.cursor,
+          limit: request.query.limit,
+        });
+
+        return reply.code(200).send(turns);
+      } catch (error) {
+        if (error instanceof AppError) {
+          const statusCode = error.statusCode as 403 | 404 | 422;
+
+          return reply.code(statusCode).send(buildRequestError(error));
+        }
+
+        throw error;
+      }
     },
   );
 

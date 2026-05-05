@@ -23,6 +23,10 @@ import {
   type ArchiveReadService,
 } from './services/archive/archive-read.service.js';
 import {
+  DefaultTurnDerivationService,
+  type TurnDerivationService,
+} from './services/archive/turn-derivation.service.js';
+import {
   InMemoryProcessLiveHub,
   type ProcessLiveHub,
 } from './services/processes/live/process-live-hub.js';
@@ -119,6 +123,7 @@ export interface CreateAppOptions {
   processRegistrationService?: ProcessRegistrationService;
   processResumeService?: ProcessResumeService;
   archiveReadService?: ArchiveReadService;
+  turnDerivationService?: TurnDerivationService;
   gitHubRepositoryResolver?: GitHubRepositoryResolver;
   sourceManagementService?: SourceManagementService;
   sourceRefreshService?: SourceRefreshService;
@@ -163,6 +168,7 @@ declare module 'fastify' {
     processRegistrationService: ProcessRegistrationService;
     processResumeService: ProcessResumeService;
     archiveReadService: ArchiveReadService;
+    turnDerivationService: TurnDerivationService;
     sourceManagementService: SourceManagementService;
     sourceRefreshService: SourceRefreshService;
     sourceProvenanceService: SourceProvenanceService;
@@ -355,6 +361,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   const archiveReadService =
     options.archiveReadService ??
     new DefaultArchiveReadService(platformStore, processAccessService);
+  const turnDerivationService =
+    options.turnDerivationService ??
+    new DefaultTurnDerivationService(platformStore, processAccessService);
   const processWorkSurfaceService =
     options.processWorkSurfaceService ??
     new DefaultProcessWorkSurfaceService(platformStore, processAccessService, {
@@ -392,6 +401,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.decorate('processRegistrationService', processRegistrationService);
   app.decorate('processResumeService', processResumeService);
   app.decorate('archiveReadService', archiveReadService);
+  app.decorate('turnDerivationService', turnDerivationService);
   app.decorate('sourceManagementService', sourceManagementService);
   app.decorate('sourceRefreshService', sourceRefreshService);
   app.decorate('sourceProvenanceService', sourceProvenanceService);

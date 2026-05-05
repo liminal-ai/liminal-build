@@ -1,10 +1,10 @@
 # Team Implementation Log
 
 ## Run Overview
-- State: BETWEEN_STORIES
+- State: STORY_ACTIVE
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views
 - Current Story: 04-turn-derivation
-- Current Phase: none
+- Current Phase: accept
 
 ## Run Configuration
 - Primary Harness: claude-code
@@ -37,15 +37,15 @@
 
 ## Current Continuation Handles
 - Story Implementor:
-  - Story: 03-archive-read-and-reopen-surface
+  - Story: 04-turn-derivation
   - Provider: codex
-  - Session ID: 019df687-1278-71d1-86dc-b5c0952ba1a6
-  - Result Artifact: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/03-archive-read-and-reopen-surface/003-implementor.json
+  - Session ID: 019df6ad-08aa-7c60-af4b-67073e541cb7
+  - Result Artifact: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/04-turn-derivation/003-implementor.json
 - Story Verifier:
-  - Story: 03-archive-read-and-reopen-surface
-  - Provider: codex
-  - Session ID: 019df694-36f2-75f0-a722-78f0967af845
-  - Result Artifact: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/03-archive-read-and-reopen-surface/008-verify.json
+  - Story: none
+  - Provider: none
+  - Session ID: none
+  - Result Artifact: none
 
 ## Story Receipts
 ### 00-foundation
@@ -125,10 +125,26 @@
 - Baseline After: 660
 - Commit: 7b959bb
 
+### 04-turn-derivation
+- Story Title: Story 4: Turn Derivation
+- Implementor Evidence:
+  - /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/04-turn-derivation/003-implementor.json
+- Verifier Evidence:
+  - /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/04-turn-derivation/005-verify.json
+- Story Gate: corepack pnpm run green-verify - pass
+- Completion Gate: corepack pnpm run verify-all - pass
+- Dispositions:
+  - none
+- Open Risks:
+  - none
+- Baseline Before: 682
+- Baseline After: 692
+- Commit: pending
+
 ## Cumulative Baselines
-- Baseline Before Current Story: 660
-- Expected After Current Story: unknown
-- Latest Actual Total: 660
+- Baseline Before Current Story: 682
+- Expected After Current Story: 692
+- Latest Actual Total: 692
 
 ## Cleanup / Epic Verification
 - Cleanup Artifact: none
@@ -175,6 +191,9 @@
 - Story 3 initial verifier artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/03-archive-read-and-reopen-surface/005-verify.json`; verifier surfaced the unbounded production Convex archive read as the only blocking finding.
 - Story 3 quick-fix artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/quick-fix/005-quick-fix.json`; quick-fix tightened the Convex archive query to fetch one bounded page plus lookahead via the index instead of collecting the full archive, and updated the fake Convex query helper to support the required range operators.
 - Story 3 follow-up verifier artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/03-archive-read-and-reopen-surface/008-verify.json`; outcome `pass`, the bounded-page blocker was resolved, and `green-verify` passed.
+- Story 4 validation artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/04-turn-derivation/001-story-validate.json`; outcome `ready`, story-run selection `start-new`, baseline seed `568`.
+- Story 4 implementor artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/04-turn-derivation/003-implementor.json`; completed with outcome `ready-for-verification`.
+- Story 4 verifier artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/04-turn-derivation/005-verify.json`; outcome `pass`, no open findings, and both `green-verify` and `verify-all` passed in the impl-lead acceptance lane.
 - Convex rule: before any Convex code work, read `convex/_generated/ai/guidelines.md`.
 
 ## Spec-Pack Carry-Forward Notes

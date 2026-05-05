@@ -59,6 +59,7 @@ export const defaultAppState: AppState = appStateSchema.parse({
     project: null,
     process: null,
     archive: null,
+    turns: null,
     isLoading: false,
     error: null,
   },
