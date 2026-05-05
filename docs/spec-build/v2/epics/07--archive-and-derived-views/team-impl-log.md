@@ -1,10 +1,10 @@
 # Team Implementation Log
 
 ## Run Overview
-- State: STORY_ACTIVE
+- State: BETWEEN_STORIES
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views
-- Current Story: 04-turn-derivation
-- Current Phase: accept
+- Current Story: 05-minimal-structural-views-over-turns
+- Current Phase: none
 
 ## Run Configuration
 - Primary Harness: claude-code
@@ -37,10 +37,10 @@
 
 ## Current Continuation Handles
 - Story Implementor:
-  - Story: 04-turn-derivation
-  - Provider: codex
-  - Session ID: 019df6ad-08aa-7c60-af4b-67073e541cb7
-  - Result Artifact: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/04-turn-derivation/003-implementor.json
+  - Story: none
+  - Provider: none
+  - Session ID: none
+  - Result Artifact: none
 - Story Verifier:
   - Story: none
   - Provider: none
@@ -139,11 +139,11 @@
   - none
 - Baseline Before: 682
 - Baseline After: 692
-- Commit: pending
+- Commit: 4dc43e4
 
 ## Cumulative Baselines
-- Baseline Before Current Story: 682
-- Expected After Current Story: 692
+- Baseline Before Current Story: 692
+- Expected After Current Story: unknown
 - Latest Actual Total: 692
 
 ## Cleanup / Epic Verification
