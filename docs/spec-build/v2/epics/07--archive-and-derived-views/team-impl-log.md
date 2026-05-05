@@ -1,10 +1,10 @@
 # Team Implementation Log
 
 ## Run Overview
-- State: BETWEEN_STORIES
+- State: STORY_ACTIVE
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views
 - Current Story: 05-minimal-structural-views-over-turns
-- Current Phase: none
+- Current Phase: accept
 
 ## Run Configuration
 - Primary Harness: claude-code
@@ -37,10 +37,10 @@
 
 ## Current Continuation Handles
 - Story Implementor:
-  - Story: none
-  - Provider: none
-  - Session ID: none
-  - Result Artifact: none
+  - Story: 05-minimal-structural-views-over-turns
+  - Provider: pending
+  - Session ID: pending
+  - Result Artifact: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/05-minimal-structural-views-over-turns/003-implementor.json
 - Story Verifier:
   - Story: none
   - Provider: none
@@ -141,10 +141,28 @@
 - Baseline After: 692
 - Commit: 4dc43e4
 
+### 05-minimal-structural-views-over-turns
+- Story Title: Story 5: Minimal Structural Views Over Turns
+- Implementor Evidence:
+  - /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/05-minimal-structural-views-over-turns/003-implementor.json
+- Verifier Evidence:
+  - /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/05-minimal-structural-views-over-turns/007-verify.json
+  - /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/05-minimal-structural-views-over-turns/011-verify.json
+- Story Gate: corepack pnpm run green-verify - pass
+- Completion Gate: corepack pnpm run verify-all - pass
+- Dispositions:
+  - SV-05-001: fixed
+  - SV-05-002: fixed
+- Open Risks:
+  - none
+- Baseline Before: 692
+- Baseline After: 701
+- Commit: pending
+
 ## Cumulative Baselines
 - Baseline Before Current Story: 692
-- Expected After Current Story: unknown
-- Latest Actual Total: 692
+- Expected After Current Story: 701
+- Latest Actual Total: 701
 
 ## Cleanup / Epic Verification
 - Cleanup Artifact: none
@@ -194,6 +212,12 @@
 - Story 4 validation artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/04-turn-derivation/001-story-validate.json`; outcome `ready`, story-run selection `start-new`, baseline seed `568`.
 - Story 4 implementor artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/04-turn-derivation/003-implementor.json`; completed with outcome `ready-for-verification`.
 - Story 4 verifier artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/04-turn-derivation/005-verify.json`; outcome `pass`, no open findings, and both `green-verify` and `verify-all` passed in the impl-lead acceptance lane.
+- Story 5 validation artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/05-minimal-structural-views-over-turns/001-story-validate.json`; outcome `ready`, story-run selection `start-new`, baseline seed `570`.
+- Story 5 story-lead run started and is currently in `running_child_operation` on `story-implement`; current snapshot `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/05-minimal-structural-views-over-turns/story-lead/001-current.json`.
+- Story 5 implementor artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/05-minimal-structural-views-over-turns/003-implementor.json`; completed with outcome `ready-for-verification`.
+- Story 5 initial verifier artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/05-minimal-structural-views-over-turns/007-verify.json`; verifier returned `revise` with blockers `SV-05-001` and `SV-05-002`.
+- Story 5 quick-fix artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/quick-fix/006-quick-fix.json`; quick-fix moved raw derived-archive-view storage behind api-key-checked wrappers and corrected degraded-view client proof to use real turn derivation + derived-view service output.
+- Story 5 follow-up verifier artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/05-minimal-structural-views-over-turns/011-verify.json`; outcome `pass`, `SV-05-001` and `SV-05-002` resolved, and no open findings remain.
 - Convex rule: before any Convex code work, read `convex/_generated/ai/guidelines.md`.
 
 ## Spec-Pack Carry-Forward Notes

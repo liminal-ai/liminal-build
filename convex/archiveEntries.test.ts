@@ -1,7 +1,41 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { appendArchiveEntry, listArchiveEntries } from './archiveEntries.js';
 import { upsertArchiveTurns } from './archiveTurns.js';
+import {
+  listDerivedArchiveViews,
+  listDerivedArchiveViewsForService,
+  replaceDerivedArchiveViews,
+  replaceDerivedArchiveViewsForService,
+} from './derivedArchiveViews.js';
 import { createFakeConvexContext } from './test_helpers/fake_convex_context.js';
+
+type RuntimeProcess = {
+  env?: Record<string, string | undefined>;
+};
+
+function readRuntimeApiKey(): string | undefined {
+  const runtime = globalThis as {
+    process?: unknown;
+  };
+  const processValue = runtime.process as RuntimeProcess | undefined;
+  return processValue?.env?.CONVEX_API_KEY;
+}
+
+function writeRuntimeApiKey(value: string | undefined): void {
+  const runtime = globalThis as {
+    process?: unknown;
+  };
+  const processValue = (runtime.process as RuntimeProcess | undefined) ?? {};
+  processValue.env ??= {};
+  runtime.process = processValue;
+
+  if (value === undefined) {
+    delete processValue.env.CONVEX_API_KEY;
+    return;
+  }
+
+  processValue.env.CONVEX_API_KEY = value;
+}
 
 function getHandler<TArgs, TReturn>(
   registered: unknown,
@@ -120,6 +154,88 @@ const upsertArchiveTurnsHandler = getHandler<
   null
 >(upsertArchiveTurns);
 
+const replaceDerivedArchiveViewsHandler = getHandler<
+  {
+    projectId: string;
+    processId: string;
+    views: Array<{
+      derivedViewId: string;
+      processId: string;
+      viewKind: 'turn_range' | 'chunk_candidate';
+      turnRange: { startIndex: number; endIndex: number } | null;
+      sourceTurnIds: string[];
+      sourceArchiveEntryIds: string[];
+      title: string | null;
+      bodyText: string | null;
+      viewStatus: 'ready' | 'degraded';
+      degradationReason: string | null;
+      updatedAt: string;
+    }>;
+  },
+  null
+>(replaceDerivedArchiveViews);
+
+const listDerivedArchiveViewsHandler = getHandler<
+  {
+    processId: string;
+  },
+  Array<{
+    derivedViewId: string;
+    processId: string;
+    viewKind: 'turn_range' | 'chunk_candidate';
+    turnRange: { startIndex: number; endIndex: number } | null;
+    sourceTurnIds: string[];
+    sourceArchiveEntryIds: string[];
+    title: string | null;
+    bodyText: string | null;
+    viewStatus: 'ready' | 'degraded';
+    degradationReason: string | null;
+    updatedAt: string;
+  }>
+>(listDerivedArchiveViews);
+
+const replaceDerivedArchiveViewsForServiceHandler = getHandler<
+  {
+    apiKey: string;
+    projectId: string;
+    processId: string;
+    views: Array<{
+      derivedViewId: string;
+      processId: string;
+      viewKind: 'turn_range' | 'chunk_candidate';
+      turnRange: { startIndex: number; endIndex: number } | null;
+      sourceTurnIds: string[];
+      sourceArchiveEntryIds: string[];
+      title: string | null;
+      bodyText: string | null;
+      viewStatus: 'ready' | 'degraded';
+      degradationReason: string | null;
+      updatedAt: string;
+    }>;
+  },
+  null
+>(replaceDerivedArchiveViewsForService);
+
+const listDerivedArchiveViewsForServiceHandler = getHandler<
+  {
+    apiKey: string;
+    processId: string;
+  },
+  Array<{
+    derivedViewId: string;
+    processId: string;
+    viewKind: 'turn_range' | 'chunk_candidate';
+    turnRange: { startIndex: number; endIndex: number } | null;
+    sourceTurnIds: string[];
+    sourceArchiveEntryIds: string[];
+    title: string | null;
+    bodyText: string | null;
+    viewStatus: 'ready' | 'degraded';
+    degradationReason: string | null;
+    updatedAt: string;
+  }>
+>(listDerivedArchiveViewsForService);
+
 function buildArchiveSeed() {
   return {
     projects: [
@@ -211,7 +327,34 @@ function buildAppendArgs(
   };
 }
 
+function buildArchiveCtx(seed: Parameters<typeof createFakeConvexContext>[0]) {
+  const fixture = createFakeConvexContext(seed);
+  fixture.registry.register(
+    'derivedArchiveViews:replaceDerivedArchiveViews',
+    replaceDerivedArchiveViewsHandler as unknown as (
+      ctx: unknown,
+      args: unknown,
+    ) => Promise<unknown>,
+  );
+  fixture.registry.register(
+    'derivedArchiveViews:listDerivedArchiveViews',
+    listDerivedArchiveViewsHandler as unknown as (ctx: unknown, args: unknown) => Promise<unknown>,
+  );
+
+  return fixture;
+}
+
 describe('convex/archiveEntries', () => {
+  const originalApiKey = readRuntimeApiKey();
+
+  beforeEach(() => {
+    writeRuntimeApiKey('test-convex-api-key');
+  });
+
+  afterEach(() => {
+    writeRuntimeApiKey(originalApiKey);
+  });
+
   it('TC-1.2a accepts required archive entry kinds', async () => {
     const { ctx } = createFakeConvexContext({
       ...buildArchiveSeed(),
@@ -505,6 +648,142 @@ describe('convex/archiveEntries', () => {
     });
 
     expect(after).toEqual(before);
+  });
+
+  it('TC-5.4a archive remains after derived view creation', async () => {
+    const { ctx } = createFakeConvexContext({
+      ...buildArchiveSeed(),
+      archiveEntries: [],
+      derivedArchiveViews: [],
+    });
+
+    const userEntry = await appendArchiveEntryHandler(
+      ctx,
+      buildAppendArgs({
+        entryKind: 'user_message',
+        finalizationKey: 'derived-view:user',
+        recordedAt: '2026-05-01T10:10:00.000Z',
+      }),
+    );
+    const modelEntry = await appendArchiveEntryHandler(
+      ctx,
+      buildAppendArgs({
+        entryKind: 'model_message',
+        finalizationKey: 'derived-view:model',
+        recordedAt: '2026-05-01T10:10:01.000Z',
+      }),
+    );
+    const before = await listArchiveEntriesHandler(ctx, {
+      processId: 'process-archive-1',
+      limit: 20,
+    });
+
+    await replaceDerivedArchiveViewsHandler(ctx, {
+      projectId: 'project-archive-1',
+      processId: 'process-archive-1',
+      views: [
+        {
+          derivedViewId: 'process-archive-1:derived-view:turn_range:0-0',
+          processId: 'process-archive-1',
+          viewKind: 'turn_range',
+          turnRange: {
+            startIndex: 0,
+            endIndex: 0,
+          },
+          sourceTurnIds: ['process-archive-1:turn:0'],
+          sourceArchiveEntryIds: [userEntry.archiveEntryId, modelEntry.archiveEntryId],
+          title: 'Turn 0',
+          bodyText: 'Turn 0',
+          viewStatus: 'ready',
+          degradationReason: null,
+          updatedAt: '2026-05-01T10:10:10.000Z',
+        },
+      ],
+    });
+
+    const storedViews = await listDerivedArchiveViewsHandler(ctx, {
+      processId: 'process-archive-1',
+    });
+    const after = await listArchiveEntriesHandler(ctx, {
+      processId: 'process-archive-1',
+      limit: 20,
+    });
+
+    expect(storedViews).toEqual([
+      expect.objectContaining({
+        derivedViewId: 'process-archive-1:derived-view:turn_range:0-0',
+        sourceArchiveEntryIds: [userEntry.archiveEntryId, modelEntry.archiveEntryId],
+      }),
+    ]);
+    expect(after).toEqual(before);
+  });
+
+  it('service-only derived-view wrappers require the shared API key and preserve archive rows', async () => {
+    const { ctx } = buildArchiveCtx({
+      ...buildArchiveSeed(),
+      archiveEntries: [],
+      derivedArchiveViews: [],
+    });
+
+    const userEntry = await appendArchiveEntryHandler(
+      ctx,
+      buildAppendArgs({
+        entryKind: 'user_message',
+        finalizationKey: 'service-wrapper:user',
+        recordedAt: '2026-05-01T10:11:00.000Z',
+      }),
+    );
+    const archiveBefore = await listArchiveEntriesHandler(ctx, {
+      processId: 'process-archive-1',
+      limit: 20,
+    });
+
+    await replaceDerivedArchiveViewsForServiceHandler(ctx, {
+      apiKey: 'test-convex-api-key',
+      projectId: 'project-archive-1',
+      processId: 'process-archive-1',
+      views: [
+        {
+          derivedViewId: 'process-archive-1:derived-view:turn_range:0-0',
+          processId: 'process-archive-1',
+          viewKind: 'turn_range',
+          turnRange: {
+            startIndex: 0,
+            endIndex: 0,
+          },
+          sourceTurnIds: ['process-archive-1:turn:0'],
+          sourceArchiveEntryIds: [userEntry.archiveEntryId],
+          title: 'Turn 0',
+          bodyText: 'Turn 0',
+          viewStatus: 'ready',
+          degradationReason: null,
+          updatedAt: '2026-05-01T10:11:10.000Z',
+        },
+      ],
+    });
+
+    await expect(
+      listDerivedArchiveViewsForServiceHandler(ctx, {
+        apiKey: 'wrong-api-key',
+        processId: 'process-archive-1',
+      }),
+    ).rejects.toThrow('Unauthorized service API key.');
+
+    const storedViews = await listDerivedArchiveViewsForServiceHandler(ctx, {
+      apiKey: 'test-convex-api-key',
+      processId: 'process-archive-1',
+    });
+    const archiveAfter = await listArchiveEntriesHandler(ctx, {
+      processId: 'process-archive-1',
+      limit: 20,
+    });
+
+    expect(storedViews).toEqual([
+      expect.objectContaining({
+        derivedViewId: 'process-archive-1:derived-view:turn_range:0-0',
+      }),
+    ]);
+    expect(archiveAfter).toEqual(archiveBefore);
   });
 
   it('sequence assignment is atomic across same-process appends', async () => {

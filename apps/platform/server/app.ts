@@ -23,6 +23,10 @@ import {
   type ArchiveReadService,
 } from './services/archive/archive-read.service.js';
 import {
+  DefaultDerivedArchiveViewService,
+  type DerivedArchiveViewService,
+} from './services/archive/derived-archive-view.service.js';
+import {
   DefaultTurnDerivationService,
   type TurnDerivationService,
 } from './services/archive/turn-derivation.service.js';
@@ -124,6 +128,7 @@ export interface CreateAppOptions {
   processResumeService?: ProcessResumeService;
   archiveReadService?: ArchiveReadService;
   turnDerivationService?: TurnDerivationService;
+  derivedArchiveViewService?: DerivedArchiveViewService;
   gitHubRepositoryResolver?: GitHubRepositoryResolver;
   sourceManagementService?: SourceManagementService;
   sourceRefreshService?: SourceRefreshService;
@@ -169,6 +174,7 @@ declare module 'fastify' {
     processResumeService: ProcessResumeService;
     archiveReadService: ArchiveReadService;
     turnDerivationService: TurnDerivationService;
+    derivedArchiveViewService: DerivedArchiveViewService;
     sourceManagementService: SourceManagementService;
     sourceRefreshService: SourceRefreshService;
     sourceProvenanceService: SourceProvenanceService;
@@ -364,6 +370,13 @@ export async function createApp(options: CreateAppOptions = {}) {
   const turnDerivationService =
     options.turnDerivationService ??
     new DefaultTurnDerivationService(platformStore, processAccessService);
+  const derivedArchiveViewService =
+    options.derivedArchiveViewService ??
+    new DefaultDerivedArchiveViewService(
+      platformStore,
+      turnDerivationService,
+      processAccessService,
+    );
   const processWorkSurfaceService =
     options.processWorkSurfaceService ??
     new DefaultProcessWorkSurfaceService(platformStore, processAccessService, {
@@ -402,6 +415,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.decorate('processResumeService', processResumeService);
   app.decorate('archiveReadService', archiveReadService);
   app.decorate('turnDerivationService', turnDerivationService);
+  app.decorate('derivedArchiveViewService', derivedArchiveViewService);
   app.decorate('sourceManagementService', sourceManagementService);
   app.decorate('sourceRefreshService', sourceRefreshService);
   app.decorate('sourceProvenanceService', sourceProvenanceService);

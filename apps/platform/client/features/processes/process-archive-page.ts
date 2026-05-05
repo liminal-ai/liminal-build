@@ -7,6 +7,7 @@ import {
 } from '../projects/unavailable-state.js';
 import { renderArchiveSection } from './archive-section.js';
 import { renderArchiveTurnsSection } from './archive-turns-section.js';
+import { renderDerivedArchiveViewsSection } from './derived-archive-views-section.js';
 
 function formatProcessTypeLabel(processType: string): string {
   return processType.replace(/([a-z])([A-Z])/g, '$1 $2');
@@ -98,6 +99,12 @@ export function renderProcessArchivePage(args: {
   container.append(
     renderArchiveTurnsSection({
       turns: archiveSurface.turns,
+      targetDocument: args.targetDocument,
+    }),
+  );
+  container.append(
+    renderDerivedArchiveViewsSection({
+      derivedViews: archiveSurface.derivedViews,
       targetDocument: args.targetDocument,
     }),
   );

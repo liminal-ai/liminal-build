@@ -4,7 +4,11 @@ import { describe, expect, it } from 'vitest';
 import { createAppStore } from '../../../apps/platform/client/app/store.js';
 import { renderProcessArchivePage } from '../../../apps/platform/client/features/processes/process-archive-page.js';
 import { renderArchiveTurnsSection } from '../../../apps/platform/client/features/processes/archive-turns-section.js';
-import { readyArchivePageFixture, readyArchiveTurnPageFixture } from '../../fixtures/archive.js';
+import {
+  readyArchivePageFixture,
+  readyArchiveTurnPageFixture,
+  readyDerivedArchiveViewsFixture,
+} from '../../fixtures/archive.js';
 
 function buildArchiveStore() {
   return createAppStore({
@@ -44,6 +48,7 @@ function buildArchiveStore() {
       },
       archive: readyArchivePageFixture,
       turns: readyArchiveTurnPageFixture,
+      derivedViews: readyDerivedArchiveViewsFixture,
       isLoading: false,
       error: null,
     },

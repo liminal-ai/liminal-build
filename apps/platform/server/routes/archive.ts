@@ -3,13 +3,17 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { buildShellBootstrapPayload } from '../config.js';
 import { AppError } from '../errors/app-error.js';
 import {
+  getDerivedArchiveViewsRouteSchema,
   getProcessArchiveRouteSchema,
   getProcessArchiveTurnsRouteSchema,
+  postRefreshDerivedArchiveViewsRouteSchema,
 } from '../schemas/archive.js';
 import { sessionCookieName } from '../services/auth/auth-session.service.js';
 import {
   processArchiveApiPathnamePattern,
   processArchiveTurnsApiPathnamePattern,
+  processDerivedArchiveViewsApiPathnamePattern,
+  processDerivedArchiveViewsRefreshApiPathnamePattern,
   processArchiveRoutePathnamePattern,
   type RequestError,
 } from '../../shared/contracts/index.js';
@@ -26,6 +30,8 @@ export const archiveRoutePatterns = {
   shell: processArchiveRoutePathnamePattern,
   bootstrap: processArchiveApiPathnamePattern,
   turns: processArchiveTurnsApiPathnamePattern,
+  derivedViews: processDerivedArchiveViewsApiPathnamePattern,
+  refreshDerivedViews: processDerivedArchiveViewsRefreshApiPathnamePattern,
 } as const;
 
 function buildLoginRedirectPath(returnTo: string): string {
@@ -154,6 +160,82 @@ export async function registerArchiveRoutes(app: FastifyInstance): Promise<void>
       } catch (error) {
         if (error instanceof AppError) {
           const statusCode = error.statusCode as 403 | 404 | 422;
+
+          return reply.code(statusCode).send(buildRequestError(error));
+        }
+
+        throw error;
+      }
+    },
+  );
+
+  typedApp.get(
+    '/api/projects/:projectId/processes/:processId/archive/derived-views',
+    {
+      schema: getDerivedArchiveViewsRouteSchema,
+    },
+    async (request, reply) => {
+      if (request.actor === null) {
+        if (request.authFailureReason === 'invalid_session') {
+          reply.clearCookie(sessionCookieName, { path: '/' });
+        }
+
+        return reply.code(401).send({
+          code: 'UNAUTHENTICATED',
+          message: 'Authenticated access is required.',
+          status: 401,
+        });
+      }
+
+      try {
+        const response = await app.derivedArchiveViewService.listViews({
+          actor: request.actor,
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+        });
+
+        return reply.code(200).send(response);
+      } catch (error) {
+        if (error instanceof AppError) {
+          const statusCode = error.statusCode as 403 | 404 | 422;
+
+          return reply.code(statusCode).send(buildRequestError(error));
+        }
+
+        throw error;
+      }
+    },
+  );
+
+  typedApp.post(
+    '/api/projects/:projectId/processes/:processId/archive/derived-views/refresh',
+    {
+      schema: postRefreshDerivedArchiveViewsRouteSchema,
+    },
+    async (request, reply) => {
+      if (request.actor === null) {
+        if (request.authFailureReason === 'invalid_session') {
+          reply.clearCookie(sessionCookieName, { path: '/' });
+        }
+
+        return reply.code(401).send({
+          code: 'UNAUTHENTICATED',
+          message: 'Authenticated access is required.',
+          status: 401,
+        });
+      }
+
+      try {
+        const response = await app.derivedArchiveViewService.refreshViews({
+          actor: request.actor,
+          projectId: request.params.projectId,
+          processId: request.params.processId,
+        });
+
+        return reply.code(200).send(response);
+      } catch (error) {
+        if (error instanceof AppError) {
+          const statusCode = error.statusCode as 403 | 404 | 409 | 422;
 
           return reply.code(statusCode).send(buildRequestError(error));
         }

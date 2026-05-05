@@ -2,6 +2,8 @@ import type {
   ArchivePage,
   ArchiveTurnPage,
   CreateSourceAttachmentRequest,
+  DerivedArchiveViewListResponse,
+  DerivedArchiveViewRefreshResponse,
   ListProcessSourceProvenanceResponse,
   ProcessWorkSurfaceResponse,
   RebuildProcessResponse,
@@ -18,7 +20,11 @@ import {
   archiveTurnPageSchema,
   buildProcessArchiveApiPath,
   buildProcessArchiveTurnsApiPath,
+  buildProcessDerivedArchiveViewsApiPath,
+  buildProcessDerivedArchiveViewsRefreshApiPath,
   createSourceAttachmentRequestSchema,
+  derivedArchiveViewListResponseSchema,
+  derivedArchiveViewRefreshResponseSchema,
   buildProcessResponseApiPath,
   buildProcessRebuildApiPath,
   buildProcessRehydrateApiPath,
@@ -105,6 +111,12 @@ function buildArchiveFallbackRequestError(response: Response): RequestError {
         code: 'PROCESS_NOT_FOUND',
         message: 'The requested process archive could not be found.',
         status: 404,
+      };
+    case 409:
+      return {
+        code: 'ARCHIVE_DERIVATION_CONFLICT',
+        message: 'Derived views could not be refreshed safely from the current archive state.',
+        status: 409,
       };
     case 422:
       return {
@@ -196,6 +208,53 @@ export async function getProcessArchiveTurns(args: {
   }
 
   return archiveTurnPageSchema.parse(await response.json());
+}
+
+export async function getProcessDerivedArchiveViews(args: {
+  projectId: string;
+  processId: string;
+}): Promise<DerivedArchiveViewListResponse> {
+  const response = await fetch(
+    buildProcessDerivedArchiveViewsApiPath({
+      projectId: args.projectId,
+      processId: args.processId,
+    }),
+    {
+      credentials: 'include',
+    },
+  );
+
+  if (!response.ok) {
+    throw new ApiRequestError(await parseRequestError(response, buildArchiveFallbackRequestError));
+  }
+
+  return derivedArchiveViewListResponseSchema.parse(await response.json());
+}
+
+export async function refreshProcessDerivedArchiveViews(args: {
+  projectId: string;
+  processId: string;
+}): Promise<DerivedArchiveViewRefreshResponse> {
+  const response = await fetch(
+    buildProcessDerivedArchiveViewsRefreshApiPath({
+      projectId: args.projectId,
+      processId: args.processId,
+    }),
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    },
+  );
+
+  if (!response.ok) {
+    throw new ApiRequestError(await parseRequestError(response, buildArchiveFallbackRequestError));
+  }
+
+  return derivedArchiveViewRefreshResponseSchema.parse(await response.json());
 }
 
 export async function getProcessSourceProvenance(args: {

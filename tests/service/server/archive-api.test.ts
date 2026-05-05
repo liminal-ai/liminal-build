@@ -8,8 +8,10 @@ import { AuthUserSyncService } from '../../../apps/platform/server/services/auth
 import { InMemoryPlatformStore } from '../../../apps/platform/server/services/projects/platform-store.js';
 import {
   buildProcessArchiveApiPath,
+  buildProcessDerivedArchiveViewsRefreshApiPath,
   processSummarySchema,
   projectSummarySchema,
+  type DerivedArchiveView,
 } from '../../../apps/platform/shared/contracts/index.js';
 import {
   degradedArchiveEntryFixture,
@@ -118,6 +120,31 @@ async function buildArchiveApp(
     authUserSyncService: new AuthUserSyncService(store),
     platformStore: store,
   });
+}
+
+class ConflictDuringDerivedViewRefreshStore extends InMemoryPlatformStore {
+  private mutated = false;
+
+  override async replaceDerivedArchiveViews(args: {
+    projectId: string;
+    processId: string;
+    views: DerivedArchiveView[];
+  }): Promise<void> {
+    if (!this.mutated) {
+      this.mutated = true;
+      await this.appendArchiveEntry({
+        projectId: args.projectId,
+        processId: args.processId,
+        entryKind: 'process_event',
+        finalizationKey: 'event:archive-api-derived-refresh-conflict',
+        sourceObjectId: 'event-archive-api-derived-refresh-conflict',
+        bodyFormat: 'none',
+        recordedAt: '2026-05-01T12:15:00.000Z',
+      });
+    }
+
+    await super.replaceDerivedArchiveViews(args);
+  }
 }
 
 describe('archive API', () => {
@@ -276,6 +303,44 @@ describe('archive API', () => {
       code: 'INVALID_ARCHIVE_REQUEST',
       message: 'Archive pagination parameters were invalid.',
       status: 422,
+    });
+
+    await app.close();
+  });
+
+  it('derived-view refresh conflict returns ARCHIVE_DERIVATION_CONFLICT', async () => {
+    const store = new ConflictDuringDerivedViewRefreshStore({
+      accessibleProjectsByUserId: {
+        [`user:${actor.workosUserId}`]: [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectId]: [processSummary],
+      },
+      archiveEntriesByProcessId: {
+        [processId]: readyArchivePageFixture.entries,
+      },
+    });
+    const app = await buildArchiveApp(store);
+    const response = await app.inject({
+      method: 'POST',
+      url: buildProcessDerivedArchiveViewsRefreshApiPath({ projectId, processId }),
+      payload: {},
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({
+      code: 'ARCHIVE_DERIVATION_CONFLICT',
+      message: 'Derived views could not be refreshed safely from the current archive state.',
+      status: 409,
     });
 
     await app.close();

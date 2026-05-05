@@ -803,20 +803,22 @@ const listArchiveTurnsQuery = makeFunctionReference<
 const replaceDerivedArchiveViewsMutation = makeFunctionReference<
   'mutation',
   {
+    apiKey: string;
     projectId: string;
     processId: string;
     views: DerivedArchiveView[];
   },
   null
->('derivedArchiveViews:replaceDerivedArchiveViews');
+>('derivedArchiveViews:replaceDerivedArchiveViewsForService');
 
 const listDerivedArchiveViewsQuery = makeFunctionReference<
   'query',
   {
+    apiKey: string;
     processId: string;
   },
   DerivedArchiveView[]
->('derivedArchiveViews:listDerivedArchiveViews');
+>('derivedArchiveViews:listDerivedArchiveViewsForService');
 
 const getCurrentProcessRequestQuery = makeFunctionReference<
   'query',
@@ -1985,13 +1987,25 @@ export class ConvexPlatformStore implements PlatformStore {
     processId: string;
     views: DerivedArchiveView[];
   }): Promise<void> {
-    await this.client.mutation(replaceDerivedArchiveViewsMutation, args, {
-      skipQueue: true,
-    });
+    await this.client.mutation(
+      replaceDerivedArchiveViewsMutation,
+      {
+        apiKey: this.apiKey,
+        projectId: args.projectId,
+        processId: args.processId,
+        views: args.views,
+      },
+      {
+        skipQueue: true,
+      },
+    );
   }
 
   async listDerivedArchiveViews(args: { processId: string }): Promise<DerivedArchiveView[]> {
-    return this.client.query(listDerivedArchiveViewsQuery, args);
+    return this.client.query(listDerivedArchiveViewsQuery, {
+      apiKey: this.apiKey,
+      processId: args.processId,
+    });
   }
 
   async getCurrentProcessRequest(args: {
