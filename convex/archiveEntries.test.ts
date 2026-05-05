@@ -178,20 +178,29 @@ const replaceDerivedArchiveViewsHandler = getHandler<
 const listDerivedArchiveViewsHandler = getHandler<
   {
     processId: string;
+    cursor?: string | null;
+    limit: number;
   },
-  Array<{
-    derivedViewId: string;
-    processId: string;
-    viewKind: 'turn_range' | 'chunk_candidate';
-    turnRange: { startIndex: number; endIndex: number } | null;
-    sourceTurnIds: string[];
-    sourceArchiveEntryIds: string[];
-    title: string | null;
-    bodyText: string | null;
-    viewStatus: 'ready' | 'degraded';
-    degradationReason: string | null;
-    updatedAt: string;
-  }>
+  {
+    views: Array<{
+      derivedViewId: string;
+      processId: string;
+      viewKind: 'turn_range' | 'chunk_candidate';
+      turnRange: { startIndex: number; endIndex: number } | null;
+      sourceTurnIds: string[];
+      sourceArchiveEntryIds: string[];
+      title: string | null;
+      bodyText: string | null;
+      viewStatus: 'ready' | 'degraded';
+      degradationReason: string | null;
+      updatedAt: string;
+    }>;
+    page: {
+      cursor: string | null;
+      nextCursor: string | null;
+      hasMore: boolean;
+    };
+  }
 >(listDerivedArchiveViews);
 
 const replaceDerivedArchiveViewsForServiceHandler = getHandler<
@@ -220,20 +229,29 @@ const listDerivedArchiveViewsForServiceHandler = getHandler<
   {
     apiKey: string;
     processId: string;
+    cursor?: string | null;
+    limit: number;
   },
-  Array<{
-    derivedViewId: string;
-    processId: string;
-    viewKind: 'turn_range' | 'chunk_candidate';
-    turnRange: { startIndex: number; endIndex: number } | null;
-    sourceTurnIds: string[];
-    sourceArchiveEntryIds: string[];
-    title: string | null;
-    bodyText: string | null;
-    viewStatus: 'ready' | 'degraded';
-    degradationReason: string | null;
-    updatedAt: string;
-  }>
+  {
+    views: Array<{
+      derivedViewId: string;
+      processId: string;
+      viewKind: 'turn_range' | 'chunk_candidate';
+      turnRange: { startIndex: number; endIndex: number } | null;
+      sourceTurnIds: string[];
+      sourceArchiveEntryIds: string[];
+      title: string | null;
+      bodyText: string | null;
+      viewStatus: 'ready' | 'degraded';
+      degradationReason: string | null;
+      updatedAt: string;
+    }>;
+    page: {
+      cursor: string | null;
+      nextCursor: string | null;
+      hasMore: boolean;
+    };
+  }
 >(listDerivedArchiveViewsForService);
 
 function buildArchiveSeed() {
@@ -703,18 +721,26 @@ describe('convex/archiveEntries', () => {
 
     const storedViews = await listDerivedArchiveViewsHandler(ctx, {
       processId: 'process-archive-1',
+      limit: 20,
     });
     const after = await listArchiveEntriesHandler(ctx, {
       processId: 'process-archive-1',
       limit: 20,
     });
 
-    expect(storedViews).toEqual([
-      expect.objectContaining({
-        derivedViewId: 'process-archive-1:derived-view:turn_range:0-0',
-        sourceArchiveEntryIds: [userEntry.archiveEntryId, modelEntry.archiveEntryId],
-      }),
-    ]);
+    expect(storedViews).toEqual({
+      views: [
+        expect.objectContaining({
+          derivedViewId: 'process-archive-1:derived-view:turn_range:0-0',
+          sourceArchiveEntryIds: [userEntry.archiveEntryId, modelEntry.archiveEntryId],
+        }),
+      ],
+      page: {
+        cursor: null,
+        nextCursor: null,
+        hasMore: false,
+      },
+    });
     expect(after).toEqual(before);
   });
 
@@ -766,23 +792,32 @@ describe('convex/archiveEntries', () => {
       listDerivedArchiveViewsForServiceHandler(ctx, {
         apiKey: 'wrong-api-key',
         processId: 'process-archive-1',
+        limit: 20,
       }),
     ).rejects.toThrow('Unauthorized service API key.');
 
     const storedViews = await listDerivedArchiveViewsForServiceHandler(ctx, {
       apiKey: 'test-convex-api-key',
       processId: 'process-archive-1',
+      limit: 20,
     });
     const archiveAfter = await listArchiveEntriesHandler(ctx, {
       processId: 'process-archive-1',
       limit: 20,
     });
 
-    expect(storedViews).toEqual([
-      expect.objectContaining({
-        derivedViewId: 'process-archive-1:derived-view:turn_range:0-0',
-      }),
-    ]);
+    expect(storedViews).toEqual({
+      views: [
+        expect.objectContaining({
+          derivedViewId: 'process-archive-1:derived-view:turn_range:0-0',
+        }),
+      ],
+      page: {
+        cursor: null,
+        nextCursor: null,
+        hasMore: false,
+      },
+    });
     expect(archiveAfter).toEqual(archiveBefore);
   });
 

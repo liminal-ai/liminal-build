@@ -97,6 +97,14 @@ export const archiveTurnPaginationQuerySchema = z.object({
 });
 export type ArchiveTurnPaginationQuery = z.infer<typeof archiveTurnPaginationQuerySchema>;
 
+export const archiveDerivedViewPaginationQuerySchema = z.object({
+  cursor: archivePageCursorSchema.optional(),
+  limit: z.coerce.number().int().positive().max(50).optional(),
+});
+export type ArchiveDerivedViewPaginationQuery = z.infer<
+  typeof archiveDerivedViewPaginationQuerySchema
+>;
+
 export const archiveDerivedViewRefreshRequestSchema = z.object({}).strict();
 export type ArchiveDerivedViewRefreshRequest = z.infer<
   typeof archiveDerivedViewRefreshRequestSchema
@@ -281,6 +289,7 @@ export type DerivedArchiveView = z.infer<typeof derivedArchiveViewSchema>;
 
 export const derivedArchiveViewListResponseSchema = z.object({
   views: z.array(derivedArchiveViewSchema),
+  page: archivePageInfoSchema,
 });
 export type DerivedArchiveViewListResponse = z.infer<typeof derivedArchiveViewListResponseSchema>;
 

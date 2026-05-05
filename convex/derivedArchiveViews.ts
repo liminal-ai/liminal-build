@@ -1,6 +1,9 @@
 import { v } from 'convex/values';
 import { archiveEntryStatusValidator } from './archiveEntries.js';
-import type { DerivedArchiveView } from '../apps/platform/shared/contracts/index.js';
+import type {
+  DerivedArchiveView,
+  DerivedArchiveViewListResponse,
+} from '../apps/platform/shared/contracts/index.js';
 import type { Doc, Id } from './_generated/dataModel.js';
 import { makeFunctionReference } from 'convex/server';
 import {
@@ -61,6 +64,8 @@ const replaceDerivedArchiveViewsArgsValidator = {
 
 const listDerivedArchiveViewsArgsValidator = {
   processId: v.string(),
+  cursor: v.optional(v.union(v.string(), v.null())),
+  limit: v.number(),
 } as const;
 
 const replaceDerivedArchiveViewsInternalRef = makeFunctionReference<
@@ -77,8 +82,10 @@ const listDerivedArchiveViewsInternalRef = makeFunctionReference<
   'query',
   {
     processId: string;
+    cursor?: string | null;
+    limit: number;
   },
-  DerivedArchiveView[]
+  DerivedArchiveViewListResponse
 >('derivedArchiveViews:listDerivedArchiveViews');
 
 export const replaceDerivedArchiveViewsForService = mutation({
@@ -161,12 +168,17 @@ export const listDerivedArchiveViewsForService = query({
     apiKey: v.string(),
     ...listDerivedArchiveViewsArgsValidator,
   },
-  handler: async (ctx, args): Promise<DerivedArchiveView[]> => {
+  handler: async (ctx, args): Promise<DerivedArchiveViewListResponse> => {
     assertValidApiKey(args.apiKey);
 
-    const result: DerivedArchiveView[] = await ctx.runQuery(listDerivedArchiveViewsInternalRef, {
-      processId: args.processId,
-    });
+    const result: DerivedArchiveViewListResponse = await ctx.runQuery(
+      listDerivedArchiveViewsInternalRef,
+      {
+        processId: args.processId,
+        cursor: args.cursor ?? null,
+        limit: args.limit,
+      },
+    );
 
     return result;
   },
@@ -174,17 +186,32 @@ export const listDerivedArchiveViewsForService = query({
 
 export const listDerivedArchiveViews = internalQuery({
   args: listDerivedArchiveViewsArgsValidator,
-  handler: async (ctx: QueryCtx, args): Promise<DerivedArchiveView[]> => {
+  handler: async (ctx: QueryCtx, args): Promise<DerivedArchiveViewListResponse> => {
+    assertDerivedViewPageLimit(args.limit);
     const processId = args.processId as Id<'processes'>;
+    const decodedCursor = decodeDerivedArchiveViewCursor(args.cursor ?? null);
     const storedViews = await ctx.db
       .query('derivedArchiveViews')
       .withIndex('by_processId_and_updatedAt', (indexQuery) =>
         indexQuery.eq('processId', processId),
       )
       .order('desc')
-      .collect();
+      .take(args.limit + decodedCursor + 1);
 
-    return storedViews.map((storedView) => buildDerivedArchiveView(storedView));
+    const pageWithLookahead = storedViews.slice(decodedCursor);
+    const hasMore = pageWithLookahead.length > args.limit;
+    const pageViews = pageWithLookahead
+      .slice(0, args.limit)
+      .map((storedView) => buildDerivedArchiveView(storedView));
+
+    return {
+      views: pageViews,
+      page: {
+        cursor: args.cursor ?? null,
+        nextCursor: hasMore ? String(decodedCursor + pageViews.length) : null,
+        hasMore,
+      },
+    };
   },
 });
 
@@ -270,6 +297,21 @@ function assertDerivedArchiveView(view: DerivedArchiveView, processId: string): 
   ) {
     throw new Error('Degraded derived archive views must include a degradation reason.');
   }
+}
+
+function assertDerivedViewPageLimit(limit: number): void {
+  if (!Number.isInteger(limit) || limit <= 0 || limit > 50) {
+    throw new Error('Derived archive view page limit must be an integer between 1 and 50.');
+  }
+}
+
+function decodeDerivedArchiveViewCursor(cursor: string | null): number {
+  if (cursor == null) {
+    return 0;
+  }
+
+  const parsed = Number.parseInt(cursor, 10);
+  return Number.isNaN(parsed) || parsed < 0 ? 0 : parsed;
 }
 
 function assertOptionalNonEmptyString(value: string | null, label: string): void {

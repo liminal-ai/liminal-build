@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "command": "epic-synthesize",
+  "status": "completed",
+  "phase": "finalizing",
+  "startedAt": "2026-05-05T13:05:47.032Z",
+  "updatedAt": "2026-05-05T13:11:59.986Z",
+  "lastOutputAt": "2026-05-05T13:11:59.885Z",
+  "providerLiveness": "completed",
+  "provider": "codex",
+  "pid": 37616,
+  "cwd": "/Users/leemoore/code/liminal-build",
+  "timeoutMs": 3600000,
+  "configuredStartupTimeoutMs": 300000,
+  "configuredSilenceTimeoutMs": 600000,
+  "artifactPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/006-epic-synthesis.json",
+  "streamPaths": {
+    "stdoutPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/streams/006-epic-synthesis.stdout.log",
+    "stderrPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/streams/006-epic-synthesis.stderr.log"
+  },
+  "progressPaths": {
+    "statusPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/progress/006-epic-synthesis.status.json",
+    "progressPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/progress/006-epic-synthesis.progress.jsonl"
+  },
+  "lastEvent": "completed",
+  "lastEventSummary": "epic-synthesize completed with outcome needs-fixes."
+}

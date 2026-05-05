@@ -10,6 +10,8 @@ import { invalidArchiveRequestErrorCode } from '../../errors/codes.js';
 import type { AuthenticatedActor } from '../auth/auth-session.service.js';
 import type { ProcessAccessService } from '../processes/process-access.service.js';
 import type { PlatformStore } from '../projects/platform-store.js';
+import type { SourceProvenanceService } from '../sources/source-provenance.service.js';
+import { enrichArchiveEntries } from './archive-entry-enrichment.js';
 
 const DEFAULT_TURN_PAGE_LIMIT = 50;
 const MAX_TURN_PAGE_LIMIT = 100;
@@ -40,14 +42,25 @@ export class DefaultTurnDerivationService implements TurnDerivationService {
   constructor(
     private readonly platformStore: Pick<
       PlatformStore,
-      'listArchiveEntries' | 'listArchiveTurns' | 'upsertArchiveTurns'
+      'getArtifactVersion' | 'listArchiveEntries' | 'listArchiveTurns' | 'upsertArchiveTurns'
     >,
     private readonly processAccessService: Pick<ProcessAccessService, 'assertProcessAccess'>,
+    private readonly sourceProvenanceService?: Pick<
+      SourceProvenanceService,
+      'listProcessSourceProvenance'
+    >,
   ) {}
 
   async rebuildTurns(args: { projectId: string; processId: string }): Promise<DerivedTurn[]> {
     const entries = await listAllArchiveEntries(this.platformStore, args.processId);
-    const turns = deriveTurnsFromArchiveEntries(entries, args.processId);
+    const enrichedEntries = await enrichArchiveEntries({
+      entries,
+      projectId: args.projectId,
+      processId: args.processId,
+      platformStore: this.platformStore,
+      sourceProvenanceService: this.sourceProvenanceService,
+    });
+    const turns = deriveTurnsFromArchiveEntries(enrichedEntries, args.processId);
 
     await this.platformStore.upsertArchiveTurns({
       projectId: args.projectId,
@@ -71,19 +84,76 @@ export class DefaultTurnDerivationService implements TurnDerivationService {
       processId: args.processId,
     });
 
-    await this.rebuildTurns({
+    const cursor = normalizeTurnCursor(args.cursor);
+    const limit = normalizeTurnLimit(args.limit);
+    const storedPage = await this.platformStore.listArchiveTurns({
+      processId: args.processId,
+      cursor,
+      limit,
+    });
+
+    if (cursor !== null) {
+      return archiveTurnPageSchema.parse(storedPage);
+    }
+
+    if (storedPage.turns.length > 0) {
+      return archiveTurnPageSchema.parse(storedPage);
+    }
+
+    if (await hasStoredTurns(this.platformStore, args.processId)) {
+      return archiveTurnPageSchema.parse(storedPage);
+    }
+
+    if (!(await hasArchiveEntries(this.platformStore, args.processId))) {
+      return archiveTurnPageSchema.parse(storedPage);
+    }
+
+    await this.warmTurnsCacheOnMiss({
       projectId: args.projectId,
       processId: args.processId,
     });
 
-    const page = await this.platformStore.listArchiveTurns({
+    const rebuiltPage = await this.platformStore.listArchiveTurns({
       processId: args.processId,
-      cursor: normalizeTurnCursor(args.cursor),
-      limit: normalizeTurnLimit(args.limit),
+      cursor,
+      limit,
     });
 
-    return archiveTurnPageSchema.parse(page);
+    return archiveTurnPageSchema.parse(rebuiltPage);
   }
+
+  private async warmTurnsCacheOnMiss(args: {
+    projectId: string;
+    processId: string;
+  }): Promise<void> {
+    await this.rebuildTurns(args);
+  }
+}
+
+async function hasStoredTurns(
+  platformStore: Pick<PlatformStore, 'listArchiveTurns'>,
+  processId: string,
+): Promise<boolean> {
+  const firstPage = await platformStore.listArchiveTurns({
+    processId,
+    cursor: null,
+    limit: 1,
+  });
+
+  return firstPage.turns.length > 0;
+}
+
+async function hasArchiveEntries(
+  platformStore: Pick<PlatformStore, 'listArchiveEntries'>,
+  processId: string,
+): Promise<boolean> {
+  const firstPage = await platformStore.listArchiveEntries({
+    processId,
+    cursor: null,
+    limit: 1,
+  });
+
+  return firstPage.entries.length > 0;
 }
 
 async function listAllArchiveEntries(

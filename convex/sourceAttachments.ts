@@ -266,6 +266,19 @@ export const updateSourceAttachment = mutation({
         await touchProcessAndProject(ctx, processRecord, now);
       }
     }
+    await invalidateArchiveDerivedCachesForProcesses(
+      ctx,
+      sourceAttachment.processId === null
+        ? (
+            await ctx.db
+              .query('processes')
+              .withIndex('by_projectId', (query) =>
+                query.eq('projectId', sourceAttachment.projectId as Id<'projects'>),
+              )
+              .collect()
+          ).map((processRecord) => processRecord._id)
+        : [sourceAttachment.processId as Id<'processes'>],
+    );
 
     const updatedSourceAttachment = await ctx.db.get(sourceAttachment._id);
 
@@ -334,6 +347,10 @@ export const detachSourceAttachment = mutation({
     if (sourceAttachment.processId === null) {
       await touchProject(ctx, sourceAttachment.projectId as Id<'projects'>, detachedAt);
     }
+    await invalidateArchiveDerivedCachesForProcesses(
+      ctx,
+      processRecords.map((processRecord) => processRecord._id),
+    );
 
     return {
       detached: true as const,
@@ -431,6 +448,32 @@ async function createSourceAttachmentRecord(
   }
 
   return sourceAttachmentId;
+}
+
+async function invalidateArchiveDerivedCachesForProcesses(
+  ctx: MutationCtx,
+  processIds: Id<'processes'>[],
+): Promise<void> {
+  for (const processId of new Set(processIds)) {
+    const storedTurns = await ctx.db
+      .query('archiveTurns')
+      .withIndex('by_processId_and_turnId', (indexQuery) => indexQuery.eq('processId', processId))
+      .collect();
+    const storedViews = await ctx.db
+      .query('derivedArchiveViews')
+      .withIndex('by_processId_and_updatedAt', (indexQuery) =>
+        indexQuery.eq('processId', processId),
+      )
+      .collect();
+
+    for (const storedTurn of storedTurns) {
+      await ctx.db.delete(storedTurn._id);
+    }
+
+    for (const storedView of storedViews) {
+      await ctx.db.delete(storedView._id);
+    }
+  }
 }
 
 async function assertNoActiveDuplicate(

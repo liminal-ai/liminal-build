@@ -87,6 +87,8 @@ export const upsertArchiveTurns = mutation({
       }
     }
 
+    await invalidateDerivedArchiveViews(ctx, processRecord._id);
+
     return null;
   },
 });
@@ -150,6 +152,20 @@ function buildDerivedTurn(record: Doc<'archiveTurns'>): DerivedTurn {
     turnStatus: record.turnStatus,
     degradationReason: record.degradationReason,
   };
+}
+
+async function invalidateDerivedArchiveViews(
+  ctx: MutationCtx,
+  processId: Id<'processes'>,
+): Promise<void> {
+  const storedViews = await ctx.db
+    .query('derivedArchiveViews')
+    .withIndex('by_processId_and_updatedAt', (indexQuery) => indexQuery.eq('processId', processId))
+    .collect();
+
+  for (const storedView of storedViews) {
+    await ctx.db.delete(storedView._id);
+  }
 }
 
 function assertDerivedTurn(turn: DerivedTurn, processId: string): void {

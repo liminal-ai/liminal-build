@@ -192,6 +192,8 @@ export async function registerArchiveRoutes(app: FastifyInstance): Promise<void>
           actor: request.actor,
           projectId: request.params.projectId,
           processId: request.params.processId,
+          cursor: request.query.cursor,
+          limit: request.query.limit,
         });
 
         return reply.code(200).send(response);

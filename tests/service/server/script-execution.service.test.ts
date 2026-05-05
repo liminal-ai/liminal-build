@@ -103,7 +103,7 @@ describe('script execution service', () => {
     ).resolves.toEqual(providerResult);
   });
 
-  it('default payload emits used-source and writable checkpoint signals on the real local execution path', async () => {
+  it('default payload emits workspace outputs without synthetic archive entries on the local execution path', async () => {
     const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'liminal-build-script-exec-'));
     const runtime: LocalProviderRuntime = {
       cloneSource: async ({ destination }) => {
@@ -155,6 +155,12 @@ describe('script execution service', () => {
         service.executeFor({
           providerKind: 'local',
           environmentId: ensured.environmentId,
+          processContext: {
+            processId: 'process-script-exec-default-1',
+            displayLabel: 'Feature implementation sandbox',
+            processType: 'FeatureImplementation',
+            status: 'running',
+          },
           currentSources: [
             {
               sourceAttachmentId: 'source-script-exec-default-1',
@@ -167,11 +173,24 @@ describe('script execution service', () => {
       ).resolves.toMatchObject({
         processStatus: 'completed',
         usedSourceAttachmentIds: ['source-script-exec-default-1'],
+        archiveEntries: [],
+        artifactCheckpointCandidates: [
+          expect.objectContaining({
+            displayName: 'Feature Implementation Runtime Brief',
+            revisionLabel: 'feature-implementation-runtime-v1',
+            contentsRef: 'artifacts/feature-implementation-runtime-brief.md',
+          }),
+        ],
         codeCheckpointCandidates: [
           expect.objectContaining({
             sourceAttachmentId: 'source-script-exec-default-1',
-            filePath: 'liminal-build-default-execution-note.md',
-            commitMessage: 'Record default execution note',
+            displayName: 'liminal-build',
+            targetRef: 'feature/default-runtime',
+            accessMode: 'read_write',
+            workspaceRef:
+              'sources/source-script-exec-default-1-liminal-build/notes/liminal-feature-implementation-runtime.md',
+            filePath: 'notes/liminal-feature-implementation-runtime.md',
+            commitMessage: 'Record feature implementation runtime note',
           }),
         ],
       });

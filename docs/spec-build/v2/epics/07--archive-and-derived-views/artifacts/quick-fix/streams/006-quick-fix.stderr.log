@@ -1,0 +1,15 @@
+Reading additional input from stdin...
+2026-05-05T06:51:36.660303Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /Users/leemoore/code/liminal-build/tests/service/client/derived-archive-views.test.ts:
+import { describe, expect, it } from 'vitest';
+import { createAppStore } from '../../../apps/platform/client/app/store.js';
+import { renderDerivedArchiveViewsSection } from '../../../apps/platform/client/features/processes/derived-archive-views-section.js';
+import { renderProcessArchivePage } from '../../../apps/platform/client/features/processes/process-archive-page.js';
+import {
+  degradedDerivedArchiveViewFixture,
+  readyArchiveTurnPageFixture,
+  readyDerivedArchiveViewsFixture,
+  turnRangeDerivedArchiveViewFixture,
+} from '../../fixtures/archive.js';
+
+function buildArchiveStore() {
+  return createAppStore({

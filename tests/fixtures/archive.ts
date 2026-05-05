@@ -323,6 +323,11 @@ export const readyDerivedArchiveViewsFixture = derivedArchiveViewListResponseSch
     chunkCandidateDerivedArchiveViewFixture,
     degradedDerivedArchiveViewFixture,
   ],
+  page: {
+    cursor: null,
+    nextCursor: null,
+    hasMore: false,
+  },
 });
 
 export const refreshedDerivedArchiveViewsFixture = derivedArchiveViewRefreshResponseSchema.parse({

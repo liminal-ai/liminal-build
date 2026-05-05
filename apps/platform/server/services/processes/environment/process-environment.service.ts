@@ -22,7 +22,12 @@ import {
 } from '../../../errors/codes.js';
 import { ArchiveFinalizationService } from '../../archive/archive-finalization.service.js';
 import type { AuthenticatedActor } from '../../auth/auth-session.service.js';
-import type { PlatformStore, WorkingSetPlan } from '../../projects/platform-store.js';
+import type {
+  ArtifactVersionRecord,
+  PlatformStore,
+  StoredSourceProvenanceRecord,
+  WorkingSetPlan,
+} from '../../projects/platform-store.js';
 import type { SourceProvenanceService } from '../../sources/source-provenance.service.js';
 import type { ProcessLiveHub } from '../live/process-live-hub.js';
 import type { ProcessAccessService } from '../process-access.service.js';
@@ -41,6 +46,7 @@ import type {
   HydrationPlan,
   ProviderAdapter,
   ProviderFailureState,
+  RuntimeArchiveEntry,
 } from './provider-adapter.js';
 import { ProviderLifecycleError } from './provider-adapter.js';
 import type { ProviderAdapterRegistry } from './provider-adapter-registry.js';
@@ -58,12 +64,12 @@ export class ProcessEnvironmentService {
     private readonly defaultEnvironmentProviderKind: 'daytona' | 'local' = 'daytona',
     private readonly artifactCheckpointPersistence: Pick<
       PlatformStore,
-      'persistCheckpointArtifacts'
+      'persistCheckpointArtifacts' | 'getLatestArtifactVersion'
     > = platformStore,
     private readonly sourceProvenanceService?: SourceProvenanceService,
     private readonly archiveFinalizationService: Pick<
       ArchiveFinalizationService,
-      'appendFromProcessHistoryItem'
+      'appendFinalizedEntry' | 'appendFromProcessHistoryItem'
     > = new ArchiveFinalizationService(platformStore),
   ) {}
 
@@ -551,6 +557,12 @@ export class ProcessEnvironmentService {
       const executionResult = await args.scriptExecutionService.executeFor({
         providerKind,
         environmentId: args.environmentId,
+        processContext: {
+          processId: currentProcess.processId,
+          displayLabel: currentProcess.displayLabel,
+          processType: currentProcess.processType,
+          status: currentProcess.status,
+        },
         currentSources: await this.listCurrentExecutionSources({
           projectId: currentProcess.projectId,
           processId: args.processId,
@@ -574,10 +586,19 @@ export class ProcessEnvironmentService {
           processId: args.processId,
         }),
       ]);
-      await this.sourceProvenanceService?.recordInformedWorkForCurrentSources({
-        projectId: currentProcess.projectId,
+      const informedWorkProvenanceRecords =
+        (await this.sourceProvenanceService?.recordInformedWorkForCurrentSources({
+          projectId: currentProcess.projectId,
+          processId: args.processId,
+          usedSourceAttachmentIds: deriveUsedSourceAttachmentIds(executionResult),
+        })) ?? [];
+      await this.reconcileDeferredArchiveEntries({
+        projectId: args.projectId,
         processId: args.processId,
-        usedSourceAttachmentIds: deriveUsedSourceAttachmentIds(executionResult),
+        archiveEntries: sideEffects.deferredArchiveEntries,
+        informedWorkProvenanceRecords,
+        checkpointArtifactVersions: [],
+        receivedCodeUpdateProvenanceRecords: [],
       });
 
       if (executionResult.processStatus === 'failed') {
@@ -640,6 +661,8 @@ export class ProcessEnvironmentService {
           processId: args.processId,
           environmentId: args.environmentId,
           executionResult,
+          deferredArchiveEntries: sideEffects.deferredArchiveEntries,
+          informedWorkProvenanceRecords,
         });
       }
     } catch (error) {
@@ -684,8 +707,12 @@ export class ProcessEnvironmentService {
     projectId: string;
     processId: string;
     executionResult: ExecutionResult;
-  }): Promise<{ historyItems: ProcessHistoryItem[] }> {
+  }): Promise<{
+    historyItems: ProcessHistoryItem[];
+    deferredArchiveEntries: RuntimeArchiveEntry[];
+  }> {
     const historyItems: ProcessHistoryItem[] = [];
+    const deferredArchiveEntries: RuntimeArchiveEntry[] = [];
 
     for (const historyItem of args.executionResult.processHistoryItems) {
       const storedHistoryItem = await this.platformStore.appendProcessHistoryItem({
@@ -706,6 +733,38 @@ export class ProcessEnvironmentService {
       });
     }
 
+    for (const archiveEntry of args.executionResult.archiveEntries ?? []) {
+      const isDeferredArchiveEntry = archiveEntryRequiresDeferredRelations(archiveEntry);
+      if (isDeferredArchiveEntry) {
+        deferredArchiveEntries.push(archiveEntry);
+      }
+      const degradationReason = isDeferredArchiveEntry
+        ? buildDeferredArchiveDegradationReason({
+            archiveEntry,
+            artifactVersion: null,
+            sourceProvenanceRecord: null,
+          })
+        : (archiveEntry.degradationReason ?? null);
+
+      await this.archiveFinalizationService.appendFinalizedEntry({
+        projectId: args.projectId,
+        processId: args.processId,
+        entryKind: archiveEntry.entryKind,
+        finalizationKey: archiveEntry.finalizationKey,
+        sourceObjectId: archiveEntry.sourceObjectId,
+        bodyText: archiveEntry.bodyText,
+        bodyData: archiveEntry.bodyData,
+        bodyFormat: archiveEntry.bodyFormat,
+        relatedArtifactVersionId: archiveEntry.relatedArtifactVersionId ?? null,
+        relatedSourceProvenanceId: archiveEntry.relatedSourceProvenanceId ?? null,
+        relatedToolCallId: archiveEntry.relatedToolCallId ?? null,
+        entryStatus:
+          degradationReason === null ? (archiveEntry.entryStatus ?? 'ready') : 'degraded',
+        degradationReason,
+        recordedAt: archiveEntry.recordedAt,
+      });
+    }
+
     await this.platformStore.replaceCurrentProcessOutputs({
       processId: args.processId,
       outputs: args.executionResult.outputWrites,
@@ -716,7 +775,59 @@ export class ProcessEnvironmentService {
       items: args.executionResult.sideWorkWrites,
     });
 
-    return { historyItems };
+    return { historyItems, deferredArchiveEntries };
+  }
+  private async reconcileDeferredArchiveEntries(args: {
+    projectId: string;
+    processId: string;
+    archiveEntries: RuntimeArchiveEntry[];
+    informedWorkProvenanceRecords: StoredSourceProvenanceRecord[];
+    checkpointArtifactVersions: ArtifactVersionRecord[];
+    receivedCodeUpdateProvenanceRecords: StoredSourceProvenanceRecord[];
+  }): Promise<void> {
+    const informedWorkBySourceAttachmentId = new Map(
+      args.informedWorkProvenanceRecords.map((record) => [record.sourceAttachmentId, record]),
+    );
+    const receivedCodeUpdateBySourceAttachmentId = new Map(
+      args.receivedCodeUpdateProvenanceRecords.map((record) => [record.sourceAttachmentId, record]),
+    );
+
+    for (const archiveEntry of args.archiveEntries) {
+      const artifactVersion =
+        archiveEntry.artifactCheckpointIndex === undefined ||
+        archiveEntry.artifactCheckpointIndex === null
+          ? null
+          : (args.checkpointArtifactVersions[archiveEntry.artifactCheckpointIndex] ?? null);
+      const sourceProvenanceRecord =
+        archiveEntry.sourceProvenanceBinding === undefined ||
+        archiveEntry.sourceProvenanceBinding === null
+          ? null
+          : archiveEntry.sourceProvenanceBinding.relationshipKind === 'received_code_update'
+            ? (receivedCodeUpdateBySourceAttachmentId.get(
+                archiveEntry.sourceProvenanceBinding.sourceAttachmentId,
+              ) ?? null)
+            : (informedWorkBySourceAttachmentId.get(
+                archiveEntry.sourceProvenanceBinding.sourceAttachmentId,
+              ) ?? null);
+      const degradationReason = buildDeferredArchiveDegradationReason({
+        archiveEntry,
+        artifactVersion,
+        sourceProvenanceRecord,
+      });
+
+      await this.platformStore.patchArchiveEntry({
+        processId: args.processId,
+        finalizationKey: archiveEntry.finalizationKey,
+        relatedArtifactVersionId:
+          archiveEntry.relatedArtifactVersionId ?? artifactVersion?.versionId ?? null,
+        relatedSourceProvenanceId:
+          archiveEntry.relatedSourceProvenanceId ?? sourceProvenanceRecord?.provenanceId ?? null,
+        relatedToolCallId: archiveEntry.relatedToolCallId ?? null,
+        entryStatus:
+          degradationReason === null ? (archiveEntry.entryStatus ?? 'ready') : 'degraded',
+        degradationReason,
+      });
+    }
   }
 
   private async listCurrentExecutionSources(args: { projectId: string; processId: string }) {
@@ -746,6 +857,8 @@ export class ProcessEnvironmentService {
     processId: string;
     environmentId: string;
     executionResult: ExecutionResult;
+    deferredArchiveEntries: RuntimeArchiveEntry[];
+    informedWorkProvenanceRecords: StoredSourceProvenanceRecord[];
   }): void {
     const checkpointPlanner = this.checkpointPlanner;
     const codeCheckpointWriter = this.codeCheckpointWriter;
@@ -776,6 +889,8 @@ export class ProcessEnvironmentService {
     processId: string;
     environmentId: string;
     executionResult: ExecutionResult;
+    deferredArchiveEntries: RuntimeArchiveEntry[];
+    informedWorkProvenanceRecords: StoredSourceProvenanceRecord[];
     checkpointPlanner: CheckpointPlanner;
     codeCheckpointWriter: CodeCheckpointWriter;
   }): Promise<void> {
@@ -807,6 +922,7 @@ export class ProcessEnvironmentService {
     );
 
     let artifactCheckpointResult: LastCheckpointResult | null = null;
+    let checkpointArtifactVersions: ArtifactVersionRecord[] = [];
 
     try {
       const adapter = this.providerAdapterRegistry.resolve(providerKind);
@@ -827,10 +943,24 @@ export class ProcessEnvironmentService {
       });
 
       if (plan.artifactTargets.length > 0) {
-        await this.artifactCheckpointPersistence.persistCheckpointArtifacts({
-          processId: args.processId,
-          artifacts: plan.artifactTargets,
-        });
+        const persistedOutputs =
+          await this.artifactCheckpointPersistence.persistCheckpointArtifacts({
+            processId: args.processId,
+            artifacts: plan.artifactTargets,
+          });
+        checkpointArtifactVersions = (
+          await Promise.all(
+            persistedOutputs.map(async (output) => {
+              if (output.linkedArtifactId === null) {
+                return null;
+              }
+
+              return await this.artifactCheckpointPersistence.getLatestArtifactVersion({
+                artifactId: output.linkedArtifactId,
+              });
+            }),
+          )
+        ).filter((version): version is ArtifactVersionRecord => version !== null);
         artifactCheckpointResult = buildCheckpointResult({
           checkpointKind: 'artifact',
           outcome: 'succeeded',
@@ -874,13 +1004,23 @@ export class ProcessEnvironmentService {
           .filter((outcome) => outcome.writeResult.outcome === 'succeeded')
           .map((outcome) => outcome.target);
 
-        if (successfulCodeTargets.length > 0) {
-          await this.sourceProvenanceService?.recordReceivedCodeUpdates({
-            projectId: currentProcess.projectId,
-            processId: args.processId,
-            codeTargets: successfulCodeTargets,
-          });
-        }
+        const receivedCodeUpdateProvenanceRecords =
+          successfulCodeTargets.length > 0
+            ? ((await this.sourceProvenanceService?.recordReceivedCodeUpdates({
+                projectId: currentProcess.projectId,
+                processId: args.processId,
+                codeTargets: successfulCodeTargets,
+              })) ?? [])
+            : [];
+
+        await this.reconcileDeferredArchiveEntries({
+          projectId: args.projectId,
+          processId: args.processId,
+          archiveEntries: args.deferredArchiveEntries,
+          informedWorkProvenanceRecords: args.informedWorkProvenanceRecords,
+          checkpointArtifactVersions,
+          receivedCodeUpdateProvenanceRecords,
+        });
 
         const firstFailure = codeOutcomes.find(
           (outcome) => outcome.writeResult.outcome === 'failed',
@@ -956,6 +1096,15 @@ export class ProcessEnvironmentService {
         });
         return;
       }
+
+      await this.reconcileDeferredArchiveEntries({
+        projectId: args.projectId,
+        processId: args.processId,
+        archiveEntries: args.deferredArchiveEntries,
+        informedWorkProvenanceRecords: args.informedWorkProvenanceRecords,
+        checkpointArtifactVersions,
+        receivedCodeUpdateProvenanceRecords: [],
+      });
 
       if (plan.skippedReadOnly.length > 0 && plan.artifactTargets.length === 0) {
         const skippedTarget = plan.skippedReadOnly[0];
@@ -1627,6 +1776,39 @@ function deriveUsedSourceAttachmentIds(executionResult: ExecutionResult): string
       executionResult.codeCheckpointCandidates.map((candidate) => candidate.sourceAttachmentId),
     ),
   );
+}
+
+function archiveEntryRequiresDeferredRelations(entry: RuntimeArchiveEntry): boolean {
+  return entry.artifactCheckpointIndex != null || entry.sourceProvenanceBinding != null;
+}
+
+function buildDeferredArchiveDegradationReason(args: {
+  archiveEntry: RuntimeArchiveEntry;
+  artifactVersion: ArtifactVersionRecord | null;
+  sourceProvenanceRecord: StoredSourceProvenanceRecord | null;
+}): string | null {
+  const degradationReasons =
+    args.archiveEntry.degradationReason === null ||
+    args.archiveEntry.degradationReason === undefined
+      ? []
+      : [args.archiveEntry.degradationReason];
+
+  if (
+    (args.archiveEntry.artifactCheckpointIndex ?? null) !== null &&
+    args.artifactVersion === null
+  ) {
+    degradationReasons.push('Related artifact version is unavailable.');
+  }
+
+  if (
+    args.archiveEntry.sourceProvenanceBinding !== undefined &&
+    args.archiveEntry.sourceProvenanceBinding !== null &&
+    args.sourceProvenanceRecord === null
+  ) {
+    degradationReasons.push('Related source provenance is unavailable.');
+  }
+
+  return [...new Set(degradationReasons)].join(' ') || null;
 }
 
 function extractExecutionFailureReason(executionResult: ExecutionResult): string {

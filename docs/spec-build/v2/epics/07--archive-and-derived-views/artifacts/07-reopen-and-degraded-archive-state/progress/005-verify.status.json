@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "command": "story-verify",
+  "status": "completed",
+  "phase": "finalizing",
+  "startedAt": "2026-05-05T07:56:08.074Z",
+  "updatedAt": "2026-05-05T08:03:51.787Z",
+  "lastOutputAt": "2026-05-05T08:03:51.676Z",
+  "providerLiveness": "completed",
+  "provider": "codex",
+  "pid": 11456,
+  "cwd": "/Users/leemoore/code/liminal-build",
+  "timeoutMs": 3600000,
+  "configuredStartupTimeoutMs": 300000,
+  "configuredSilenceTimeoutMs": 360000,
+  "artifactPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/07-reopen-and-degraded-archive-state/005-verify.json",
+  "streamPaths": {
+    "stdoutPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/07-reopen-and-degraded-archive-state/streams/005-verify.stdout.log",
+    "stderrPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/07-reopen-and-degraded-archive-state/streams/005-verify.stderr.log"
+  },
+  "progressPaths": {
+    "statusPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/07-reopen-and-degraded-archive-state/progress/005-verify.status.json",
+    "progressPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/07-reopen-and-degraded-archive-state/progress/005-verify.progress.jsonl"
+  },
+  "lastEvent": "completed",
+  "lastEventSummary": "story-verify completed for 07-reopen-and-degraded-archive-state with outcome revise.",
+  "verifiersCompleted": 1,
+  "verifiersPlanned": 1
+}

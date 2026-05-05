@@ -1,5 +1,6 @@
 import {
   archiveDerivedViewRefreshRequestSchema,
+  archiveDerivedViewPaginationQuerySchema,
   archivePageSchema,
   archivePaginationQuerySchema,
   archiveRouteParamsSchema,
@@ -36,6 +37,7 @@ export const getProcessArchiveTurnsRouteSchema = {
 
 export const getDerivedArchiveViewsRouteSchema = {
   params: archiveRouteParamsSchema,
+  querystring: archiveDerivedViewPaginationQuerySchema,
   response: {
     200: derivedArchiveViewListResponseSchema,
     401: requestErrorSchema,

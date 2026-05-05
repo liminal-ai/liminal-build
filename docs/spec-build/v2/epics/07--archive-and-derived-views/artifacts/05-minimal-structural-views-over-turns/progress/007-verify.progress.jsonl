@@ -1,0 +1,4 @@
+{"timestamp":"2026-05-05T06:46:57.157Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-05-05T06:46:57.486Z","command":"story-verify","phase":"verifier-initial","event":"provider-exit","summary":"Provider exited with code 0.","metadata":{"exitCode":0,"signal":null,"elapsedMs":454609,"configuredTimeoutMs":3600000}}
+{"timestamp":"2026-05-05T06:46:57.494Z","command":"story-verify","phase":"verifier-initial","event":"verifier-completed","summary":"Story verifier completed for 05-minimal-structural-views-over-turns.","metadata":{"outcome":"revise"}}
+{"timestamp":"2026-05-05T06:46:57.511Z","command":"story-verify","phase":"finalizing","event":"completed","summary":"story-verify completed for 05-minimal-structural-views-over-turns with outcome revise.","metadata":{"outcome":"revise","verifiersCompleted":1}}

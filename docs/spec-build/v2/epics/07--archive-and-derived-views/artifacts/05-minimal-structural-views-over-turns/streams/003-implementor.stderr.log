@@ -1,0 +1,9 @@
+Reading additional input from stdin...
+2026-05-05T06:30:51.383640Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /Users/leemoore/code/liminal-build/apps/platform/shared/contracts/state.ts:
+import {
+  archivePageSchema,
+  archiveTurnPageSchema,
+  currentProcessRequestSchema,
+  environmentSummarySchema,
+  processHistorySectionEnvelopeSchema,
+2026-05-05T06:38:28.332038Z ERROR codex_core::tools::router: error=write_stdin failed: stdin is closed for this session; rerun exec_command with tty=true to keep stdin open

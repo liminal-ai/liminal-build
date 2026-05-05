@@ -45,7 +45,9 @@ export function renderDerivedArchiveViewsSection(args: {
 
   const pageState = args.targetDocument.createElement('p');
   pageState.setAttribute('data-derived-archive-views-state', 'true');
-  pageState.textContent = `Showing ${derivedViews.views.length} structural views.`;
+  pageState.textContent = derivedViews.page.hasMore
+    ? `Showing ${derivedViews.views.length} structural views from the current page. More views are available.`
+    : `Showing ${derivedViews.views.length} structural views.`;
   section.append(pageState);
 
   if (derivedViews.views.length === 0) {

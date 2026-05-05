@@ -1,4 +1,12 @@
-import type { ProcessHistoryItem, SourceAccessMode } from '../../../../shared/contracts/index.js';
+import type {
+  ArchiveBodyFormat,
+  ArchiveEntryBodyData,
+  ArchiveEntryKind,
+  ArchiveEntryStatus,
+  ProcessHistoryItem,
+  SourceAccessMode,
+  SourceProvenanceEntry,
+} from '../../../../shared/contracts/index.js';
 
 export type ProviderKind = 'daytona' | 'local';
 
@@ -122,9 +130,30 @@ export interface CodeCheckpointCandidate {
 
 export type ProcessExecutionStatus = 'running' | 'waiting' | 'completed' | 'failed' | 'interrupted';
 
+export interface RuntimeArchiveEntry {
+  entryKind: ArchiveEntryKind;
+  finalizationKey: string;
+  sourceObjectId: string;
+  bodyText: string | null;
+  bodyData: ArchiveEntryBodyData | null;
+  bodyFormat: ArchiveBodyFormat;
+  relatedArtifactVersionId?: string | null;
+  relatedSourceProvenanceId?: string | null;
+  relatedToolCallId?: string | null;
+  entryStatus?: ArchiveEntryStatus;
+  degradationReason?: string | null;
+  recordedAt?: string;
+  artifactCheckpointIndex?: number | null;
+  sourceProvenanceBinding?: {
+    relationshipKind: SourceProvenanceEntry['relationshipKind'];
+    sourceAttachmentId: string;
+  } | null;
+}
+
 export interface ExecutionResult {
   processStatus: ProcessExecutionStatus;
   processHistoryItems: ProcessHistoryItem[];
+  archiveEntries?: RuntimeArchiveEntry[];
   outputWrites: PlatformProcessOutputWriteInput[];
   sideWorkWrites: PlatformSideWorkWriteInput[];
   artifactCheckpointCandidates: ArtifactCheckpointCandidate[];
@@ -210,6 +239,7 @@ export class InMemoryProviderAdapter implements ProviderAdapter {
     return {
       processStatus: 'completed',
       processHistoryItems: [],
+      archiveEntries: [],
       outputWrites: [],
       sideWorkWrites: [],
       artifactCheckpointCandidates: [
@@ -303,6 +333,7 @@ export class FailingProviderAdapter implements ProviderAdapter {
           relatedArtifactId: null,
         } satisfies ProcessHistoryItem,
       ],
+      archiveEntries: [],
       outputWrites: [],
       sideWorkWrites: [],
       artifactCheckpointCandidates: [],

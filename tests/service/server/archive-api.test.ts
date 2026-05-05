@@ -31,7 +31,11 @@ import {
 import { currentArtifactVersionFixture } from '../../fixtures/artifact-versions.js';
 import { lostEnvironmentFixture } from '../../fixtures/process-environment.js';
 import { completedProcessFixture } from '../../fixtures/processes.js';
-import { readySourceProvenanceFixture } from '../../fixtures/sources.js';
+import {
+  detachedSourceFixture,
+  hydratedSourceFixture,
+  readySourceProvenanceFixture,
+} from '../../fixtures/sources.js';
 import { buildApp } from '../../utils/build-app.js';
 
 function createTestAuthSessionService(resolution: SessionResolution) {
@@ -156,6 +160,15 @@ function buildStoreSeed(
     },
     sourceProvenanceByProcessId: args.sourceProvenanceByProcessId ?? {
       [processId]: [storedResolvedSourceProvenance],
+    },
+    sourceAttachmentsByProjectId: {
+      [projectId]: [hydratedSourceFixture],
+    },
+    currentMaterialRefsByProcessId: {
+      [processId]: {
+        artifactIds: [],
+        sourceAttachmentIds: [hydratedSourceFixture.sourceAttachmentId],
+      },
     },
     processEnvironmentSummariesByProcessId: args.environmentLost
       ? {
@@ -667,6 +680,68 @@ describe('archive API', () => {
           archiveEntryId: processEventArchiveEntryFixture.archiveEntryId,
           entryStatus: 'degraded',
           degradationReason: 'Related source provenance is unavailable.',
+        }),
+      ],
+    });
+
+    await app.close();
+  });
+
+  it('archive reopen reflects detached source provenance as degraded related context', async () => {
+    const detachedProvenanceId = 'provenance-detached-archive-1';
+    const store = new InMemoryPlatformStore({
+      ...buildStoreSeed({
+        archiveEntries: [
+          {
+            ...processEventArchiveEntryFixture,
+            relatedArtifactVersionId: null,
+            relatedSourceProvenanceId: detachedProvenanceId,
+          },
+        ],
+      }),
+      sourceAttachmentsByProjectId: {
+        [projectId]: [detachedSourceFixture],
+      },
+      sourceProvenanceByProcessId: {
+        [processId]: [
+          {
+            provenanceId: detachedProvenanceId,
+            projectId,
+            processId,
+            sourceAttachmentId: detachedSourceFixture.sourceAttachmentId,
+            relationshipKind: 'informed_work',
+            repositoryFullName: detachedSourceFixture.repositoryFullName,
+            repositoryUrl: detachedSourceFixture.repositoryUrl,
+            targetRef: detachedSourceFixture.targetRef,
+            eventId: null,
+            entryStatus: 'ready',
+            degradationReason: null,
+            recordedAt: '2026-05-01T12:12:01.000Z',
+          },
+        ],
+      },
+    });
+    const app = await buildArchiveApp(store);
+    const response = await app.inject({
+      method: 'GET',
+      url: buildProcessArchiveApiPath({ projectId, processId }),
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      entries: [
+        expect.objectContaining({
+          archiveEntryId: processEventArchiveEntryFixture.archiveEntryId,
+          entryStatus: 'degraded',
+          degradationReason: 'source_detached',
+          relatedSourceProvenance: expect.objectContaining({
+            provenanceId: detachedProvenanceId,
+            entryStatus: 'degraded',
+            degradationReason: 'source_detached',
+          }),
         }),
       ],
     });

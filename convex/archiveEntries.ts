@@ -70,6 +70,16 @@ const archiveListArgsValidator = {
   limit: v.number(),
 } as const;
 
+const archivePatchArgsValidator = {
+  processId: v.string(),
+  finalizationKey: v.string(),
+  relatedArtifactVersionId: v.optional(v.union(v.string(), v.null())),
+  relatedSourceProvenanceId: v.optional(v.union(v.string(), v.null())),
+  relatedToolCallId: v.optional(v.union(v.string(), v.null())),
+  entryStatus: v.optional(archiveEntryStatusValidator),
+  degradationReason: v.optional(v.union(v.string(), v.null())),
+} as const;
+
 const MAX_ARCHIVE_PAGE_SIZE = 200;
 const supportedArchiveEntryKinds = new Set([
   'user_message',
@@ -126,6 +136,7 @@ export const appendArchiveEntry = mutation({
       degradationReason: args.degradationReason ?? null,
       recordedAt: args.recordedAt ?? new Date().toISOString(),
     });
+    await invalidateArchiveDerivedCaches(ctx, processRecord._id);
     const storedEntry = await ctx.db.get(archiveEntryId);
 
     if (storedEntry === null) {
@@ -167,6 +178,84 @@ export const listArchiveEntries = query({
     };
   },
 });
+
+export const patchArchiveEntry = mutation({
+  args: archivePatchArgsValidator,
+  handler: async (ctx: MutationCtx, args): Promise<ArchiveEntry | null> => {
+    if (args.finalizationKey.trim().length === 0) {
+      throw new Error('Archive entries require a non-empty finalization key.');
+    }
+
+    assertOptionalNonEmptyString(args.relatedArtifactVersionId, 'Related artifact version id');
+    assertOptionalNonEmptyString(args.relatedSourceProvenanceId, 'Related source provenance id');
+    assertOptionalNonEmptyString(args.relatedToolCallId, 'Related tool call id');
+
+    const processId = args.processId as Id<'processes'>;
+    const existingEntry = await ctx.db
+      .query('archiveEntries')
+      .withIndex('by_processId_and_finalizationKey', (indexQuery) =>
+        indexQuery.eq('processId', processId).eq('finalizationKey', args.finalizationKey),
+      )
+      .unique();
+
+    if (existingEntry === null) {
+      return null;
+    }
+
+    await ctx.db.patch(existingEntry._id, {
+      relatedArtifactVersionId:
+        args.relatedArtifactVersionId === undefined
+          ? existingEntry.relatedArtifactVersionId
+          : args.relatedArtifactVersionId === null
+            ? null
+            : (args.relatedArtifactVersionId as Id<'artifactVersions'>),
+      relatedSourceProvenanceId:
+        args.relatedSourceProvenanceId === undefined
+          ? existingEntry.relatedSourceProvenanceId
+          : args.relatedSourceProvenanceId,
+      relatedToolCallId:
+        args.relatedToolCallId === undefined
+          ? existingEntry.relatedToolCallId
+          : args.relatedToolCallId,
+      entryStatus: args.entryStatus ?? existingEntry.entryStatus,
+      degradationReason:
+        args.degradationReason === undefined
+          ? existingEntry.degradationReason
+          : args.degradationReason,
+    });
+    await invalidateArchiveDerivedCaches(ctx, processId);
+
+    const storedEntry = await ctx.db.get(existingEntry._id);
+
+    if (storedEntry === null) {
+      throw new Error('Archive entry was not found after patch.');
+    }
+
+    return buildArchiveEntry(storedEntry);
+  },
+});
+
+async function invalidateArchiveDerivedCaches(
+  ctx: MutationCtx,
+  processId: Id<'processes'>,
+): Promise<void> {
+  const storedTurns = await ctx.db
+    .query('archiveTurns')
+    .withIndex('by_processId_and_turnId', (indexQuery) => indexQuery.eq('processId', processId))
+    .collect();
+  const storedViews = await ctx.db
+    .query('derivedArchiveViews')
+    .withIndex('by_processId_and_updatedAt', (indexQuery) => indexQuery.eq('processId', processId))
+    .collect();
+
+  for (const storedTurn of storedTurns) {
+    await ctx.db.delete(storedTurn._id);
+  }
+
+  for (const storedView of storedViews) {
+    await ctx.db.delete(storedView._id);
+  }
+}
 
 function assertArchiveEntryInput(args: {
   entryKind: string;

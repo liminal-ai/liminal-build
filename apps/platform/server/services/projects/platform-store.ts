@@ -13,8 +13,10 @@ import {
   artifactSummarySchema,
   type CurrentProcessRequest,
   type DerivedArchiveView,
+  type DerivedArchiveViewListResponse,
   type DerivedTurn,
   defaultEnvironmentSummary,
+  derivedArchiveViewListResponseSchema,
   derivedArchiveViewSchema,
   derivedTurnSchema,
   deriveEnvironmentStatusLabel,
@@ -155,6 +157,16 @@ export type ArchiveEntryWriteInput = {
   entryStatus?: ArchiveEntry['entryStatus'];
   degradationReason?: string | null;
   recordedAt?: string;
+};
+
+export type ArchiveEntryPatchInput = {
+  processId: string;
+  finalizationKey: string;
+  relatedArtifactVersionId?: string | null;
+  relatedSourceProvenanceId?: string | null;
+  relatedToolCallId?: string | null;
+  entryStatus?: ArchiveEntry['entryStatus'];
+  degradationReason?: string | null;
 };
 
 export interface WorkingSetPlan {
@@ -329,6 +341,7 @@ export interface PlatformStore {
     providerHistoryItemId?: string | null;
   }): Promise<ProcessHistoryItem>;
   appendArchiveEntry(args: ArchiveEntryWriteInput): Promise<ArchiveEntry>;
+  patchArchiveEntry(args: ArchiveEntryPatchInput): Promise<ArchiveEntry | null>;
   listArchiveEntries(args: {
     processId: string;
     cursor?: string | null;
@@ -349,7 +362,11 @@ export interface PlatformStore {
     processId: string;
     views: DerivedArchiveView[];
   }): Promise<void>;
-  listDerivedArchiveViews(args: { processId: string }): Promise<DerivedArchiveView[]>;
+  listDerivedArchiveViews(args: {
+    processId: string;
+    cursor?: string | null;
+    limit: number;
+  }): Promise<DerivedArchiveViewListResponse>;
   getCurrentProcessRequest(args: { processId: string }): Promise<CurrentProcessRequest | null>;
   getProcessEnvironmentSummary(args: { processId: string }): Promise<EnvironmentSummary>;
   getProcessEnvironmentProviderKind(args: {
@@ -549,7 +566,7 @@ function paginateArchiveCollection<TItem>(args: {
   items: TItem[];
   cursor?: string | null;
   limit: number;
-  getCursorValue: (item: TItem) => number;
+  getCursorValue: (item: TItem, index: number) => number;
 }): {
   items: TItem[];
   page: ArchivePage['page'];
@@ -558,16 +575,20 @@ function paginateArchiveCollection<TItem>(args: {
   const filtered =
     decodedCursor === null
       ? args.items
-      : args.items.filter((item) => args.getCursorValue(item) > decodedCursor);
+      : args.items.filter((item, index) => args.getCursorValue(item, index) > decodedCursor);
   const pageItems = filtered.slice(0, args.limit);
   const hasMore = filtered.length > args.limit;
   const lastItem = pageItems.at(-1);
+  const lastItemIndex = lastItem === undefined ? -1 : args.items.indexOf(lastItem);
 
   return {
     items: pageItems,
     page: {
       cursor: args.cursor ?? null,
-      nextCursor: hasMore && lastItem !== undefined ? String(args.getCursorValue(lastItem)) : null,
+      nextCursor:
+        hasMore && lastItem !== undefined && lastItemIndex >= 0
+          ? String(args.getCursorValue(lastItem, lastItemIndex))
+          : null,
       hasMore,
     },
   };
@@ -770,6 +791,12 @@ const appendArchiveEntryMutation = makeFunctionReference<
   ArchiveEntry
 >('archiveEntries:appendArchiveEntry');
 
+const patchArchiveEntryMutation = makeFunctionReference<
+  'mutation',
+  ArchiveEntryPatchInput,
+  ArchiveEntry | null
+>('archiveEntries:patchArchiveEntry');
+
 const listArchiveEntriesQuery = makeFunctionReference<
   'query',
   {
@@ -816,8 +843,10 @@ const listDerivedArchiveViewsQuery = makeFunctionReference<
   {
     apiKey: string;
     processId: string;
+    cursor?: string | null;
+    limit: number;
   },
-  DerivedArchiveView[]
+  DerivedArchiveViewListResponse
 >('derivedArchiveViews:listDerivedArchiveViewsForService');
 
 const getCurrentProcessRequestQuery = makeFunctionReference<
@@ -1470,6 +1499,10 @@ export class NullPlatformStore implements PlatformStore {
     });
   }
 
+  async patchArchiveEntry(): Promise<ArchiveEntry | null> {
+    return null;
+  }
+
   async listArchiveEntries(): Promise<ArchivePage> {
     return archivePageSchema.parse({
       entries: [],
@@ -1496,8 +1529,22 @@ export class NullPlatformStore implements PlatformStore {
 
   async replaceDerivedArchiveViews(): Promise<void> {}
 
-  async listDerivedArchiveViews(): Promise<DerivedArchiveView[]> {
-    return [];
+  async listDerivedArchiveViews(args: {
+    processId: string;
+    cursor?: string | null;
+    limit: number;
+  }): Promise<DerivedArchiveViewListResponse> {
+    void args.processId;
+    void args.cursor;
+    void args.limit;
+    return derivedArchiveViewListResponseSchema.parse({
+      views: [],
+      page: {
+        cursor: null,
+        nextCursor: null,
+        hasMore: false,
+      },
+    });
   }
 
   async getCurrentProcessRequest(): Promise<CurrentProcessRequest | null> {
@@ -1956,6 +2003,12 @@ export class ConvexPlatformStore implements PlatformStore {
     });
   }
 
+  async patchArchiveEntry(args: ArchiveEntryPatchInput): Promise<ArchiveEntry | null> {
+    return this.client.mutation(patchArchiveEntryMutation, args, {
+      skipQueue: true,
+    });
+  }
+
   async listArchiveEntries(args: {
     processId: string;
     cursor?: string | null;
@@ -2001,10 +2054,16 @@ export class ConvexPlatformStore implements PlatformStore {
     );
   }
 
-  async listDerivedArchiveViews(args: { processId: string }): Promise<DerivedArchiveView[]> {
+  async listDerivedArchiveViews(args: {
+    processId: string;
+    cursor?: string | null;
+    limit: number;
+  }): Promise<DerivedArchiveViewListResponse> {
     return this.client.query(listDerivedArchiveViewsQuery, {
       apiKey: this.apiKey,
       processId: args.processId,
+      cursor: args.cursor ?? null,
+      limit: args.limit,
     });
   }
 
@@ -3043,6 +3102,11 @@ export class InMemoryPlatformStore implements PlatformStore {
           : attachment,
       ),
     );
+    this.invalidateArchiveDerivedCachesForProcesses(
+      existingAttachment.processId !== null
+        ? [existingAttachment.processId]
+        : (this.processesByProjectId.get(projectId) ?? []).map((process) => process.processId),
+    );
 
     return updatedAttachment;
   }
@@ -3115,6 +3179,7 @@ export class InMemoryPlatformStore implements PlatformStore {
 
       this.refreshStoredWorkingSetFingerprint(processId);
     }
+    this.invalidateArchiveDerivedCachesForProcesses(affectedProcessIds);
     this.bumpProjectSourceAttachmentCount(projectId);
 
     return {
@@ -3147,6 +3212,13 @@ export class InMemoryPlatformStore implements PlatformStore {
       [entry, ...existing].sort((left, right) => right.recordedAt.localeCompare(left.recordedAt)),
     );
     return entry;
+  }
+
+  private invalidateArchiveDerivedCachesForProcesses(processIds: string[]): void {
+    for (const processId of processIds) {
+      this.archiveTurnsByProcessId.delete(processId);
+      this.derivedArchiveViewsByProcessId.delete(processId);
+    }
   }
 
   async listProcessSourceProvenance(args: {
@@ -3244,8 +3316,54 @@ export class InMemoryPlatformStore implements PlatformStore {
     });
 
     this.archiveEntriesByProcessId.set(args.processId, [...existingEntries, nextEntry]);
+    this.archiveTurnsByProcessId.delete(args.processId);
+    this.derivedArchiveViewsByProcessId.delete(args.processId);
 
     return nextEntry;
+  }
+
+  async patchArchiveEntry(args: ArchiveEntryPatchInput): Promise<ArchiveEntry | null> {
+    const existingEntries = this.archiveEntriesByProcessId.get(args.processId) ?? [];
+    const entryIndex = existingEntries.findIndex(
+      (entry) => entry.finalizationKey === args.finalizationKey,
+    );
+
+    if (entryIndex < 0) {
+      return null;
+    }
+
+    const existingEntry = existingEntries[entryIndex];
+    if (existingEntry === undefined) {
+      return null;
+    }
+
+    const patchedEntry = archiveEntrySchema.parse({
+      ...existingEntry,
+      relatedArtifactVersionId:
+        args.relatedArtifactVersionId === undefined
+          ? existingEntry.relatedArtifactVersionId
+          : args.relatedArtifactVersionId,
+      relatedSourceProvenanceId:
+        args.relatedSourceProvenanceId === undefined
+          ? existingEntry.relatedSourceProvenanceId
+          : args.relatedSourceProvenanceId,
+      relatedToolCallId:
+        args.relatedToolCallId === undefined
+          ? existingEntry.relatedToolCallId
+          : args.relatedToolCallId,
+      entryStatus: args.entryStatus ?? existingEntry.entryStatus,
+      degradationReason:
+        args.degradationReason === undefined
+          ? existingEntry.degradationReason
+          : args.degradationReason,
+    });
+    const nextEntries = [...existingEntries];
+    nextEntries[entryIndex] = patchedEntry;
+    this.archiveEntriesByProcessId.set(args.processId, nextEntries);
+    this.archiveTurnsByProcessId.delete(args.processId);
+    this.derivedArchiveViewsByProcessId.delete(args.processId);
+
+    return patchedEntry;
   }
 
   async listArchiveEntries(args: {
@@ -3281,6 +3399,7 @@ export class InMemoryPlatformStore implements PlatformStore {
         .map((turn) => derivedTurnSchema.parse(turn))
         .sort((left, right) => left.turnIndex - right.turnIndex),
     );
+    this.derivedArchiveViewsByProcessId.delete(args.processId);
   }
 
   async listArchiveTurns(args: {
@@ -3318,8 +3437,25 @@ export class InMemoryPlatformStore implements PlatformStore {
     );
   }
 
-  async listDerivedArchiveViews(args: { processId: string }): Promise<DerivedArchiveView[]> {
-    return [...(this.derivedArchiveViewsByProcessId.get(args.processId) ?? [])];
+  async listDerivedArchiveViews(args: {
+    processId: string;
+    cursor?: string | null;
+    limit: number;
+  }): Promise<DerivedArchiveViewListResponse> {
+    const views = [...(this.derivedArchiveViewsByProcessId.get(args.processId) ?? [])].sort(
+      (left, right) => right.updatedAt.localeCompare(left.updatedAt),
+    );
+    const paginated = paginateArchiveCollection({
+      items: views,
+      cursor: args.cursor,
+      limit: args.limit,
+      getCursorValue: (_view, index) => index,
+    });
+
+    return derivedArchiveViewListResponseSchema.parse({
+      views: paginated.items,
+      page: paginated.page,
+    });
   }
 
   async getCurrentProcessRequest(args: {

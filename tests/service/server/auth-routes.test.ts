@@ -523,7 +523,7 @@ describe('auth routes', () => {
       async listProjectSourceAttachments() {
         return [];
       },
-      async listProcessHistoryItems() {
+      async listProcessHistoryItems(_args) {
         return [];
       },
       async appendProcessHistoryItem(args) {
@@ -558,7 +558,10 @@ describe('auth routes', () => {
           recordedAt: args.recordedAt ?? '2026-04-13T12:06:00.000Z',
         };
       },
-      async listArchiveEntries() {
+      async patchArchiveEntry(_args) {
+        return null;
+      },
+      async listArchiveEntries(_args) {
         return {
           entries: [],
           page: {
@@ -569,7 +572,7 @@ describe('auth routes', () => {
         };
       },
       async upsertArchiveTurns() {},
-      async listArchiveTurns() {
+      async listArchiveTurns(_args) {
         return {
           turns: [],
           page: {
@@ -580,8 +583,15 @@ describe('auth routes', () => {
         };
       },
       async replaceDerivedArchiveViews() {},
-      async listDerivedArchiveViews() {
-        return [];
+      async listDerivedArchiveViews(_args) {
+        return {
+          views: [],
+          page: {
+            cursor: null,
+            nextCursor: null,
+            hasMore: false,
+          },
+        };
       },
       async getCurrentProcessRequest() {
         return null;

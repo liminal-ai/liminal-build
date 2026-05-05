@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "command": "story-verify",
+  "status": "completed",
+  "phase": "finalizing",
+  "startedAt": "2026-05-05T06:55:26.914Z",
+  "updatedAt": "2026-05-05T06:58:22.886Z",
+  "lastOutputAt": "2026-05-05T06:58:22.759Z",
+  "providerLiveness": "completed",
+  "provider": "codex",
+  "pid": 50226,
+  "cwd": "/Users/leemoore/code/liminal-build",
+  "timeoutMs": 3600000,
+  "configuredStartupTimeoutMs": 300000,
+  "configuredSilenceTimeoutMs": 360000,
+  "artifactPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/05-minimal-structural-views-over-turns/011-verify.json",
+  "streamPaths": {
+    "stdoutPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/05-minimal-structural-views-over-turns/streams/011-verify.stdout.log",
+    "stderrPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/05-minimal-structural-views-over-turns/streams/011-verify.stderr.log"
+  },
+  "progressPaths": {
+    "statusPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/05-minimal-structural-views-over-turns/progress/011-verify.status.json",
+    "progressPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/05-minimal-structural-views-over-turns/progress/011-verify.progress.jsonl"
+  },
+  "lastEvent": "completed",
+  "lastEventSummary": "story-verify completed for 05-minimal-structural-views-over-turns with outcome pass.",
+  "verifiersCompleted": 1,
+  "verifiersPlanned": 1
+}

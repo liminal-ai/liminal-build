@@ -1,0 +1,6 @@
+{
+  "rulingRequestId": "01-canonical-archive-entry-persistence-story-run-001-ruling-012",
+  "decision": "primitive-only evidence is sufficient; defer TC-1.1/TC-1.4 service/API proof",
+  "rationale": "Story 1's scoped ownership is the canonical archive-entry persistence primitive only. The story, test plan, and tech design have been aligned so service-level finalization proof belongs to Story 2 and read-time artifact/source enrichment plus lookup-failure degradation semantics belong to Stories 3 and 6. Story 1 should therefore be judged on primitive append/read evidence, taxonomy validation, ordering, idempotency, related-id storage, and bounded page shape only.",
+  "source": "impl-lead"
+}

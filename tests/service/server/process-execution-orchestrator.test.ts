@@ -1,3 +1,7 @@
+import { spawn } from 'node:child_process';
+import { promises as fs } from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AuthSessionService,
@@ -22,6 +26,10 @@ import type {
   ProviderAdapter,
   ProviderKind,
 } from '../../../apps/platform/server/services/processes/environment/provider-adapter.js';
+import {
+  LocalProviderAdapter,
+  type LocalProviderRuntime,
+} from '../../../apps/platform/server/services/processes/environment/local-provider-adapter.js';
 import { InMemoryProcessLiveHub } from '../../../apps/platform/server/services/processes/live/process-live-hub.js';
 import { ProcessAccessService } from '../../../apps/platform/server/services/processes/process-access.service.js';
 import { ProjectAccessService } from '../../../apps/platform/server/services/projects/project-access.service.js';
@@ -144,6 +152,8 @@ function buildTestProcessEnvironmentService(args: {
   processLiveHub: InMemoryProcessLiveHub;
   providerAdapterRegistry: ProviderAdapterRegistry;
   defaultProviderKind: ProviderKind;
+  checkpointPlanner?: CheckpointPlanner;
+  codeCheckpointWriter?: CodeCheckpointWriter;
 }): ProcessEnvironmentService {
   const projectAccessService = new ProjectAccessService(args.platformStore);
   const processAccessService = new ProcessAccessService(args.platformStore, projectAccessService);
@@ -154,8 +164,8 @@ function buildTestProcessEnvironmentService(args: {
     args.providerAdapterRegistry,
     args.processLiveHub,
     new ScriptExecutionService(args.providerAdapterRegistry),
-    new CheckpointPlanner(),
-    new StubCodeCheckpointWriter(),
+    args.checkpointPlanner ?? new CheckpointPlanner(),
+    args.codeCheckpointWriter ?? new StubCodeCheckpointWriter(),
     args.defaultProviderKind,
     args.platformStore,
     new DefaultSourceProvenanceService(args.platformStore),
@@ -167,6 +177,8 @@ async function buildExecutionApp(args: {
   processLiveHub: InMemoryProcessLiveHub;
   providerAdapterRegistry: ProviderAdapterRegistry;
   defaultProviderKind?: ProviderKind;
+  checkpointPlanner?: CheckpointPlanner;
+  codeCheckpointWriter?: CodeCheckpointWriter;
 }) {
   const defaultProviderKind = args.defaultProviderKind ?? 'local';
   const processEnvironmentService = buildTestProcessEnvironmentService({
@@ -174,6 +186,8 @@ async function buildExecutionApp(args: {
     processLiveHub: args.processLiveHub,
     providerAdapterRegistry: args.providerAdapterRegistry,
     defaultProviderKind,
+    checkpointPlanner: args.checkpointPlanner,
+    codeCheckpointWriter: args.codeCheckpointWriter,
   });
 
   return buildApp({
@@ -295,6 +309,7 @@ function buildExecutionResult(
   return {
     processStatus: status,
     processHistoryItems: [],
+    archiveEntries: [],
     outputWrites: [],
     sideWorkWrites: [],
     artifactCheckpointCandidates: [],
@@ -328,11 +343,169 @@ class RecordingCodeCheckpointWriter implements CodeCheckpointWriter {
   }
 }
 
+class BlockingCodeCheckpointWriter implements CodeCheckpointWriter {
+  private readonly startedPromise: Promise<void>;
+  private readonly releasePromise: Promise<void>;
+  private resolveStarted!: () => void;
+  private resolveRelease!: () => void;
+
+  constructor() {
+    this.startedPromise = new Promise<void>((resolve) => {
+      this.resolveStarted = resolve;
+    });
+    this.releasePromise = new Promise<void>((resolve) => {
+      this.resolveRelease = resolve;
+    });
+  }
+
+  async writeFor() {
+    this.resolveStarted();
+    await this.releasePromise;
+
+    return {
+      outcome: 'succeeded' as const,
+    };
+  }
+
+  async waitUntilStarted(): Promise<void> {
+    await this.startedPromise;
+  }
+
+  release(): void {
+    this.resolveRelease();
+  }
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
 describe('process execution orchestrator', () => {
+  it('drives the shipped local execution path end to end without synthetic archive rows', async () => {
+    const workspaceRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'liminal-build-execution-archive-'),
+    );
+    const runtime: LocalProviderRuntime = {
+      cloneSource: async ({ destination }) => {
+        await fs.mkdir(destination, { recursive: true });
+        await fs.writeFile(path.join(destination, 'README.md'), '# cloned', 'utf8');
+        return null;
+      },
+      runScript: async ({ workingTree, scriptPath }) =>
+        await new Promise<number>((resolve) => {
+          const child = spawn('node', ['--experimental-strip-types', scriptPath], {
+            cwd: workingTree,
+            stdio: 'pipe',
+          });
+          child.on('error', () => resolve(1));
+          child.on('close', (code) => resolve(code ?? 1));
+        }),
+    };
+    const platformStore = buildStore();
+    const sourceAttachment = await platformStore.createProcessSourceAttachment({
+      projectId,
+      processId,
+      provider: 'github',
+      displayName: 'archive runtime source',
+      purpose: 'implementation',
+      accessMode: 'read_write',
+      repositoryUrl: 'https://github.com/liminal-ai/archive-runtime-source',
+      repositoryFullName: 'liminal-ai/archive-runtime-source',
+      targetRef: 'feature/archive-runtime',
+    });
+    await platformStore.setCurrentProcessMaterialRefs({
+      processId,
+      artifactIds: [],
+      sourceAttachmentIds: [sourceAttachment.sourceAttachmentId],
+    });
+
+    const provider = new LocalProviderAdapter(platformStore, {
+      workspaceRoot,
+      runtime,
+    });
+    const app = await buildExecutionApp({
+      platformStore,
+      processLiveHub: new InMemoryProcessLiveHub(),
+      providerAdapterRegistry: new SingleAdapterRegistry(provider),
+    });
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/projects/${projectId}/processes/${processId}/start`,
+        cookies: { [sessionCookieName]: 'valid-session-cookie' },
+      });
+
+      expect(response.statusCode).toBe(200);
+
+      await waitFor(
+        async () => {
+          const process = await platformStore.getProcessRecord({ processId });
+          const provenanceEntries = await platformStore.listProcessSourceProvenance({
+            processId,
+          });
+
+          return (
+            process?.status === 'completed' &&
+            provenanceEntries.some(
+              (entry) =>
+                entry.relationshipKind === 'received_code_update' &&
+                entry.sourceAttachmentId === sourceAttachment.sourceAttachmentId,
+            )
+          );
+        },
+        4000,
+        'Timed out waiting for the real local execution path checkpoint provenance to complete.',
+      );
+
+      const archivePage = await platformStore.listArchiveEntries({
+        processId,
+        limit: 20,
+      });
+      const entryKinds = archivePage.entries.map((entry) => entry.entryKind);
+      const outputs = await platformStore.listProcessOutputs({ processId });
+      const sourceProvenance = await platformStore.listProcessSourceProvenance({
+        processId,
+      });
+
+      expect(entryKinds).not.toEqual(
+        expect.arrayContaining([
+          'reasoning',
+          'script_emission',
+          'tool_call',
+          'tool_result',
+          'model_message',
+        ]),
+      );
+      expect(archivePage.entries).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            finalizationKey: expect.stringContaining('default-execution:'),
+          }),
+        ]),
+      );
+      expect(outputs).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            displayName: 'Feature Specification Runtime Brief',
+            revisionLabel: 'feature-specification-runtime-v1',
+          }),
+        ]),
+      );
+      expect(sourceProvenance).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            relationshipKind: 'received_code_update',
+            sourceAttachmentId: sourceAttachment.sourceAttachmentId,
+          }),
+        ]),
+      );
+    } finally {
+      await app.close();
+      await fs.rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
   it('persists history, outputs, and side-work from ExecutionResult and publishes them with the completed process update', async () => {
     const executionResult = buildExecutionResult('completed', {
       processHistoryItems: [
@@ -465,6 +638,373 @@ describe('process execution orchestrator', () => {
     );
 
     subscription.close();
+    await app.close();
+  });
+
+  it('finalizes canonical archive kinds from live execution and backfills artifact/source provenance onto deferred archive entries', async () => {
+    const platformStore = buildStore();
+    const executionSource = await platformStore.createProcessSourceAttachment({
+      projectId,
+      processId,
+      provider: 'github',
+      displayName: 'archive source',
+      purpose: 'implementation',
+      accessMode: 'read_only',
+      repositoryUrl: 'https://github.com/liminal-ai/archive-source',
+      repositoryFullName: 'liminal-ai/archive-source',
+      targetRef: 'main',
+    });
+    await platformStore.setCurrentProcessMaterialRefs({
+      processId,
+      artifactIds: [],
+      sourceAttachmentIds: [executionSource.sourceAttachmentId],
+    });
+
+    const executionResult = buildExecutionResult('completed', {
+      processHistoryItems: [
+        {
+          historyItemId: 'history-live-archive-1',
+          kind: 'process_event',
+          lifecycleState: 'finalized',
+          text: 'Execution completed and queued archive finalization.',
+          createdAt: '2026-04-16T09:04:00.000Z',
+          relatedSideWorkId: null,
+          relatedArtifactId: null,
+        },
+      ],
+      archiveEntries: [
+        {
+          entryKind: 'reasoning',
+          finalizationKey: 'reasoning:live-archive-1',
+          sourceObjectId: 'reasoning-live-archive-1',
+          bodyText: 'Reasoning finalized the live archive batch.',
+          bodyData: null,
+          bodyFormat: 'plain_text',
+          relatedToolCallId: null,
+          recordedAt: '2026-04-16T09:04:01.000Z',
+        },
+        {
+          entryKind: 'tool_call',
+          finalizationKey: 'tool-call:live-archive-1',
+          sourceObjectId: 'tool-call-live-archive-1',
+          bodyText: null,
+          bodyData: {
+            jsonText: '{"tool":"checkpoint_artifact","target":"archive-summary.md"}',
+          },
+          bodyFormat: 'structured',
+          relatedToolCallId: 'tool-call-live-archive-1',
+          recordedAt: '2026-04-16T09:04:02.000Z',
+        },
+        {
+          entryKind: 'tool_result',
+          finalizationKey: 'tool-result:live-archive-1',
+          sourceObjectId: 'tool-result-live-archive-1',
+          bodyText: null,
+          bodyData: {
+            jsonText: '{"ok":true}',
+          },
+          bodyFormat: 'structured',
+          relatedToolCallId: 'tool-call-live-archive-1',
+          recordedAt: '2026-04-16T09:04:03.000Z',
+        },
+        {
+          entryKind: 'model_message',
+          finalizationKey: 'model:live-archive-1',
+          sourceObjectId: 'model-live-archive-1',
+          bodyText: 'Review-ready archive output is ready.',
+          bodyData: null,
+          bodyFormat: 'markdown',
+          relatedToolCallId: null,
+          recordedAt: '2026-04-16T09:04:04.000Z',
+        },
+        {
+          entryKind: 'process_event',
+          finalizationKey: 'event:live-archive-1',
+          sourceObjectId: 'event-live-archive-1',
+          bodyText: 'Execution finished and is entering checkpointing.',
+          bodyData: null,
+          bodyFormat: 'plain_text',
+          relatedToolCallId: null,
+          recordedAt: '2026-04-16T09:04:05.000Z',
+        },
+        {
+          entryKind: 'script_emission',
+          finalizationKey: 'script:live-archive-1',
+          sourceObjectId: 'script-live-archive-1',
+          bodyText: '# Archive Summary\n\nGenerated from the live execution path.',
+          bodyData: null,
+          bodyFormat: 'plain_text',
+          relatedToolCallId: null,
+          recordedAt: '2026-04-16T09:04:06.000Z',
+          artifactCheckpointIndex: 0,
+          sourceProvenanceBinding: {
+            relationshipKind: 'informed_work',
+            sourceAttachmentId: executionSource.sourceAttachmentId,
+          },
+        },
+      ],
+      artifactCheckpointCandidates: [
+        {
+          displayName: 'Archive Summary',
+          revisionLabel: 'archive-v1',
+          contentsRef: 'mem://archive/live-summary.md',
+        },
+      ],
+      usedSourceAttachmentIds: [executionSource.sourceAttachmentId],
+    });
+    const provider = buildProviderAdapter({
+      providerKind: 'local',
+      executionResult,
+      calls: [],
+    });
+    const app = await buildExecutionApp({
+      platformStore,
+      processLiveHub: new InMemoryProcessLiveHub(),
+      providerAdapterRegistry: new SingleAdapterRegistry(provider),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectId}/processes/${processId}/start`,
+      cookies: { [sessionCookieName]: 'valid-session-cookie' },
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    await waitFor(
+      async () => {
+        const archivePage = await platformStore.listArchiveEntries({
+          processId,
+          limit: 20,
+        });
+        const deferredEntry = archivePage.entries.find(
+          (entry) => entry.finalizationKey === 'script:live-archive-1',
+        );
+
+        return (
+          archivePage.entries.length >= 7 &&
+          deferredEntry?.relatedArtifactVersionId != null &&
+          deferredEntry.relatedSourceProvenanceId != null
+        );
+      },
+      2000,
+      'Timed out waiting for archive taxonomy and provenance links to settle.',
+    );
+
+    const archivePage = await platformStore.listArchiveEntries({
+      processId,
+      limit: 20,
+    });
+    const entryKinds = archivePage.entries.map((entry) => entry.entryKind);
+    const deferredEntry = archivePage.entries.find(
+      (entry) => entry.finalizationKey === 'script:live-archive-1',
+    );
+
+    expect(entryKinds).toEqual(
+      expect.arrayContaining([
+        'reasoning',
+        'script_emission',
+        'tool_call',
+        'tool_result',
+        'model_message',
+        'process_event',
+      ]),
+    );
+    expect(deferredEntry).toMatchObject({
+      entryKind: 'script_emission',
+      relatedArtifactVersionId: expect.any(String),
+      relatedSourceProvenanceId: expect.any(String),
+    });
+
+    await app.close();
+  });
+
+  it('appends checkpoint-bound archive rows before checkpoint work finishes', async () => {
+    const platformStore = buildStore();
+    const writableSource = await platformStore.createProcessSourceAttachment({
+      projectId,
+      processId,
+      provider: 'github',
+      displayName: 'liminal-build writable',
+      purpose: 'implementation',
+      accessMode: 'read_write',
+      repositoryUrl: 'https://github.com/liminal-ai/liminal-build',
+      repositoryFullName: 'liminal-ai/liminal-build',
+      targetRef: 'feature/archive-completion-boundary',
+    });
+    await platformStore.setCurrentProcessMaterialRefs({
+      processId,
+      artifactIds: [],
+      sourceAttachmentIds: [writableSource.sourceAttachmentId],
+    });
+    const blockingWriter = new BlockingCodeCheckpointWriter();
+    const provider = buildProviderAdapter({
+      providerKind: 'local',
+      executionResult: buildExecutionResult('completed', {
+        archiveEntries: [
+          {
+            entryKind: 'script_emission',
+            finalizationKey: 'script:completion-boundary-1',
+            sourceObjectId: 'script-completion-boundary-1',
+            bodyText: '# Archive Summary\n\nCheckpoint is still in flight.',
+            bodyData: null,
+            bodyFormat: 'plain_text',
+            relatedToolCallId: null,
+            recordedAt: '2026-04-16T09:04:06.000Z',
+            sourceProvenanceBinding: {
+              relationshipKind: 'received_code_update',
+              sourceAttachmentId: writableSource.sourceAttachmentId,
+            },
+          },
+        ],
+        usedSourceAttachmentIds: [writableSource.sourceAttachmentId],
+        codeCheckpointCandidates: [
+          {
+            sourceAttachmentId: writableSource.sourceAttachmentId,
+            displayName: writableSource.displayName,
+            targetRef: writableSource.targetRef,
+            accessMode: 'read_write',
+            workspaceRef: 'mem://archive-completion-boundary/summary.md',
+            filePath: 'summary.md',
+            commitMessage: 'Persist completion-boundary archive summary',
+          },
+        ],
+      }),
+      calls: [],
+    });
+    const app = await buildExecutionApp({
+      platformStore,
+      processLiveHub: new InMemoryProcessLiveHub(),
+      providerAdapterRegistry: new SingleAdapterRegistry(provider),
+      codeCheckpointWriter: blockingWriter,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectId}/processes/${processId}/start`,
+      cookies: { [sessionCookieName]: 'valid-session-cookie' },
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    await waitFor(
+      async () => (await platformStore.getProcessRecord({ processId }))?.status === 'completed',
+      2000,
+      'Timed out waiting for completed process before checkpoint release.',
+    );
+    await blockingWriter.waitUntilStarted();
+
+    const archiveBeforeCheckpointRelease = await platformStore.listArchiveEntries({
+      processId,
+      limit: 20,
+    });
+
+    expect(
+      archiveBeforeCheckpointRelease.entries.find(
+        (entry) => entry.finalizationKey === 'script:completion-boundary-1',
+      ),
+    ).toMatchObject({
+      entryKind: 'script_emission',
+      entryStatus: 'degraded',
+      relatedSourceProvenanceId: null,
+      degradationReason: 'Related source provenance is unavailable.',
+    });
+
+    blockingWriter.release();
+
+    await waitFor(
+      async () => {
+        const archivePage = await platformStore.listArchiveEntries({
+          processId,
+          limit: 20,
+        });
+        const deferredEntry = archivePage.entries.find(
+          (entry) => entry.finalizationKey === 'script:completion-boundary-1',
+        );
+
+        return deferredEntry?.relatedSourceProvenanceId != null;
+      },
+      2000,
+      'Timed out waiting for checkpoint-bound archive row to settle after release.',
+    );
+
+    await app.close();
+  });
+
+  it('persists degraded canonical archive rows when deferred linkage cannot be resolved', async () => {
+    const platformStore = buildStore();
+    const executionResult = buildExecutionResult('completed', {
+      archiveEntries: [
+        {
+          entryKind: 'script_emission',
+          finalizationKey: 'script:degraded-live-archive-1',
+          sourceObjectId: 'script-degraded-live-archive-1',
+          bodyText: '# Runtime Report\n\nA deferred archive entry could not resolve all links.',
+          bodyData: null,
+          bodyFormat: 'plain_text',
+          relatedToolCallId: null,
+          recordedAt: '2026-04-16T09:05:00.000Z',
+          artifactCheckpointIndex: 0,
+          sourceProvenanceBinding: {
+            relationshipKind: 'informed_work',
+            sourceAttachmentId: 'missing-source-attachment',
+          },
+        },
+      ],
+      artifactCheckpointCandidates: [],
+      usedSourceAttachmentIds: [],
+    });
+    const provider = buildProviderAdapter({
+      providerKind: 'local',
+      executionResult,
+      calls: [],
+    });
+    const app = await buildExecutionApp({
+      platformStore,
+      processLiveHub: new InMemoryProcessLiveHub(),
+      providerAdapterRegistry: new SingleAdapterRegistry(provider),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectId}/processes/${processId}/start`,
+      cookies: { [sessionCookieName]: 'valid-session-cookie' },
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    await waitFor(
+      async () => {
+        const archivePage = await platformStore.listArchiveEntries({
+          processId,
+          limit: 20,
+        });
+        return archivePage.entries.some(
+          (entry) => entry.finalizationKey === 'script:degraded-live-archive-1',
+        );
+      },
+      2000,
+      'Timed out waiting for degraded deferred archive entry to persist.',
+    );
+
+    const archivePage = await platformStore.listArchiveEntries({
+      processId,
+      limit: 20,
+    });
+
+    expect(
+      archivePage.entries.find(
+        (entry) => entry.finalizationKey === 'script:degraded-live-archive-1',
+      ),
+    ).toMatchObject({
+      entryKind: 'script_emission',
+      entryStatus: 'degraded',
+      degradationReason:
+        'Related artifact version is unavailable. Related source provenance is unavailable.',
+      relatedArtifactVersionId: null,
+      relatedSourceProvenanceId: null,
+    });
+
     await app.close();
   });
 

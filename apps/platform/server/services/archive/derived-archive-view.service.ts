@@ -6,10 +6,7 @@ import type {
   DerivedArchiveViewRefreshResponse,
   DerivedTurn,
 } from '../../../shared/contracts/index.js';
-import {
-  derivedArchiveViewListResponseSchema,
-  derivedArchiveViewRefreshResponseSchema,
-} from '../../../shared/contracts/index.js';
+import { derivedArchiveViewRefreshResponseSchema } from '../../../shared/contracts/index.js';
 import { AppError } from '../../errors/app-error.js';
 import {
   archiveDerivationConflictErrorCode,
@@ -22,13 +19,16 @@ import type { TurnDerivationService } from './turn-derivation.service.js';
 
 const ARCHIVE_REBUILD_PAGE_LIMIT = 200;
 const CHUNK_CANDIDATE_GROUP_SIZE = 2;
-const MAX_DERIVED_ARCHIVE_VIEWS = 50;
+const DEFAULT_DERIVED_ARCHIVE_VIEW_LIMIT = 50;
+const MAX_DERIVED_ARCHIVE_VIEW_LIMIT = 50;
 
 export interface DerivedArchiveViewService {
   listViews(args: {
     actor: AuthenticatedActor;
     projectId: string;
     processId: string;
+    cursor?: string | null;
+    limit?: number;
   }): Promise<DerivedArchiveViewListResponse>;
   refreshViews(args: {
     actor: AuthenticatedActor;
@@ -41,7 +41,10 @@ export class DefaultDerivedArchiveViewService implements DerivedArchiveViewServi
   constructor(
     private readonly platformStore: Pick<
       PlatformStore,
-      'listArchiveEntries' | 'listDerivedArchiveViews' | 'replaceDerivedArchiveViews'
+      | 'listArchiveEntries'
+      | 'listArchiveTurns'
+      | 'listDerivedArchiveViews'
+      | 'replaceDerivedArchiveViews'
     >,
     private readonly turnDerivationService: Pick<TurnDerivationService, 'rebuildTurns'>,
     private readonly processAccessService: Pick<ProcessAccessService, 'assertProcessAccess'>,
@@ -51,6 +54,8 @@ export class DefaultDerivedArchiveViewService implements DerivedArchiveViewServi
     actor: AuthenticatedActor;
     projectId: string;
     processId: string;
+    cursor?: string | null;
+    limit?: number;
   }): Promise<DerivedArchiveViewListResponse> {
     await this.processAccessService.assertProcessAccess({
       actor: args.actor,
@@ -58,32 +63,53 @@ export class DefaultDerivedArchiveViewService implements DerivedArchiveViewServi
       processId: args.processId,
     });
 
-    try {
-      const turns = await this.turnDerivationService.rebuildTurns({
-        projectId: args.projectId,
-        processId: args.processId,
-      });
-      const views = limitDerivedArchiveViews(buildDerivedArchiveViews(turns, args.processId));
+    const cursor = normalizeArchiveCursor(args.cursor);
+    const limit = normalizeDerivedArchiveViewLimit(args.limit);
+    const storedViews = await this.platformStore.listDerivedArchiveViews({
+      processId: args.processId,
+      cursor,
+      limit,
+    });
 
-      await this.platformStore.replaceDerivedArchiveViews({
-        projectId: args.projectId,
-        processId: args.processId,
-        views,
-      });
-
-      return derivedArchiveViewListResponseSchema.parse({ views });
-    } catch (error) {
-      const storedViews = await this.platformStore.listDerivedArchiveViews({
-        processId: args.processId,
-      });
-      if (storedViews.length > 0) {
-        return derivedArchiveViewListResponseSchema.parse({
-          views: limitDerivedArchiveViews(storedViews),
-        });
-      }
-
-      throw error;
+    if (cursor !== null) {
+      return storedViews;
     }
+
+    if (storedViews.views.length > 0) {
+      return storedViews;
+    }
+
+    if (await hasStoredViews(this.platformStore, args.processId)) {
+      return storedViews;
+    }
+
+    if (await hasStoredTurns(this.platformStore, args.processId)) {
+      await this.warmViewsCacheOnMiss({
+        projectId: args.projectId,
+        processId: args.processId,
+      });
+
+      return this.platformStore.listDerivedArchiveViews({
+        processId: args.processId,
+        cursor,
+        limit,
+      });
+    }
+
+    if (!(await hasArchiveEntries(this.platformStore, args.processId))) {
+      return storedViews;
+    }
+
+    await this.warmViewsCacheOnMiss({
+      projectId: args.projectId,
+      processId: args.processId,
+    });
+
+    return this.platformStore.listDerivedArchiveViews({
+      processId: args.processId,
+      cursor,
+      limit,
+    });
   }
 
   async refreshViews(args: {
@@ -118,7 +144,7 @@ export class DefaultDerivedArchiveViewService implements DerivedArchiveViewServi
       });
     }
 
-    const views = limitDerivedArchiveViews(buildDerivedArchiveViews(turns, args.processId));
+    const views = buildDerivedArchiveViews(turns, args.processId);
     await this.platformStore.replaceDerivedArchiveViews({
       projectId: args.projectId,
       processId: args.processId,
@@ -143,6 +169,94 @@ export class DefaultDerivedArchiveViewService implements DerivedArchiveViewServi
       refreshStatus: views.some((view) => view.viewStatus === 'degraded') ? 'degraded' : 'settled',
     });
   }
+
+  private async warmViewsCacheOnMiss(args: {
+    projectId: string;
+    processId: string;
+  }): Promise<void> {
+    const turns =
+      (await listAllStoredTurns(this.platformStore, args.processId)) ??
+      (await this.turnDerivationService.rebuildTurns({
+        projectId: args.projectId,
+        processId: args.processId,
+      }));
+    const views = buildDerivedArchiveViews(turns, args.processId);
+
+    await this.platformStore.replaceDerivedArchiveViews({
+      projectId: args.projectId,
+      processId: args.processId,
+      views,
+    });
+  }
+}
+
+async function hasStoredViews(
+  platformStore: Pick<PlatformStore, 'listDerivedArchiveViews'>,
+  processId: string,
+): Promise<boolean> {
+  const firstPage = await platformStore.listDerivedArchiveViews({
+    processId,
+    cursor: null,
+    limit: 1,
+  });
+
+  return firstPage.views.length > 0;
+}
+
+async function listAllStoredTurns(
+  platformStore: Pick<PlatformStore, 'listArchiveTurns'>,
+  processId: string,
+): Promise<DerivedTurn[] | null> {
+  const firstPage = await platformStore.listArchiveTurns({
+    processId,
+    cursor: null,
+    limit: 1,
+  });
+
+  if (firstPage.turns.length === 0) {
+    return null;
+  }
+
+  const turns: DerivedTurn[] = [...firstPage.turns];
+  let cursor = firstPage.page.nextCursor;
+
+  while (cursor !== null) {
+    const page = await platformStore.listArchiveTurns({
+      processId,
+      cursor,
+      limit: DEFAULT_DERIVED_ARCHIVE_VIEW_LIMIT,
+    });
+    turns.push(...page.turns);
+    cursor = page.page.nextCursor;
+  }
+
+  return turns;
+}
+
+async function hasStoredTurns(
+  platformStore: Pick<PlatformStore, 'listArchiveTurns'>,
+  processId: string,
+): Promise<boolean> {
+  const firstPage = await platformStore.listArchiveTurns({
+    processId,
+    cursor: null,
+    limit: 1,
+  });
+
+  return firstPage.turns.length > 0;
+}
+
+async function hasArchiveEntries(
+  platformStore: Pick<PlatformStore, 'listArchiveEntries'>,
+  processId: string,
+): Promise<boolean> {
+  const firstPage = await platformStore.listArchiveEntries({
+    processId,
+    cursor: null,
+    limit: 1,
+  });
+
+  return firstPage.entries.length > 0;
 }
 
 async function computeArchiveSignature(
@@ -205,10 +319,6 @@ function buildDerivedArchiveViews(turns: DerivedTurn[], processId: string): Deri
   );
 
   return [...turnRangeViews, ...chunkCandidateViews];
-}
-
-function limitDerivedArchiveViews(views: DerivedArchiveView[]): DerivedArchiveView[] {
-  return views.slice(0, MAX_DERIVED_ARCHIVE_VIEWS);
 }
 
 function groupTurnsForChunkCandidates(turns: DerivedTurn[]): DerivedTurn[][] {
@@ -293,7 +403,11 @@ function dedupeStrings(values: string[]): string[] {
   return [...new Set(values)];
 }
 
-function normalizeArchiveCursor(cursor: string): string {
+function normalizeArchiveCursor(cursor: string | null | undefined): string | null {
+  if (cursor === undefined || cursor === null) {
+    return null;
+  }
+
   if (!/^\d+$/.test(cursor)) {
     throw new AppError({
       code: invalidArchiveRequestErrorCode,
@@ -303,4 +417,20 @@ function normalizeArchiveCursor(cursor: string): string {
   }
 
   return cursor;
+}
+
+function normalizeDerivedArchiveViewLimit(limit: number | undefined): number {
+  if (limit === undefined) {
+    return DEFAULT_DERIVED_ARCHIVE_VIEW_LIMIT;
+  }
+
+  if (!Number.isInteger(limit) || limit <= 0 || limit > MAX_DERIVED_ARCHIVE_VIEW_LIMIT) {
+    throw new AppError({
+      code: invalidArchiveRequestErrorCode,
+      message: 'Archive pagination parameters were invalid.',
+      statusCode: 422,
+    });
+  }
+
+  return limit;
 }

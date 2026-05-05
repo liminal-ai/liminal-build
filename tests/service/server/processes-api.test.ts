@@ -291,7 +291,15 @@ class RecordingPlatformStore implements PlatformStore {
     };
   }
 
-  async listArchiveEntries(): Promise<ArchivePage> {
+  async patchArchiveEntry(
+    _args: Parameters<PlatformStore['patchArchiveEntry']>[0],
+  ): Promise<ArchiveEntry | null> {
+    return null;
+  }
+
+  async listArchiveEntries(
+    _args: Parameters<PlatformStore['listArchiveEntries']>[0],
+  ): Promise<ArchivePage> {
     return {
       entries: [],
       page: {
@@ -308,7 +316,9 @@ class RecordingPlatformStore implements PlatformStore {
     turns: DerivedTurn[];
   }): Promise<void> {}
 
-  async listArchiveTurns(): Promise<ArchiveTurnPage> {
+  async listArchiveTurns(
+    _args: Parameters<PlatformStore['listArchiveTurns']>[0],
+  ): Promise<ArchiveTurnPage> {
     return {
       turns: [],
       page: {
@@ -325,8 +335,17 @@ class RecordingPlatformStore implements PlatformStore {
     views: DerivedArchiveView[];
   }): Promise<void> {}
 
-  async listDerivedArchiveViews(): Promise<DerivedArchiveView[]> {
-    return [];
+  async listDerivedArchiveViews(
+    _args: Parameters<PlatformStore['listDerivedArchiveViews']>[0],
+  ): Promise<Awaited<ReturnType<PlatformStore['listDerivedArchiveViews']>>> {
+    return {
+      views: [],
+      page: {
+        cursor: null,
+        nextCursor: null,
+        hasMore: false,
+      },
+    };
   }
 
   async getCurrentProcessRequest(): Promise<CurrentProcessRequest | null> {

@@ -366,10 +366,10 @@ export async function createApp(options: CreateAppOptions = {}) {
     );
   const archiveReadService =
     options.archiveReadService ??
-    new DefaultArchiveReadService(platformStore, processAccessService);
+    new DefaultArchiveReadService(platformStore, processAccessService, sourceProvenanceService);
   const turnDerivationService =
     options.turnDerivationService ??
-    new DefaultTurnDerivationService(platformStore, processAccessService);
+    new DefaultTurnDerivationService(platformStore, processAccessService, sourceProvenanceService);
   const derivedArchiveViewService =
     options.derivedArchiveViewService ??
     new DefaultDerivedArchiveViewService(

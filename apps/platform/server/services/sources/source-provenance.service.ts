@@ -25,13 +25,13 @@ export interface SourceProvenanceService {
     processId: string;
     usedSourceAttachmentIds: string[];
     eventId?: string | null;
-  }): Promise<void>;
+  }): Promise<StoredSourceProvenanceRecord[]>;
   recordReceivedCodeUpdates(args: {
     projectId: string;
     processId: string;
     codeTargets: CodeCheckpointTarget[];
     eventId?: string | null;
-  }): Promise<void>;
+  }): Promise<StoredSourceProvenanceRecord[]>;
   listProcessSourceProvenance(args: {
     projectId: string;
     processId: string;
@@ -52,9 +52,9 @@ export class DefaultSourceProvenanceService implements SourceProvenanceService {
     processId: string;
     usedSourceAttachmentIds: string[];
     eventId?: string | null;
-  }): Promise<void> {
+  }): Promise<StoredSourceProvenanceRecord[]> {
     if (args.usedSourceAttachmentIds.length === 0) {
-      return;
+      return [];
     }
 
     const [currentMaterialRefs, projectSourceAttachments] = await Promise.all([
@@ -90,7 +90,7 @@ export class DefaultSourceProvenanceService implements SourceProvenanceService {
         usedShadowKeys.has(buildSourceAttachmentShadowKey(sourceAttachment)),
     );
 
-    await Promise.all(
+    return await Promise.all(
       activeSourceAttachments.map((sourceAttachment) =>
         this.createProvenanceRecord({
           projectId: args.projectId,
@@ -108,9 +108,9 @@ export class DefaultSourceProvenanceService implements SourceProvenanceService {
     processId: string;
     codeTargets: CodeCheckpointTarget[];
     eventId?: string | null;
-  }): Promise<void> {
+  }): Promise<StoredSourceProvenanceRecord[]> {
     if (args.codeTargets.length === 0) {
-      return;
+      return [];
     }
 
     const projectSourceAttachments = await this.platformStore.listProjectSourceAttachments({
@@ -123,7 +123,7 @@ export class DefaultSourceProvenanceService implements SourceProvenanceService {
       ]),
     );
 
-    await Promise.all(
+    const maybeRecords = await Promise.all(
       Array.from(new Set(args.codeTargets.map((target) => target.sourceAttachmentId))).map(
         async (sourceAttachmentId) => {
           const sourceAttachment = sourceAttachmentsById.get(sourceAttachmentId);
@@ -133,10 +133,10 @@ export class DefaultSourceProvenanceService implements SourceProvenanceService {
             sourceAttachment.detachedAt != null ||
             sourceAttachment.accessMode !== 'read_write'
           ) {
-            return;
+            return null;
           }
 
-          await this.createProvenanceRecord({
+          return await this.createProvenanceRecord({
             projectId: args.projectId,
             processId: args.processId,
             sourceAttachment,
@@ -146,6 +146,8 @@ export class DefaultSourceProvenanceService implements SourceProvenanceService {
         },
       ),
     );
+
+    return maybeRecords.filter((record): record is StoredSourceProvenanceRecord => record !== null);
   }
 
   async listProcessSourceProvenance(args: {
@@ -203,8 +205,8 @@ export class DefaultSourceProvenanceService implements SourceProvenanceService {
     sourceAttachment: SourceAttachmentSummary;
     relationshipKind: SourceProvenanceEntry['relationshipKind'];
     eventId: string | null;
-  }): Promise<void> {
-    await this.platformStore.createSourceProvenance({
+  }): Promise<StoredSourceProvenanceRecord> {
+    return await this.platformStore.createSourceProvenance({
       projectId: args.projectId,
       processId: args.processId,
       sourceAttachmentId: args.sourceAttachment.sourceAttachmentId,

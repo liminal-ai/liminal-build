@@ -142,6 +142,15 @@ describe('Epic 07 Story 0 archive foundation contracts', () => {
       projectId: 'project-1',
       processId: 'process-1',
     });
+    expect(
+      getDerivedArchiveViewsRouteSchema.querystring.parse({
+        cursor: '10',
+        limit: '50',
+      }),
+    ).toEqual({
+      cursor: '10',
+      limit: 50,
+    });
     expect(archiveDerivedViewRefreshRequestSchema.parse({})).toEqual({});
     expect(postRefreshDerivedArchiveViewsRouteSchema.body.parse({})).toEqual({});
     expect(() => archiveDerivedViewRefreshRequestSchema.parse({ unexpected: true })).toThrow();

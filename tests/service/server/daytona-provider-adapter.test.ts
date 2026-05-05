@@ -226,6 +226,17 @@ describe('DaytonaProviderAdapter', () => {
           JSON.stringify({
             processStatus: 'completed',
             processHistoryItems: [],
+            archiveEntries: [
+              {
+                entryKind: 'reasoning',
+                finalizationKey: 'reasoning:daytona-1',
+                sourceObjectId: 'reasoning-daytona-1',
+                bodyText: 'Daytona preserved the canonical archive payload.',
+                bodyData: null,
+                bodyFormat: 'plain_text',
+                relatedToolCallId: null,
+              },
+            ],
             outputWrites: [],
             sideWorkWrites: [],
             artifactCheckpointCandidates: [],
@@ -248,6 +259,12 @@ describe('DaytonaProviderAdapter', () => {
     });
 
     expect(result.processStatus).toBe('completed');
+    expect(result.archiveEntries).toEqual([
+      expect.objectContaining({
+        entryKind: 'reasoning',
+        finalizationKey: 'reasoning:daytona-1',
+      }),
+    ]);
     expect(sandbox.uploadCalls.some((call) => call.destination === DAYTONA_SCRIPT_ENTRYPOINT)).toBe(
       true,
     );

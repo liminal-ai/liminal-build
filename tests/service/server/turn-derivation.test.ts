@@ -7,6 +7,7 @@ import {
 import { AuthUserSyncService } from '../../../apps/platform/server/services/auth/auth-user-sync.service.js';
 import { DefaultTurnDerivationService } from '../../../apps/platform/server/services/archive/turn-derivation.service.js';
 import { InMemoryPlatformStore } from '../../../apps/platform/server/services/projects/platform-store.js';
+import { DefaultSourceProvenanceService } from '../../../apps/platform/server/services/sources/source-provenance.service.js';
 import {
   archiveEntrySchema,
   buildProcessArchiveTurnsApiPath,
@@ -22,6 +23,7 @@ import {
   userArchiveEntryFixture,
 } from '../../fixtures/archive.js';
 import { completedProcessFixture } from '../../fixtures/processes.js';
+import { detachedSourceFixture } from '../../fixtures/sources.js';
 import { buildApp } from '../../utils/build-app.js';
 
 function createTestAuthSessionService(resolution: SessionResolution) {
@@ -81,7 +83,10 @@ function makeArchiveEntry(base: ArchiveEntry, overrides: Partial<ArchiveEntry>):
   });
 }
 
-function buildStore(archiveEntries: ArchiveEntry[]) {
+function buildStore(
+  archiveEntries: ArchiveEntry[],
+  overrides: Partial<ConstructorParameters<typeof InMemoryPlatformStore>[0]> = {},
+) {
   return new InMemoryPlatformStore({
     accessibleProjectsByUserId: {
       [`user:${actor.workosUserId}`]: [projectSummary],
@@ -98,7 +103,38 @@ function buildStore(archiveEntries: ArchiveEntry[]) {
     archiveEntriesByProcessId: {
       [processId]: archiveEntries,
     },
+    ...overrides,
   });
+}
+
+function buildHappyPathDerivedTurns() {
+  return [
+    {
+      turnId: `${processId}:turn:0`,
+      processId,
+      turnIndex: 0,
+      archiveEntryIds: [
+        'archive-entry-user-101',
+        'archive-entry-model-101',
+        'archive-entry-tool-call-101',
+        'archive-entry-tool-result-101',
+      ],
+      startedAt: '2026-05-01T12:00:00.000Z',
+      endedAt: '2026-05-01T12:00:03.000Z',
+      turnStatus: 'ready' as const,
+      degradationReason: null,
+    },
+    {
+      turnId: `${processId}:turn:1`,
+      processId,
+      turnIndex: 1,
+      archiveEntryIds: ['archive-entry-user-102', 'archive-entry-model-102'],
+      startedAt: '2026-05-01T12:01:00.000Z',
+      endedAt: '2026-05-01T12:01:02.000Z',
+      turnStatus: 'ready' as const,
+      degradationReason: null,
+    },
+  ];
 }
 
 async function buildTurnsApp(store: InMemoryPlatformStore) {
@@ -110,6 +146,19 @@ async function buildTurnsApp(store: InMemoryPlatformStore) {
     authUserSyncService: new AuthUserSyncService(store),
     platformStore: store,
   });
+}
+
+class StoredTurnsOnlyStore extends InMemoryPlatformStore {
+  archiveEntryReads = 0;
+
+  override async listArchiveEntries(args: {
+    processId: string;
+    cursor?: string | null;
+    limit: number;
+  }) {
+    this.archiveEntryReads += 1;
+    return super.listArchiveEntries(args);
+  }
 }
 
 function buildHappyPathArchiveEntries(): ArchiveEntry[] {
@@ -254,6 +303,43 @@ describe('turn derivation service and route', () => {
     await app.close();
   });
 
+  it('reuses cached turns on GET without rereading archive entries', async () => {
+    const store = new StoredTurnsOnlyStore({
+      accessibleProjectsByUserId: {
+        [`user:${actor.workosUserId}`]: [projectSummary],
+      },
+      projectAccessByProjectId: {
+        [projectId]: {
+          kind: 'accessible',
+          project: projectSummary,
+        },
+      },
+      processesByProjectId: {
+        [projectId]: [processSummary],
+      },
+      archiveEntriesByProcessId: {
+        [processId]: buildHappyPathArchiveEntries(),
+      },
+      archiveTurnsByProcessId: {
+        [processId]: buildHappyPathDerivedTurns(),
+      },
+    });
+    const app = await buildTurnsApp(store);
+    const response = await app.inject({
+      method: 'GET',
+      url: buildProcessArchiveTurnsApiPath({ projectId, processId }),
+      cookies: {
+        [sessionCookieName]: 'valid-session-cookie',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().turns).toHaveLength(2);
+    expect(store.archiveEntryReads).toBe(0);
+
+    await app.close();
+  });
+
   it('TC-4.4a degraded turn returned', async () => {
     const degradedEntries = [
       makeArchiveEntry(userArchiveEntryFixture, {
@@ -317,6 +403,74 @@ describe('turn derivation service and route', () => {
     await app.close();
   });
 
+  it('degrades turns when archive source provenance resolves to a detached source on reopen', async () => {
+    const detachedSourceProvenanceId = 'provenance-detached-turn-1';
+    const store = buildStore(
+      [
+        makeArchiveEntry(userArchiveEntryFixture, {
+          archiveEntryId: 'archive-entry-user-detached-1',
+          finalizationKey: 'response:history-user-detached-1',
+          sourceObjectId: 'history-user-detached-1',
+          sequence: 0,
+          recordedAt: '2026-05-01T12:12:00.000Z',
+        }),
+        makeArchiveEntry(processEventArchiveEntryFixture, {
+          archiveEntryId: 'archive-entry-event-detached-1',
+          finalizationKey: 'event:detached-1',
+          sourceObjectId: 'event-detached-1',
+          relatedArtifactVersionId: null,
+          relatedSourceProvenanceId: detachedSourceProvenanceId,
+          sequence: 1,
+          recordedAt: '2026-05-01T12:12:01.000Z',
+        }),
+      ],
+      {
+        sourceAttachmentsByProjectId: {
+          [projectId]: [detachedSourceFixture],
+        },
+        sourceProvenanceByProcessId: {
+          [processId]: [
+            {
+              provenanceId: detachedSourceProvenanceId,
+              projectId,
+              processId,
+              sourceAttachmentId: detachedSourceFixture.sourceAttachmentId,
+              relationshipKind: 'informed_work',
+              repositoryFullName: detachedSourceFixture.repositoryFullName,
+              repositoryUrl: detachedSourceFixture.repositoryUrl,
+              targetRef: detachedSourceFixture.targetRef,
+              eventId: null,
+              entryStatus: 'ready',
+              degradationReason: null,
+              recordedAt: '2026-05-01T12:12:01.000Z',
+            },
+          ],
+        },
+      },
+    );
+    const service = new DefaultTurnDerivationService(
+      store,
+      {
+        assertProcessAccess: async () => ({
+          kind: 'accessible' as const,
+          project: projectSummary,
+          process: processSummary,
+        }),
+      },
+      new DefaultSourceProvenanceService(store),
+    );
+
+    const turns = await service.rebuildTurns({ projectId, processId });
+
+    expect(turns).toEqual([
+      expect.objectContaining({
+        turnId: `${processId}:turn:0`,
+        turnStatus: 'degraded',
+        degradationReason: 'source_detached',
+      }),
+    ]);
+  });
+
   it('returns a bounded turn page with hasMore metadata for long archives', async () => {
     const archiveEntries = Array.from({ length: 55 }, (_, index) => {
       const sequenceBase = index * 2;
@@ -377,6 +531,8 @@ describe('turn derivation service and route', () => {
         archiveEntryId: 'archive-entry-event-301',
         finalizationKey: 'event:301',
         sourceObjectId: 'event-301',
+        relatedArtifactVersionId: null,
+        relatedSourceProvenanceId: null,
         sequence: 0,
         recordedAt: '2026-05-01T12:20:00.000Z',
       }),

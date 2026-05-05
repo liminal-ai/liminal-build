@@ -1,0 +1,4 @@
+{"timestamp":"2026-05-05T03:11:32.635Z","command":"story-verify","phase":"verifier-initial","event":"provider-output","summary":"Provider stdout output continues.","metadata":{"stream":"stdout"}}
+{"timestamp":"2026-05-05T03:11:32.763Z","command":"story-verify","phase":"verifier-initial","event":"provider-exit","summary":"Provider exited with code 0.","metadata":{"exitCode":0,"signal":null,"elapsedMs":434430,"configuredTimeoutMs":3600000}}
+{"timestamp":"2026-05-05T03:11:32.767Z","command":"story-verify","phase":"verifier-initial","event":"verifier-completed","summary":"Story verifier completed for 01-canonical-archive-entry-persistence.","metadata":{"outcome":"needs-human-ruling"}}
+{"timestamp":"2026-05-05T03:11:32.784Z","command":"story-verify","phase":"finalizing","event":"completed","summary":"story-verify completed for 01-canonical-archive-entry-persistence with outcome needs-human-ruling.","metadata":{"outcome":"needs-human-ruling","verifiersCompleted":1}}

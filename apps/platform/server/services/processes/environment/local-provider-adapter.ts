@@ -355,6 +355,7 @@ function buildFailureExecutionResult(reason: string): ExecutionResult {
         relatedArtifactId: null,
       },
     ],
+    archiveEntries: [],
     outputWrites: [],
     sideWorkWrites: [],
     artifactCheckpointCandidates: [],
@@ -398,6 +399,14 @@ function validateExecutionResult(value: unknown): ValidationResult<ExecutionResu
     }
   }
 
+  if (obj.archiveEntries !== undefined && !Array.isArray(obj.archiveEntries)) {
+    return { ok: false, reason: 'archiveEntries must be an array when provided.' };
+  }
+
+  if (obj.archiveEntries !== undefined && !Array.isArray(obj.archiveEntries)) {
+    return { ok: false, reason: 'Field archiveEntries must be an array when provided.' };
+  }
+
   if (
     obj.usedSourceAttachmentIds !== undefined &&
     (!Array.isArray(obj.usedSourceAttachmentIds) ||
@@ -418,6 +427,7 @@ function validateExecutionResult(value: unknown): ValidationResult<ExecutionResu
     value: {
       processStatus: obj.processStatus as ProcessExecutionStatus,
       processHistoryItems: obj.processHistoryItems as ExecutionResult['processHistoryItems'],
+      archiveEntries: (obj.archiveEntries as ExecutionResult['archiveEntries']) ?? [],
       outputWrites: obj.outputWrites as ExecutionResult['outputWrites'],
       sideWorkWrites: obj.sideWorkWrites as ExecutionResult['sideWorkWrites'],
       artifactCheckpointCandidates:

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "command": "story-continue",
+  "status": "completed",
+  "phase": "finalizing",
+  "startedAt": "2026-05-05T03:41:37.972Z",
+  "updatedAt": "2026-05-05T03:44:19.870Z",
+  "lastOutputAt": "2026-05-05T03:44:19.733Z",
+  "providerLiveness": "completed",
+  "provider": "codex",
+  "pid": 44975,
+  "cwd": "/Users/leemoore/code/liminal-build",
+  "timeoutMs": 7200000,
+  "configuredStartupTimeoutMs": 300000,
+  "configuredSilenceTimeoutMs": 600000,
+  "artifactPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/015-continue.json",
+  "streamPaths": {
+    "stdoutPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/streams/015-continue.stdout.log",
+    "stderrPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/streams/015-continue.stderr.log"
+  },
+  "progressPaths": {
+    "statusPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/progress/015-continue.status.json",
+    "progressPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/01-canonical-archive-entry-persistence/progress/015-continue.progress.jsonl"
+  },
+  "lastEvent": "completed",
+  "lastEventSummary": "story-continue completed for 01-canonical-archive-entry-persistence with outcome ready-for-verification.",
+  "selfReviewPassesCompleted": 0,
+  "selfReviewPassesPlanned": 0
+}

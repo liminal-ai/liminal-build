@@ -1,7 +1,7 @@
 # Team Implementation Log
 
 ## Run Overview
-- State: PRE_EPIC_VERIFY
+- State: COMPLETE
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views
 - Current Story: 07-reopen-and-degraded-archive-state
 - Current Phase: none
@@ -10,11 +10,11 @@
 - Primary Harness: claude-code
 - Story Lead Provider: codex / gpt-5.5 / high
 - Story Implementor: codex / gpt-5.4 / high
-- Quick Fixer: codex / gpt-5.4 / high
+- Quick Fixer: codex / gpt-5.4 / xhigh
 - Story Verifier: codex / gpt-5.4 / xhigh
 - Self Review Passes: 3
 - Epic Verifier 1: codex / gpt-5.4 / xhigh
-- Epic Verifier 2: none / claude-sonnet / high
+- Epic Verifier 2: codex / gpt-5.4 / xhigh
 - Epic Synthesizer: codex / gpt-5.4 / xhigh
 - Degraded Diversity: false
 
@@ -200,11 +200,11 @@
 - Latest Actual Total: 46
 
 ## Cleanup / Epic Verification
-- Cleanup Artifact: none
-- Cleanup Status: not-started
-- Epic Verification Status: not-started
-- Synthesis Status: not-started
-- Final Gate Status: not-run
+- Cleanup Artifact: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/cleanup/001-cleanup-batch.md
+- Cleanup Status: cleaned
+- Epic Verification Status: complete-after-fix-loop
+- Synthesis Status: reviewed
+- Final Gate Status: pass
 
 ## Open Risks / Accepted Risks
 - none
@@ -263,6 +263,23 @@
 - Story 7 initial verifier artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/07-reopen-and-degraded-archive-state/005-verify.json`; verifier returned `revise` with blocker `story-07-client-derived-view-shim`.
 - Story 7 quick-fix artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/quick-fix/008-quick-fix.json`; quick-fix removed the fabricated degraded derived-view bootstrap path and preserved archive usability by surfacing real derived-view route failure state instead.
 - Story 7 follow-up verifier artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/07-reopen-and-degraded-archive-state/009-verify.json`; outcome `pass`, `story-07-client-derived-view-shim` resolved, and no open findings remain.
+- Cleanup artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/cleanup/001-cleanup-batch.md`; no deferred or accepted-risk items remained, and `epic-cleanup` result `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/cleanup/002-cleanup-result.json` reported a no-op cleaned outcome.
+- Post-cleanup verification: `corepack pnpm run green-verify` passed before epic verification.
+- Epic verification artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/001-epic-verifier-batch.json`; outcome `block`. `epic-verifier-1` completed and raised blockers `archive-taxonomy-production-gap` and `archive-provenance-write-gap`. The original `epic-verifier-2` lane failed on unavailable `claude-sonnet`; the lane was reconfigured on 2026-05-05 to `codex / gpt-5.4 / xhigh` for the next epic verifier batch.
+- User direction on 2026-05-05: do not use CLI `quick-fix` for epic-verifier-driven fixes. Apply epic findings through explicit Codex subagents instead, with the orchestrator handling integration and re-verification.
+- Epic verification rerun artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/002-epic-verifier-batch.json`; outcome `block` with both codex verifier lanes completed. Shared remaining blockers after the archive write-path fix set:
+  - deferred archive entries are still lost when artifact/source bindings cannot be resolved at append time
+  - at least one verifier still treats the shipped default execution payload as an unacceptable production placeholder rather than accepted temporary debt
+  - one verifier also flags turn/derived-view degradation drift and archive source-provenance reopen drift as blocking gaps
+- Epic verification rerun artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/004-epic-verifier-batch.json`; outcome `revise`. One verifier lane passed. The remaining blocking findings are `epic7-deferred-archive-append-window` and `epic7-bounded-read-contract-drift`; placeholder-runtime and provenance-write blockers are no longer raised as closeout blockers in this batch.
+- Epic verification rerun artifact: `/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/005-epic-verifier-batch.json`; outcome `block`, used as the final CLI epic-verifier batch before the user-directed subagent-only fix loop.
+- Post-005 fix loop resolved the remaining substantive closeout issues through built-in subagents plus direct orchestrator verification:
+  - default runtime path no longer emits synthetic canonical archive rows on the integrated default path
+  - deferred archive entries persist immediately as degraded canonical rows and reconcile later
+  - turn and derived-view reads are cache-first and the derived-view pagination contract is implemented end to end
+  - `guard:no-test-changes` and `test:e2e` are real checks rather than scaffold-only skips
+- Final orchestrator verification on the closeout workspace: `corepack pnpm run verify-all` passed on 2026-05-05, including `format:check`, `lint`, `typecheck`, `build`, `test:convex`, `test:service`, `test:client`, `test:packages`, `test:integration`, and Playwright `test:e2e`.
+- Epic closeout decision: user directed closeout after the subagent fix loop and explicit direct verification in-thread. Epic marked `COMPLETE` without another CLI `epic-verify` rerun beyond batch `005`, and the prior synthesis artifact is treated as historical evidence that was superseded by later fixes and verification.
 - Convex rule: before any Convex code work, read `convex/_generated/ai/guidelines.md`.
 
 ## Spec-Pack Carry-Forward Notes

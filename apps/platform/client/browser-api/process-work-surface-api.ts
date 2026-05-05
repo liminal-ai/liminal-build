@@ -213,16 +213,25 @@ export async function getProcessArchiveTurns(args: {
 export async function getProcessDerivedArchiveViews(args: {
   projectId: string;
   processId: string;
+  cursor?: string | null;
+  limit?: number;
 }): Promise<DerivedArchiveViewListResponse> {
-  const response = await fetch(
+  const requestUrl = new URL(
     buildProcessDerivedArchiveViewsApiPath({
       projectId: args.projectId,
       processId: args.processId,
     }),
-    {
-      credentials: 'include',
-    },
+    window.location.origin,
   );
+  if (args.cursor !== undefined) {
+    requestUrl.searchParams.set('cursor', args.cursor ?? '');
+  }
+  if (args.limit !== undefined) {
+    requestUrl.searchParams.set('limit', String(args.limit));
+  }
+  const response = await fetch(requestUrl.pathname + requestUrl.search, {
+    credentials: 'include',
+  });
 
   if (!response.ok) {
     throw new ApiRequestError(await parseRequestError(response, buildArchiveFallbackRequestError));
