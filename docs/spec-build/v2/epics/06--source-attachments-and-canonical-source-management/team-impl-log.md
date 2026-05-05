@@ -1,10 +1,10 @@
 # Team Implementation Log
 
 ## Run Overview
-- State: EPIC_VERIFY_ACTIVE
+- State: EPIC_CLOSED
 - Spec Pack Root: /Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/06--source-attachments-and-canonical-source-management
 - Current Story: none
-- Current Phase: epic-verify
+- Current Phase: terminal
 
 ## Run Configuration
 - Primary Harness: claude-code
@@ -275,3 +275,14 @@
 - Batch summary: epic verification is still active because `epic-verifier-1` continues to stream output, even though `epic-verifier-2` has already failed.
 - Follow-up poll status: `epic-verifier-1` is still the only active lane and continues to emit stdout; latest recorded output is `2026-05-04T23:50:16.733Z`. `epic-verifier-2` remains failed with `PROVIDER_UNAVAILABLE`, and the overall batch has not yet finalized.
 - Latest poll status: `epic-verifier-1` remains active-with-output and continues streaming stdout; latest recorded output is `2026-05-04T23:53:51.874Z`. `epic-verifier-2` remains failed with `PROVIDER_UNAVAILABLE`, and the batch is still not finalized.
+
+## Epic Administrative Closeout
+- Closeout date: `2026-05-04`
+- Closeout mode: administrative closeout by user directive
+- Final run status: closed
+- Epic Verification Status: stopped before convergence
+- Synthesis Status: skipped by directive
+- Final Gate Status: not run after the last epic-fix implementation pass
+- Cleanup Status: complete; cleanup batch remained empty
+- Story Status: Stories 0 through 6 accepted and committed
+- Closeout note: this spec pack was closed explicitly by user instruction after implementation and partial epic-closeout work. The formal epic verification and synthesis loop was not completed to convergence, so this closeout records an intentional stop rather than a fully verified epic-complete receipt.
