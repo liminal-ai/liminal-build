@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "command": "epic-verify",
+  "status": "completed",
+  "phase": "finalizing",
+  "startedAt": "2026-05-05T18:51:44.424Z",
+  "updatedAt": "2026-05-05T19:02:21.186Z",
+  "lastOutputAt": "2026-05-05T19:02:20.871Z",
+  "providerLiveness": "completed",
+  "provider": "codex",
+  "pid": 6969,
+  "cwd": "/Users/leemoore/code/liminal-build",
+  "timeoutMs": 3600000,
+  "configuredStartupTimeoutMs": 300000,
+  "configuredSilenceTimeoutMs": 600000,
+  "artifactPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/008-epic-verifier-batch.json",
+  "streamPaths": {
+    "stdoutPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/streams/008-epic-verifier-batch.stdout.log",
+    "stderrPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/streams/008-epic-verifier-batch.stderr.log"
+  },
+  "progressPaths": {
+    "statusPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/progress/008-epic-verifier-batch.status.json",
+    "progressPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/progress/008-epic-verifier-batch.progress.jsonl"
+  },
+  "lastEvent": "completed",
+  "lastEventSummary": "epic-verify completed with outcome revise.",
+  "verifiersCompleted": 2,
+  "verifiersPlanned": 2,
+  "verifierLanes": [
+    {
+      "label": "epic-verifier-1",
+      "provider": "codex",
+      "state": "completed",
+      "providerLiveness": "completed",
+      "lastOutputAt": "2026-05-05T19:02:20.871Z",
+      "lastEvent": "verifier-completed",
+      "lastEventSummary": "epic-verifier-1 completed for epic verification."
+    },
+    {
+      "label": "epic-verifier-2",
+      "provider": "claude-code",
+      "state": "completed",
+      "providerLiveness": "completed",
+      "lastOutputAt": "2026-05-05T18:57:48.947Z",
+      "lastEvent": "verifier-completed",
+      "lastEventSummary": "epic-verifier-2 completed for epic verification."
+    }
+  ]
+}

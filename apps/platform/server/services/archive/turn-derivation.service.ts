@@ -100,10 +100,6 @@ export class DefaultTurnDerivationService implements TurnDerivationService {
       return archiveTurnPageSchema.parse(storedPage);
     }
 
-    if (await hasStoredTurns(this.platformStore, args.processId)) {
-      return archiveTurnPageSchema.parse(storedPage);
-    }
-
     if (!(await hasArchiveEntries(this.platformStore, args.processId))) {
       return archiveTurnPageSchema.parse(storedPage);
     }
@@ -128,19 +124,6 @@ export class DefaultTurnDerivationService implements TurnDerivationService {
   }): Promise<void> {
     await this.rebuildTurns(args);
   }
-}
-
-async function hasStoredTurns(
-  platformStore: Pick<PlatformStore, 'listArchiveTurns'>,
-  processId: string,
-): Promise<boolean> {
-  const firstPage = await platformStore.listArchiveTurns({
-    processId,
-    cursor: null,
-    limit: 1,
-  });
-
-  return firstPage.turns.length > 0;
 }
 
 async function hasArchiveEntries(

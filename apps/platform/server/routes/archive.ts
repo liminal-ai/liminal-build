@@ -56,8 +56,6 @@ function renderUnavailableShell(title: string, message: string): string {
 }
 
 export async function registerArchiveRoutes(app: FastifyInstance): Promise<void> {
-  void archiveRoutePatterns;
-
   const typedApp = app.withTypeProvider<ZodTypeProvider>();
 
   typedApp.get(

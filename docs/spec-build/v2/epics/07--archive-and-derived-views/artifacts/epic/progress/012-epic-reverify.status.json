@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "command": "epic-reverify",
+  "status": "completed",
+  "phase": "finalizing",
+  "startedAt": "2026-05-05T23:53:25.363Z",
+  "updatedAt": "2026-05-05T23:55:14.175Z",
+  "lastOutputAt": "2026-05-05T23:55:14.001Z",
+  "providerLiveness": "completed",
+  "provider": "claude-code",
+  "pid": 3946,
+  "cwd": "/Users/leemoore/code/liminal-build",
+  "timeoutMs": 3600000,
+  "configuredStartupTimeoutMs": 300000,
+  "configuredSilenceTimeoutMs": 600000,
+  "artifactPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/012-epic-reverify.json",
+  "streamPaths": {
+    "stdoutPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/streams/012-epic-reverify.stdout.log",
+    "stderrPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/streams/012-epic-reverify.stderr.log"
+  },
+  "progressPaths": {
+    "statusPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/progress/012-epic-reverify.status.json",
+    "progressPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/progress/012-epic-reverify.progress.jsonl"
+  },
+  "lastEvent": "completed",
+  "lastEventSummary": "epic-reverify completed with outcome ready-for-closeout."
+}

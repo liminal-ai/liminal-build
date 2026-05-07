@@ -28,7 +28,7 @@ export class ArchiveFinalizationService {
       throw new Error('Finalized archive entries require a non-empty finalizationKey.');
     }
 
-    if (sourceObjectId === null) {
+    if (sourceObjectId === null && requiresSourceObjectId(args.entryKind)) {
       throw new Error(`Finalized ${args.entryKind} entries require a sourceObjectId.`);
     }
 
@@ -135,6 +135,17 @@ export class ArchiveFinalizationService {
 
 function toBodyFormat(text: string): ArchiveBodyFormat {
   return text.trim().length > 0 ? 'plain_text' : 'none';
+}
+
+function requiresSourceObjectId(entryKind: ArchiveEntryKind): boolean {
+  switch (entryKind) {
+    case 'user_message':
+    case 'model_message':
+    case 'process_event':
+      return true;
+    default:
+      return false;
+  }
 }
 
 function normalizeOptionalString(value: string | null | undefined): string | null {

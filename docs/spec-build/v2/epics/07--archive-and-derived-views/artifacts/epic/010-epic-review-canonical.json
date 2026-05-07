@@ -1,0 +1,227 @@
+{
+  "outcome": "pass",
+  "reviewerLabels": [
+    "epic-reviewer-1",
+    "epic-reviewer-2",
+    "epic-reviewer-3",
+    "epic-reviewer-4"
+  ],
+  "reconciliationSummary": "Two codex reviewers (epic-reviewer-1, epic-reviewer-2) blocked; two Claude reviewers (epic-reviewer-3, epic-reviewer-4) passed. Independent verification of the three contested findings resolves all downward. (1) EPIC7-B001 — no first-party producers for five of seven archive kinds: confirmed in code (script-execution.service.ts emits archiveEntries: []). However, Epic 7 scope covers the archive infrastructure, not a model-driven runtime. The team-impl-log records this as accepted platform-standup state and the source comment states the payload 'must not synthesize canonical archive entries'. Tests exercise all seven entry kinds via fixtures against the Convex primitive. This is a scope-conformant observation, not a blocking violation. Downgraded to CANON-N001. (2) EPIC7-B002 — stale cache during deferred reconciliation: confirmed that computeArchiveSignature fingerprints only archiveEntryId:sequence:recordedAt, omitting provenance and status fields. However, patchArchiveEntry already calls invalidateArchiveDerivedCaches atomically (convex/archiveEntries.ts:226), deleting all cached turns and views before returning. The residual risk is a narrow race where a concurrent rebuild reads pre-patch state and repopulates the cache after the invalidation; effect is transient inconsistency, not data corruption or data loss. Downgraded to CANON-N002. (3) epic7-public-convex-archive-bypass — public Convex archive functions lack apiKey gating: confirmed that archiveEntries and archiveTurns export raw mutation/query without the *ForService+apiKey pattern that derivedArchiveViews uses. However, a codebase grep found no ConvexProvider, ConvexReactClient, or VITE_CONVEX URL in the client directory; Convex is accessed exclusively server-side through ConvexPlatformStore. The public mutations validate processId/projectId ownership. The pattern is consistent with other repo tables (processes.ts, processOutputs.ts, sourceProvenance.ts). This is an asymmetric hardening gap from Story 5, not an end-user-accessible security bypass. Downgraded to CANON-N003. Both verification gates (green-verify and verify-all) passed in two independent codex runs, and all eight story gates passed in the team-impl-log. The epic infrastructure is correctly implemented with the platform-standup-state limitations explicitly documented and accepted.",
+  "crossStoryFindings": [
+    "All eight stories compose correctly into the intended archive → turns → structural views flow: canonical entry persistence (Story 1) → finalization boundary (Story 2) → read/reopen surface (Story 3) → turn derivation (Story 4) → structural views (Story 5) → provenance enrichment (Story 6) → degraded-state hardening (Story 7). No cross-story schema or ID drift found.",
+    "Cache invalidation is consistent end-to-end: appendArchiveEntry and patchArchiveEntry in convex/archiveEntries.ts delete all cached archiveTurns and derivedArchiveViews atomically; upsertArchiveTurns in convex/archiveTurns.ts deletes all cached derivedArchiveViews. This preserves the tech-design contract that turns and views are rebuildable projections, never canonical truth.",
+    "Deferred archive patching (applyExecutionResultSideEffects writes a degraded row first, reconcileDeferredArchiveEntries patches later) correctly invalidates cached turns and views on patch. The computeArchiveSignature fingerprint in derived-archive-view.service.ts omits provenance and status fields, leaving a narrow race where a concurrent rebuild can repopulate the cache from pre-patch archive state after the patch invalidation. Effect is transient inconsistency, not permanent data corruption.",
+    "Turn IDs are stable deterministic strings (processId:turn:turnIndex); derived view IDs are deterministic (processId:derived-view:viewKind:startIndex-endIndex). Provenance remains traceable across cache rebuilds as the tech design requires.",
+    "The first-party runtime archives only user_message (via process-response.service.ts) and process_event (bridged via appendFromProcessHistoryItem). The remaining five PRD-mandated entry kinds (model_message, reasoning, script_emission, tool_call, tool_result) are accepted by the Convex primitive and exercised by tests, but the default integrated execution payload returns archiveEntries: []. This is accepted platform-standup state per the team-impl-log and does not violate Epic 7 scope, which covers archive infrastructure rather than model-driven runtime content."
+  ],
+  "architectureFindings": [
+    "Module layout matches the tech design: convex/archiveEntries.ts, convex/archiveTurns.ts, convex/derivedArchiveViews.ts, convex/schema.ts, archive services, archive routes, contracts, and client sections are all present and wired as specified.",
+    "Fastify owns finalization policy and access enforcement; Convex owns atomic sequence assignment, idempotency guard, and durable storage — consistent with the architecture split. Route handlers call processAccessService.assertProcessAccess before any archive read service runs.",
+    "Asymmetric apiKey gating: convex/derivedArchiveViews.ts uses internalMutation/internalQuery plus *ForService apiKey-checked public wrappers (Story 5 hardening). convex/archiveEntries.ts and convex/archiveTurns.ts expose raw mutation/query. Browser clients have no direct Convex access (no ConvexProvider or VITE_CONVEX URL in client code), so the practical security risk is low. The pattern inconsistency relative to Story 5 is a cohesion gap worth resolving in a follow-up.",
+    "computeArchiveSignature in derived-archive-view.service.ts fingerprints only archiveEntryId:sequence:recordedAt. Patches to relatedArtifactVersionId, relatedSourceProvenanceId, relatedToolCallId, entryStatus, or degradationReason via patchArchiveEntry are invisible to the conflict detector. Since patchArchiveEntry also invalidates the cache atomically, the residual risk is a narrow concurrent-rebuild race rather than a systematic data integrity gap.",
+    "NullPlatformStore is correctly rejected in production (createApp enforces this at startup). It boots without error in non-production, returning synthetic archive responses — a deliberate fallback documented in source comments."
+  ],
+  "epicCoverageAssessment": [
+    "AC-1.x (canonical entry persistence, taxonomy, ordering, idempotency, related-id links): Covered. convex/archiveEntries.ts appendArchiveEntry validates all seven entry kinds via a Set, assigns sequence atomically, and enforces finalizationKey idempotency per process.",
+    "AC-2.x (live/archive separation, finalization boundary): Covered. ArchiveFinalizationService is called only from completion points — accepted user responses (process-response.service.ts) and completed runtime objects (process-environment.service.ts). Raw deltas and interrupted partials never call append.",
+    "AC-3.x (archive read, reopen, access boundaries, degraded entry display): Covered. processAccessService.assertProcessAccess is called before every archive read. Empty and degraded states flow through the archivePageSchema parse contract.",
+    "AC-4.x (turn derivation, archive-entry immutability, degraded turn handling): Covered. deriveTurnsFromArchiveEntries is deterministic over sorted entries. Degradation propagates from entries to turns without mutating archive rows.",
+    "AC-5.x (structural derived views without model-generated summaries): Covered. buildDerivedArchiveViews generates turn_range and chunk_candidate views with deterministic structural labels only; no model-generated content path exists.",
+    "AC-6.x (artifact and source provenance enrichment, per-entry degradation): Covered. enrichArchiveEntries batches artifact version and source provenance lookups; each entry degrades independently when its related record is unavailable.",
+    "AC-7.x (reload/environment-loss survival, bounded reads, derived-view failure isolation): Covered. All reads use durable Convex storage. Pagination limits are enforced. Archive reads succeed when derived-view refresh throws — routes handle them independently.",
+    "Service tests for non-user archive kinds inject RuntimeArchiveEntry fixtures directly; no checked-in production execution path emits model_message, reasoning, script_emission, tool_call, or tool_result. Tests prove the infrastructure works; the production producer gap is accepted scope-defer per team-impl-log.",
+    "Browser e2e test (archive-runtime-flow.spec.ts) uses InMemoryPlatformStore with pre-populated fixtures and validates routing, shell, and UI rendering against a live Fastify server. It does not exercise a ConvexPlatformStore durable-storage round-trip. Acceptable for Epic 7 closeout; convex/archiveEntries.test.ts and service suites cover durable behavior."
+  ],
+  "productionPathFindings": [
+    "ConvexPlatformStore is the production store and calls real Convex functions: appendArchiveEntry, upsertArchiveTurns, replaceDerivedArchiveViewsForService, and corresponding reads. No shims or fake adapters on the production path.",
+    "DefaultArchiveReadService, DefaultTurnDerivationService, and DefaultDerivedArchiveViewService are instantiated unconditionally in app.ts when not overridden via test options.",
+    "NullPlatformStore and InMemoryPlatformStore are test doubles only. NullPlatformStore is explicitly rejected in production (createApp throws when NODE_ENV=production or LIMINAL_VITE_RUNTIME_MODE=production). InMemoryPlatformStore is only reachable via test options.",
+    "The default integrated execution payload (buildIntegratedWorkspaceExecutionSource) sets archiveEntries: [] and emits a single process_event history item per run. Canonical archive rows for model_message, reasoning, script_emission, tool_call, and tool_result are not produced by any checked-in production code path. Explicitly accepted as platform-standup state in the team-impl-log and in source-level comments.",
+    "archiveFinalizationService is constructed with a default new ArchiveFinalizationService(platformStore) inside ProcessEnvironmentService and ProcessResponseService constructors. In production, platformStore resolves to ConvexPlatformStore, so the archive finalization path is real and durable."
+  ],
+  "blockingFindings": [],
+  "nonBlockingFindings": [
+    {
+      "id": "CANON-N001",
+      "severity": "observation",
+      "title": "Production runtime emits only two of the seven canonical archive entry kinds",
+      "evidence": "apps/platform/server/services/processes/environment/script-execution.service.ts buildIntegratedWorkspaceExecutionSource returns archiveEntries: [] in its result payload. process-environment.service.ts bridges process_event from history items; process-response.service.ts archives user_message on accepted responses. No checked-in production code path emits model_message, reasoning, script_emission, tool_call, or tool_result. The Convex primitive and service layer accept all seven kinds and tests exercise them via fixtures. The team-impl-log records this as accepted platform-standup state; the source comment explicitly notes the payload 'must not synthesize canonical archive entries'. Epic 7 scope covers archive infrastructure, not model-driven runtime content.",
+      "affectedFiles": [
+        "apps/platform/server/services/processes/environment/script-execution.service.ts",
+        "apps/platform/server/services/processes/environment/process-environment.service.ts",
+        "apps/platform/server/services/processes/process-response.service.ts"
+      ],
+      "requirementIds": [
+        "AC-1.2"
+      ],
+      "recommendedFixScope": "human-ruling",
+      "blocking": false
+    },
+    {
+      "id": "CANON-N002",
+      "severity": "minor",
+      "title": "computeArchiveSignature omits provenance and status fields; concurrent rebuild can repopulate cache from pre-patch archive state",
+      "evidence": "apps/platform/server/services/archive/derived-archive-view.service.ts:262-270 fingerprints only archiveEntryId:sequence:recordedAt. Patches to relatedArtifactVersionId, relatedSourceProvenanceId, relatedToolCallId, entryStatus, or degradationReason via convex/archiveEntries.ts patchArchiveEntry are invisible to the drift detector. patchArchiveEntry calls invalidateArchiveDerivedCaches atomically (convex/archiveEntries.ts:226) deleting cached turns and views. The residual risk is a narrow race: a turn rebuild that started before the patch lands and completes after the cache was cleared will upsert turns derived from pre-patch archive state, repopulating the cache with stale projections. A subsequent derived-view refresh would then read those stale turns. Effect is transient inconsistency rather than permanent data corruption.",
+      "affectedFiles": [
+        "apps/platform/server/services/archive/derived-archive-view.service.ts",
+        "convex/archiveEntries.ts",
+        "apps/platform/server/services/archive/turn-derivation.service.ts"
+      ],
+      "requirementIds": [
+        "AC-4.1",
+        "AC-4.4",
+        "AC-5.5",
+        "AC-7.1"
+      ],
+      "recommendedFixScope": "fresh-fix-path",
+      "blocking": false
+    },
+    {
+      "id": "CANON-N003",
+      "severity": "minor",
+      "title": "archiveEntries and archiveTurns Convex functions lack the apiKey gate that derivedArchiveViews uses",
+      "evidence": "convex/archiveEntries.ts:94, :150, :182 and convex/archiveTurns.ts:45, :96 expose appendArchiveEntry, listArchiveEntries, patchArchiveEntry, upsertArchiveTurns, and listArchiveTurns as raw mutation/query without the apiKey check that convex/derivedArchiveViews.ts:91-107 adds via replaceDerivedArchiveViewsForService. A grep of the client directory found no ConvexProvider, ConvexReactClient, or VITE_CONVEX URL exposure; Convex is accessed exclusively server-side by ConvexPlatformStore. The mutations validate processId/projectId ownership. The pattern is consistent with repo convention for other tables (processes.ts, processOutputs.ts, sourceProvenance.ts) but asymmetric with the Story 5 hardening pattern applied to derivedArchiveViews.",
+      "affectedFiles": [
+        "convex/archiveEntries.ts",
+        "convex/archiveTurns.ts",
+        "convex/derivedArchiveViews.ts"
+      ],
+      "requirementIds": [
+        "AC-3.3",
+        "A6"
+      ],
+      "recommendedFixScope": "human-ruling",
+      "blocking": false
+    },
+    {
+      "id": "CANON-N004",
+      "severity": "minor",
+      "title": "Derived-view Convex pagination reads the prefix on every page (O(p²) over page index)",
+      "evidence": "convex/derivedArchiveViews.ts listDerivedArchiveViews decodes a numeric offset cursor and calls .take(args.limit + decodedCursor + 1), then slices. Page N loads N×limit rows server-side. Total derived views per process are structurally bounded (~1.5× turn count) and the route caps limit at 50, so behavior stays bounded for realistic process sizes but has a quadratic scaling shape if process sizes grow. apps/platform/server/services/archive/derived-archive-view.service.ts also accepts any digit-only cursor without range validation.",
+      "affectedFiles": [
+        "convex/derivedArchiveViews.ts",
+        "apps/platform/server/services/archive/derived-archive-view.service.ts"
+      ],
+      "requirementIds": [
+        "AC-7.3"
+      ],
+      "recommendedFixScope": "fresh-fix-path",
+      "blocking": false
+    },
+    {
+      "id": "CANON-N005",
+      "severity": "minor",
+      "title": "appendFinalizedEntry enforces non-null sourceObjectId for all entry kinds; spec marks it optional",
+      "evidence": "apps/platform/server/services/archive/archive-finalization.service.ts:31-33 throws for any null sourceObjectId regardless of entry kind. The epic schema marks sourceObjectId optional (nullable when not applicable). If a runtime emits a reasoning or script_emission entry without a sourceObjectId, appendFinalizedEntry will throw rather than delegating to the Convex layer's nullable schema.",
+      "affectedFiles": [
+        "apps/platform/server/services/archive/archive-finalization.service.ts"
+      ],
+      "requirementIds": [
+        "AC-1.1",
+        "AC-2.3"
+      ],
+      "recommendedFixScope": "quick-fix",
+      "blocking": false
+    },
+    {
+      "id": "CANON-N006",
+      "severity": "observation",
+      "title": "NullPlatformStore boots without error outside production, masking missing Convex configuration in local/staging environments",
+      "evidence": "apps/platform/server/app.ts:190-227 defaults to NullPlatformStore when hasLiveConvexConfig returns false, only hard-failing when NODE_ENV=production or LIMINAL_VITE_RUNTIME_MODE=production. NullPlatformStore returns synthetic archive write acknowledgements and empty archive/turn/derived-view reads. This is a deliberate non-real path but can mask missing Convex configuration in non-production environments.",
+      "affectedFiles": [
+        "apps/platform/server/app.ts",
+        "apps/platform/server/services/projects/platform-store.ts"
+      ],
+      "requirementIds": [
+        "AC-3.2",
+        "AC-7.1"
+      ],
+      "recommendedFixScope": "human-ruling",
+      "blocking": false
+    },
+    {
+      "id": "CANON-N007",
+      "severity": "observation",
+      "title": "listAllArchiveEntries pagination helper is duplicated across two service files",
+      "evidence": "An identical pagination loop appears in both apps/platform/server/services/archive/turn-derivation.service.ts (lines 159-182) and apps/platform/server/services/archive/derived-archive-view.service.ts (lines 273-296). Implementations are semantically identical. Not a functional problem but a cohesion gap relative to the module responsibility matrix.",
+      "affectedFiles": [
+        "apps/platform/server/services/archive/turn-derivation.service.ts",
+        "apps/platform/server/services/archive/derived-archive-view.service.ts"
+      ],
+      "requirementIds": [],
+      "recommendedFixScope": "quick-fix",
+      "blocking": false
+    },
+    {
+      "id": "CANON-N008",
+      "severity": "observation",
+      "title": "hasStoredTurns check in getTurns is redundant after storedPage.turns.length === 0 is confirmed",
+      "evidence": "apps/platform/server/services/archive/turn-derivation.service.ts:103 calls hasStoredTurns (limit:1) after storedPage.turns.length === 0 has already been established. Both queries hit the same first page with cursor=null; the extra round-trip cannot return a different result.",
+      "affectedFiles": [
+        "apps/platform/server/services/archive/turn-derivation.service.ts"
+      ],
+      "requirementIds": [],
+      "recommendedFixScope": "quick-fix",
+      "blocking": false
+    },
+    {
+      "id": "CANON-N009",
+      "severity": "observation",
+      "title": "void archiveRoutePatterns statement in archive.ts is a code smell",
+      "evidence": "apps/platform/server/routes/archive.ts:59 contains `void archiveRoutePatterns;` which evaluates and discards an object. Appears to suppress a lint warning about an unused import rather than serving any runtime purpose.",
+      "affectedFiles": [
+        "apps/platform/server/routes/archive.ts"
+      ],
+      "requirementIds": [],
+      "recommendedFixScope": "quick-fix",
+      "blocking": false
+    },
+    {
+      "id": "CANON-N010",
+      "severity": "observation",
+      "title": "Derived view page limit of 50 may truncate views for processes with 25+ turns",
+      "evidence": "apps/platform/server/services/archive/derived-archive-view.service.ts MAX_DERIVED_ARCHIVE_VIEW_LIMIT=50. buildDerivedArchiveViews emits one turn_range per turn plus one chunk_candidate per two turns, so a process with 34+ turns generates more than 50 views. Pagination is plumbed but client sections may not surface the next-page cursor to users yet.",
+      "affectedFiles": [
+        "apps/platform/server/services/archive/derived-archive-view.service.ts",
+        "apps/platform/client/features/processes/derived-archive-views-section.ts"
+      ],
+      "requirementIds": [
+        "AC-5.1",
+        "AC-7.3"
+      ],
+      "recommendedFixScope": "human-ruling",
+      "blocking": false
+    },
+    {
+      "id": "CANON-N011",
+      "severity": "observation",
+      "title": "Default integrated execution payload is a static template rather than a model-driven runtime",
+      "evidence": "apps/platform/server/services/processes/environment/script-execution.service.ts:20-296 builds execution source using a runtimeProfileByProcessType lookup that hard-codes artifact title, source note title, history text, and commit message per process type. Real files are written and real checkpoint candidates produced, but synthesis content is not model-generated. Source comment documents this as intentional: 'The default payload may produce runtime artifacts/checkpoint candidates, but it must not synthesize canonical archive entries.'",
+      "affectedFiles": [
+        "apps/platform/server/services/processes/environment/script-execution.service.ts"
+      ],
+      "requirementIds": [],
+      "recommendedFixScope": "human-ruling",
+      "blocking": false
+    },
+    {
+      "id": "CANON-N012",
+      "severity": "observation",
+      "title": "Archive e2e test validates routing and UI against InMemoryPlatformStore, not a real Convex durable-storage round-trip",
+      "evidence": "tests/e2e/archive-runtime-flow.spec.ts:67-86 constructs InMemoryPlatformStore with pre-populated archive/turn/view fixtures and passes it via buildApp's platformStore option. Playwright asserts on rendered DOM against a live Fastify server. This validates routing, shell, and UI rendering but does not exercise ConvexPlatformStore. Acceptable for Epic 7 closeout; convex/archiveEntries.test.ts and service suites cover durable behavior.",
+      "affectedFiles": [
+        "tests/e2e/archive-runtime-flow.spec.ts",
+        "tests/utils/build-app.ts"
+      ],
+      "requirementIds": [],
+      "recommendedFixScope": "human-ruling",
+      "blocking": false
+    }
+  ],
+  "unresolvedItems": [
+    "Whether the apiKey gate pattern from derivedArchiveViews (Story 5 hardening) should be propagated to archiveEntries and archiveTurns needs a human ruling. The current pattern is consistent with repo convention for other tables but asymmetric with the Story 5 fix. Resolution depends on whether the Convex deployment URL is treated as a private server-to-server boundary or as a potentially leakable surface.",
+    "Whether NullPlatformStore availability outside production is acceptable for local/staging bootstrapping or should be restricted to avoid masking missing Convex config. No code change warranted without a human policy decision.",
+    "If real model/tool producers are wired before a dedicated hardening story, CANON-N002 (archive signature gap) and CANON-N005 (appendFinalizedEntry sourceObjectId strictness) are the two items most likely to surface as observable runtime bugs at that time."
+  ],
+  "gateResult": "pass"
+}

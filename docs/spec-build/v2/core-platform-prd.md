@@ -21,6 +21,31 @@ review-surface concerns that previously sat inside the first two epics of the
 Spec Steward v1 PRD. Those are now treated as platform enablement rather than
 as product-specific feature work.
 
+### Post-Implementation Addendum
+
+The v2 platform standup has now implemented the seven platform epics described
+by this PRD and its downstream specs. The PRD remains accurate as the product
+intent for the platform core: a process-first substrate for crafted software
+planning and implementation processes.
+
+Inline post-implementation notes now record where the landed v2 platform
+settled details, intentionally deferred scope, or exposed short-term hardening
+items. These notes are meant to let one read of this PRD show both the planned
+product state and the actual current state at the end of the v2 standup.
+
+### Current Known Hardening Items
+
+These are not PRD premise failures. They are short-term platform hardening or
+validation items to handle before heavy product reliance:
+
+- harden sandbox execution so scripts run with an explicit minimal environment
+  variable allowlist instead of inheriting server secrets
+- move `ExecutionResult` to stricter shared schema validation
+- review Epic 6 source-management behavior in implementation before building
+  heavily on repository/source flows
+- integrate `lspec-core` as orchestration envelope/flow machinery above
+  `ExecutionResult`, not inside it
+
 ---
 
 ## Product Vision
@@ -63,6 +88,18 @@ systems:
 The platform does not replace those inputs. It turns them into a coherent
 working system with durable state, reviewable artifacts, and controlled
 execution environments.
+
+**Post-implementation state:** The ecosystem direction landed as native
+platform substrate rather than as loose tool stitching. MDV-style markdown,
+Mermaid, package snapshot, and export behavior landed inside the platform,
+including `@liminal-build/markdown-package`. GitHub-backed repository sources,
+source provenance, Convex-backed artifact versions, and canonical archive
+entries also landed.
+
+The remaining ecosystem integration question is now more specific:
+`lspec-core` should be integrated as higher-level orchestration envelope/flow
+machinery above the controlled execution result boundary, not merged directly
+into `ExecutionResult`.
 
 ---
 
@@ -168,6 +205,17 @@ three crafted process types.
 - Integration seams for GitHub, MCP, and the initial provider set:
   local, Daytona, and Cloudflare Sandbox
 
+**Post-implementation state:** The landed v2 platform implements the core
+project/process shell, process work surface, Local + Daytona environment
+providers, controlled one-shot TypeScript execution, artifact checkpointing,
+artifact review/package export, artifact provenance alignment, GitHub-backed
+repository attachment, source provenance, canonical archive entries, derived
+turns, and structural derived archive views.
+
+The implemented v2 provider set is Local + Daytona only. Cloudflare Sandbox
+remains a deferred provider-validation target, and MCP-backed/non-repository
+source attachment remains a deferred source-integration seam.
+
 ### Out of Scope
 
 - Dynamic user-authored process schemas or a no-code process builder
@@ -186,6 +234,15 @@ three crafted process types.
 | A3 | Convex will be used primarily as durable state and artifact persistence rather than as the primary backend control plane | Validated | This is an intentional architectural choice |
 | A4 | Sandboxed filesystems are always disposable working state and can be reconstructed from canonical stores | Validated | Unpublished local changes may be lost if a sandbox is discarded |
 | A5 | Artifact-heavy processes may still need one or more code repositories hydrated into their environment for research or review | Validated | Not only implementation processes need repo access |
+
+**Post-implementation state:** These assumptions held. The main nuance is that
+Local + Daytona are the implemented provider set; Cloudflare is deferred. The
+controlled execution path is real, but the current tool surface is still an
+initial script/result-file boundary rather than a mature process-specific
+capability manifest. Before untrusted/model-generated scripts are treated as
+fully isolated, sandbox script execution should use an explicit minimal
+environment variable allowlist, and `ExecutionResult` should use stricter
+shared schema validation.
 
 ---
 
@@ -228,6 +285,19 @@ refresh or reconstruct state manually to understand what changed.
 **Archive fidelity:** The platform must preserve a full-fidelity canonical
 record of process history even when active model context later uses chunked,
 summarized, or otherwise managed views.
+
+**Post-implementation state:** The NFRs largely landed. Notable current-state
+clarifications:
+
+- review readability landed through server-rendered sanitized markdown, Mermaid
+  sidecars/client hydration, package snapshots, and `.mpkz` export
+- hydration visibility landed through environment state, source hydration
+  state, freshness metadata, and `workingSetFingerprint`-based stale projection
+- archive fidelity landed as finalized `archiveEntries`, with `archiveTurns`
+  and structural `derivedArchiveViews` as rebuildable projections
+- controlled execution landed, but the sandbox secret boundary should be
+  hardened by preventing executed scripts from inheriting server environment
+  variables
 
 ---
 
@@ -285,6 +355,26 @@ The architectural standup assumes an initial provider set of:
 - a `CloudflareSandboxProvider` as a contrasting managed provider that keeps
   the provider abstraction honest across different sandbox models
 
+**Post-implementation state:** The core architecture summary landed with these
+current-state refinements:
+
+- Fastify remains the control plane and Convex remains durable state.
+- Local and Daytona are the implemented providers; Cloudflare Sandbox is
+  deferred.
+- Artifact content and provenance landed through project-scoped `artifacts` and
+  append-only `artifactVersions`.
+- Package review/export landed through immutable package snapshots and pinned
+  package members.
+- Repository source management landed for GitHub-backed repositories, including
+  canonical `repositoryFullName`, hydration/freshness state, soft detach, and
+  source provenance, but should receive focused implementation review before
+  heavy product reliance because it crosses source scope, environment
+  hydration, freshness, detach, checkpointing, and provenance.
+- Epic 2 visible history remains a presentation/read model; Epic 7 archive
+  entries are canonical finalized process memory.
+- `lspec-core` orchestration should layer above the current controlled
+  execution result boundary when integrated.
+
 ---
 
 ## Milestones
@@ -296,6 +386,14 @@ The architectural standup assumes an initial provider set of:
 | M3 | Feature 4 | Artifact review and packaging surface is usable for spec-oriented outputs | Yes - can markdown artifacts be reviewed and exported in-app? |
 | M4 | Feature 4 + interstitial alignment epic | Review and package behavior now rests on project-scoped artifacts, version provenance, and pinned package context | Yes - can shared project artifacts be revised, reviewed, and packaged coherently across processes? |
 | M5 | Feature 5 | Broader source-attachment and canonical-source workflows work across aligned Convex-backed artifacts and GitHub-backed repos | Yes - can the platform manage source attachment lifecycle, provenance, freshness, and archive-facing source truth coherently? |
+
+**Post-implementation state:** The seven-epic standup substantially fulfilled
+these milestones at platform-substrate level. Epic 6 source-management behavior should
+receive extra implementation review before heavy product dependence because it
+crosses project/process source scope, environment hydration, freshness, detach,
+and provenance. Epic 3 runtime is mostly healthy, with sandbox environment
+hardening and strict `ExecutionResult` validation as the main short-term
+follow-ups.
 
 ---
 
@@ -379,6 +477,12 @@ state, and source attachments.
 clearly enough that the user can decide whether to resume, review, rehydrate, or
 restart.
 
+**Post-implementation state:** Feature 1 landed as the durable entry shell:
+authenticated project index, project shell, project/process summaries,
+artifact/source summary sections, process registration for the first process
+types, and restored state across sessions. Later epics deepened the sections
+without changing `Project` as the top-level container.
+
 ---
 
 ## Feature 2: Process Work Surface
@@ -457,6 +561,13 @@ collapsing all of that work into one opaque thread.
 
 **AC-16:** The user can tell which delegated work is still active, which results
 were returned to the main process, and what that changed.
+
+**Post-implementation state:** Feature 2 landed as a dedicated process work
+surface with visible history, pinned current request, current materials,
+side-work summaries, start/resume/respond actions, and typed WebSocket
+current-object live updates. Full inspectable delegated subthreads remain
+deferred; the landed model exposes side-work summaries rather than separate
+subprocess workspaces.
 
 ---
 
@@ -548,6 +659,24 @@ including Convex-backed project artifacts and GitHub-backed code for
 already-attached writable repositories, so that the process can continue after
 environment loss.
 
+**Post-implementation state:** Feature 3 landed as a real environment/runtime
+substrate: durable `processEnvironmentStates`, Local + Daytona providers,
+one-shot TypeScript execution, process-scoped hydration plans, artifact
+checkpointing to Convex File Storage/version rows, Octokit-backed code
+checkpointing for writable GitHub sources, latest checkpoint result projection,
+rehydrate/rebuild recovery, and working-set fingerprint stale projection.
+The current execution/tool surface is enough to prove controlled side effects,
+but richer process-specific tool capabilities should be defined with the first
+functional process rather than assumed complete from the generic runtime path.
+The current default runtime payload proves the plumbing, not the final
+process-specific AI execution model.
+
+Current short-term hardening:
+
+- executed scripts should receive a minimal environment variable allowlist
+  rather than inheriting server secrets
+- `ExecutionResult` should be validated by a shared strict schema
+
 ---
 
 ## Feature 4: Artifact Review and Package Surface
@@ -619,6 +748,13 @@ pinned artifact versions belong together as one reviewable package.
 **AC-30:** The platform can package and export that pinned output set when a
 process requires a bundled artifact package such as a spec-oriented pack, even
 when the package members come from more than one process in the same project.
+
+**Post-implementation state:** Feature 4 landed as a process-aware review
+workspace with artifact version review, markdown/Mermaid rendering, package
+snapshots, pinned package members, `.mpkz` export, signed download URLs, and the
+`@liminal-build/markdown-package` workspace package. Production package
+publication remains process-module-owned: the platform substrate exists, but a
+functional process decides when to publish a package snapshot.
 
 ---
 
@@ -750,6 +886,26 @@ partial objects as canonical archive entries.
 chunks, summaries, and other managed views from those turns without mutating
 the full-fidelity archive.
 
+**Post-implementation state:** Feature 5 landed as three implementation slices:
+
+- Epic 5 aligned artifact identity, version provenance, process current refs,
+  pinned package context, and package publication eligibility.
+- Epic 6 implemented GitHub repository source attachment management, including
+  project/process scope, canonical repository identity, purpose/access/target
+  ref, hydration/freshness state, soft detach, refresh behavior, and source
+  provenance.
+- Epic 7 implemented canonical finalized archive entries, derived turns, and
+  structural derived archive views.
+
+External/MCP source attachment remains deferred beyond v2. Model-generated
+summaries and context-packing over archive turns also remain future work.
+
+Epic 6 should be treated as implemented but deserving focused code review before
+heavy product reliance. Its source-management behavior crosses project/process
+scope, environment hydration, freshness/staleness, detach semantics, source
+provenance, and checkpoint behavior, so regressions are more likely to appear
+at subsystem boundaries than in isolated CRUD paths.
+
 ---
 
 ## Cross-Cutting Decisions
@@ -779,6 +935,18 @@ the full-fidelity archive.
   Turns are derived from archived entries. Chunks and summaries are later
   derived views over turns.
 
+**Post-implementation state:** These cross-cutting decisions held. The main
+landed clarifications are:
+
+- `processEnvironmentStates` is the environment lifecycle authority
+- `artifacts` are project identity rows; `artifactVersions` hold content and
+  provenance
+- mutable package-building context is process-scoped, while published package
+  snapshots are immutable pinned version sets
+- GitHub source attachments are repository-focused in v2; MCP/external sources
+  are deferred
+- visible process history is separate from canonical archive entries
+
 ---
 
 ## Future Directions
@@ -792,6 +960,18 @@ These are future directions, not current scope:
 - Fine-tuned small models specialized to specific process/tool shapes
 - Full billing, metering, and package monetization
 - Deeper MCP integration and custom MCP servers
+
+**Post-implementation state:** Add these current future directions after the
+v2 standup:
+
+- Cloudflare or another third managed environment provider to re-test provider
+  portability beyond Local + Daytona
+- sandbox execution hardening through minimal environment variable allowlists
+- strict shared `ExecutionResult` schema validation
+- `lspec-core` orchestration envelope integration above `ExecutionResult`
+- model-generated summaries and context-packing strategies over archive turns
+- richer delegated/subcontext work surfaces if side-work summaries prove
+  insufficient
 
 ---
 
@@ -838,6 +1018,11 @@ Feature 1: Project and Process Shell
   Epic 6 or Epic 7. It follows later as a separate source-integration slice
   after the repository-focused source-management and archive work are in place.
 
+**Post-implementation state:** This sequence was followed. The current next
+product step is not more platform skeleton for its own sake; it is to build the
+first functional process, expected to be Epic Creation, while handling the
+short-term platform hardening items identified above.
+
 ---
 
 ## Relationship to Downstream Specs
@@ -860,6 +1045,19 @@ Downstream process-specific epics will define the exact behavior of:
 
 Those process-specific epics inherit this platform world rather than redefining
 it.
+
+**Post-implementation state:** Downstream specs should inherit the landed v2
+platform contract:
+
+- project-scoped artifacts plus process current artifact refs
+- artifact versions for durable content/provenance
+- package context/snapshots for pinned spec-pack output sets
+- source attachments and source provenance for repository context
+- `ExecutionResult` as the controlled runtime side-effect boundary
+- archive entries as finalized process memory, with turns/views derived from
+  them
+- higher-level orchestration, including future `lspec-core` integration, above
+  the runtime result boundary
 
 ---
 
@@ -891,3 +1089,9 @@ bibliography in this PRD.
       have been absorbed into this platform PRD
 - [ ] The doc can feed a companion architecture without embedding low-level
       implementation detail
+
+**Post-implementation state:** The checklist is satisfied at the PRD level.
+Known follow-ups are implementation hardening and future extension rather than
+PRD premise failures: sandbox environment secret isolation, strict
+`ExecutionResult` validation, Cloudflare/additional provider validation,
+external/MCP source attachment, and `lspec-core` orchestration integration.

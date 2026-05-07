@@ -29,19 +29,31 @@
       "secondary_harness": "codex",
       "model": "gpt-5.4",
       "reasoning_effort": "xhigh",
-      "label": "epic-verifier-1"
+      "label": "epic-reviewer-1"
     },
     {
       "secondary_harness": "codex",
-      "model": "gpt-5.4",
+      "model": "gpt-5.5",
+      "reasoning_effort": "medium",
+      "label": "epic-reviewer-2"
+    },
+    {
+      "secondary_harness": "none",
+      "model": "claude-opus-4-7[1m]",
       "reasoning_effort": "xhigh",
-      "label": "epic-verifier-2"
+      "label": "epic-reviewer-3"
+    },
+    {
+      "secondary_harness": "none",
+      "model": "claude-sonnet-4-6[1m]",
+      "reasoning_effort": "high",
+      "label": "epic-reviewer-4"
     }
   ],
-  "epic_synthesizer": {
-    "secondary_harness": "codex",
-    "model": "gpt-5.4",
-    "reasoning_effort": "xhigh"
+  "epic_reverifier": {
+    "secondary_harness": "none",
+    "model": "claude-sonnet-4-6[1m]",
+    "reasoning_effort": "high"
   },
   "timeouts": {
     "provider_startup_timeout_ms": 300000,
@@ -49,9 +61,12 @@
     "story_orchestrate_ms": 7200000,
     "story_implementor_silence_timeout_ms": 600000,
     "story_verifier_silence_timeout_ms": 360000,
-    "epic_cleanup_silence_timeout_ms": 480000,
-    "epic_verifier_silence_timeout_ms": 600000,
-    "epic_synthesizer_silence_timeout_ms": 600000,
+    "epic_fixer_ms": 3600000,
+    "epic_fixer_silence_timeout_ms": 480000,
+    "epic_reviewer_ms": 3600000,
+    "epic_reviewer_silence_timeout_ms": 600000,
+    "epic_reverifier_ms": 3600000,
+    "epic_reverifier_silence_timeout_ms": 600000,
     "quick_fixer_silence_timeout_ms": 300000,
     "story_self_review_silence_timeout_ms": 480000
   },

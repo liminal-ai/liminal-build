@@ -16,6 +16,36 @@ surface. It is also not a full design for every future bespoke process. It
 defines the common substrate those process types build on and leaves explicit
 extension seams where later decisions are still open.
 
+### Post-Implementation Addendum
+
+The v2 platform standup has now implemented the seven core platform epics that
+this architecture guided. The core architecture remains directionally accurate:
+Fastify is the control plane, Convex is durable state, GitHub is canonical code
+truth, environments are disposable working copies, and archive entries are
+canonical finalized process memory.
+
+Where implementation settled or changed earlier assumptions, this document now
+includes inline post-implementation notes. Those notes preserve the original
+planned state while recording the landed v2 state at the end of the platform
+standup.
+
+### Current Known Hardening Items
+
+These are not architecture premise failures. They are short-term hardening or
+validation items identified after the v2 standup:
+
+- harden sandbox execution so Local and Daytona script runs receive an explicit
+  minimal environment variable allowlist instead of inheriting server secrets
+- move `ExecutionResult` to stricter shared schema validation at the provider
+  boundary, add structured failure metadata, and keep lower-level runtime
+  invocation diagnostics below the process-facing result boundary
+- review Epic 6 source-management implementation before heavy product reliance,
+  especially active source resolution, refresh/freshness, detach, provenance,
+  and environment/checkpoint integration
+- integrate `lspec-core` above `ExecutionResult` as orchestration
+  envelope/flow machinery rather than folding orchestration state into the
+  low-level runtime result
+
 ---
 
 ## Architecture Thesis
@@ -36,6 +66,26 @@ The platform also preserves a full-fidelity canonical archive of process
 history at low-level entry grain, from which turns, chunks, summaries, and
 other managed views are derived later.
 
+**Post-implementation state:** This thesis landed substantially as written.
+The implemented platform includes the project/process shell, process work
+surface, environment execution path, review/package surface, artifact
+version/provenance alignment, repository source management, source provenance,
+canonical archive entries, derived turns, and structural derived views.
+
+The main current-state caveats are:
+
+- the implemented provider set is Local + Daytona, not the full originally
+  envisioned Local + Daytona + Cloudflare set
+- `ExecutionResult` exists as the environment/runtime side-effect boundary but still
+  needs stricter shared schema validation before model-generated execution is
+  treated as fully hardened
+- sandbox script execution should explicitly use a minimal environment variable
+  allowlist so executed code cannot inherit Fastify/server secrets
+- richer orchestration machinery from `lspec-core` should sit above
+  `ExecutionResult`, not be merged directly into it
+- the current tool surface is an initial script/result-file boundary; a richer
+  explicit capability manifest for process-specific tools remains future work
+
 ---
 
 ## Core Stack
@@ -50,6 +100,15 @@ other managed views are derived later.
 | Code source of truth | GitHub | Current API/platform | Canonical source for code and repo provenance across review and implementation processes | 2026-04-12 | Hydrated into process environments as working copies |
 | Client build tool | Vite | 8.x current stable line | Gives the browser app a polished dev/build pipeline while Fastify remains the real server/auth boundary | 2026-04-12 | Current Vite tooling expects a modern Node line; Fastify still serves the built assets in production |
 | Protocol integration | MCP TypeScript SDK | Current SDK line | Needed as the clean integration boundary for internal and external context/tool servers | 2026-04-12 | Sits behind Fastify and process-controlled integration surfaces |
+
+**Post-implementation state:** The implemented stack uses Node 24,
+TypeScript 6, Fastify 5, Vite 8, WorkOS, Convex, GitHub/Octokit, Daytona,
+`@fastify/websocket`, markdown rendering libraries, Mermaid, DOMPurify, and the
+workspace package `@liminal-build/markdown-package`.
+
+MCP remains an extension seam rather than an implemented v2 source attachment
+surface. Repository-backed GitHub sources are the implemented source domain for
+the v2 standup.
 
 ### Rejected Alternatives
 
@@ -83,6 +142,26 @@ tools, artifacts, sources, archive, and review.
 | Sources | Fastify + Convex + upstream source systems | Project- and process-scoped repository attachments, durable source-state records, hydration/freshness metadata, source provenance, and future controlled source-integration boundaries | Environments, Processes | Repository attachments are first-class durable records at project or process scope; MCP/external source mediation remains an explicit later extension seam rather than informal discovery |
 | Archive | Fastify + Convex + cache/index layers | Full-fidelity low-level process history, turn derivation, later chunk/view derivation inputs | Processes | Canonical history is preserved at entry grain; turns and chunks are derived over it |
 | Review Workspace | Client + Fastify-backed APIs | Markdown/Mermaid rendering, artifact reading, pinned-context review surface, package viewing | Artifacts, Processes, Archive | Review lives in the same platform surface as orchestration, and eligibility follows process reference or pinned package context rather than artifact ownership |
+
+**Post-implementation state:** These domains all exist in the implemented
+platform. The main landed refinements are:
+
+- `processEnvironmentStates` is the durable authority for environment
+  lifecycle, while `processes.hasEnvironment` is compatibility state maintained
+  from environment truth
+- artifact identity and content were split: `artifacts` are project-scoped
+  identities, while `artifactVersions` carry content storage ids, version
+  labels, timestamps, and producing-process provenance
+- package-building context was added through mutable process package context
+  tables, while published package snapshots remain immutable pinned version sets
+- repository source management landed with canonical `repositoryFullName`,
+  operational `repositoryUrl`, project/process scope, freshness/hydration state,
+  soft detach, and source provenance, but should receive focused
+  implementation review before heavy product reliance because it crosses source
+  scope, environment hydration, freshness, detach, checkpointing, and
+  provenance
+- visible process history from Epic 2 remains a presentation/read model;
+  canonical archive entries from Epic 7 are separate finalized truth
 
 ```mermaid
 flowchart TD
@@ -403,6 +482,17 @@ contract is established.
 semantics first. `LocalProvider` must satisfy the same contract without
 simplifying it.
 
+**Post-implementation state:** The landed provider set is Local + Daytona.
+Both are real adapters in the current codebase. Local is the trusted
+development execution path. Daytona is implemented as a real SDK-backed
+managed-provider adapter, and live Daytona smoke validation should remain an
+explicit verification step.
+
+The implementation sequence became more LocalProvider-first than this planned
+wording suggests. That is accepted current state, but future provider work
+should still watch for local filesystem assumptions leaking into the abstract
+provider contract.
+
 ### Three-Provider Standup Set
 
 **Choice:** The architecture standup assumes an initial provider set of:
@@ -422,6 +512,11 @@ particular lifecycle model.
 all three providers, even though Daytona remains the first reference
 implementation and local remains the fast-follow development implementation.
 
+**Post-implementation state:** Cloudflare Sandbox was not implemented in the
+v2 standup. The implemented provider kind union is Local + Daytona. Cloudflare
+should be treated as a deferred provider-validation target, not as current
+platform capability.
+
 ### One-Shot Script Execution First
 
 **Choice:** The first scripted execution model is one-shot: the outer controller
@@ -435,6 +530,22 @@ assumptions, and fits the disposable-environment model.
 **Consequence:** A daemonized executor may be added later if performance or
 stateful local caches justify it, but the first provider abstraction should not
 depend on that.
+
+**Post-implementation state:** One-shot TypeScript module execution landed.
+Providers run a TypeScript entrypoint and return an `ExecutionResult`, which the
+server interprets into process history, outputs, side work, artifact checkpoint
+candidates, code checkpoint candidates, source usage, and archive entries.
+
+Two hardening items remain:
+
+- `ExecutionResult` should move to strict shared schema validation rather than
+  adapter-local partial validation, with structured failure metadata
+- lower-level runtime invocation diagnostics should stay below the
+  process-facing `ExecutionResult` boundary
+- provider script execution should pass an explicit minimal environment variable
+  allowlist instead of inheriting server environment secrets
+- the current default runtime payload proves the plumbing, not the final
+  process-specific AI execution model
 
 ### Fastify + Vite Client Integration
 
@@ -499,6 +610,10 @@ preserved process memory.
 provider interface should still be shaped so local, Daytona, and Cloudflare
 remain valid first-class targets.
 
+**Post-implementation state:** Daytona is the implemented managed provider.
+Local is the implemented development provider. Cloudflare remains deferred.
+The current code also includes a Daytona smoke-test command.
+
 ---
 
 ## Boundaries and Flows
@@ -556,6 +671,28 @@ sequenceDiagram
 this same high-level pattern. The process type changes the state schema, phases,
 and toolset; it does not invent a new canonical-source model.
 
+**Post-implementation state:** This flow landed with more concrete boundaries:
+
+- hydration plans are process-scoped working sets built from current artifact
+  refs, current outputs, and active source attachments
+- artifact checkpointing writes Convex File Storage content and appends
+  `artifactVersions`
+- code checkpointing uses an Octokit-backed writer against writable attached
+  GitHub sources
+- read-only sources fail closed for code checkpointing
+- `lastCheckpointResult` is latest-only environment summary state
+- `workingSetFingerprint` supports stale projection for environment recovery
+
+Current caution: source management and environment hydration are tightly
+coupled. Project-scoped source refresh is only valid when the platform can
+resolve a concrete current process execution target.
+
+Epic 6 should receive focused implementation review before heavy product
+reliance. The source-management model is intentionally cross-cutting: source
+attachments, active process source resolution, environment working copies,
+freshness/staleness, detach semantics, checkpointing, and source provenance all
+need to agree.
+
 ---
 
 ## Constraints That Shape Process Specs
@@ -604,6 +741,21 @@ the current platform boundaries. The decision criteria are:
 - code quality and clarity relative to a clean-room implementation
 - whether the source provides a pattern to learn from or a module to keep
 
+**Post-implementation state:** This decision is no longer fully open in the
+same form.
+
+- MDV-style markdown/package ideas landed as native Liminal Build review,
+  rendering, package snapshot, and `.mpkz` export behavior, including the
+  workspace package `@liminal-build/markdown-package`.
+- Pi remains reference material rather than a wholesale adoption path.
+- The more relevant current integration question is `lspec-core`: its
+  orchestration CLI/SDK aligns with Liminal Build, but it should be integrated
+  above `ExecutionResult` as orchestration envelope/flow machinery rather than
+  folded into the low-level runtime result object.
+- Future orchestration integration should also report read-only source usage
+  explicitly so source reads can produce `informed_work` provenance even when no
+  code checkpoint candidate exists.
+
 ---
 
 ## Living Document, Not Decree
@@ -626,6 +778,25 @@ than freezing around a weaker earlier assumption.
 - Exact delegated-process history capture, turn-derivation metadata, and
   chunk/view provenance metadata
 - Exact caching and freshness-check policy for repository hydration
+
+**Post-implementation state:** Most of these are settled for v2:
+
+- provider verbs/payloads landed in the provider adapter contract
+- one-shot TypeScript module execution landed for the in-environment executor
+- package/export landed as immutable package snapshots plus `.mpkz` tar+gzip
+  export with `_nav.md`
+- archive entries, turn derivation, derived archive views, and provenance
+  metadata landed in separate archive tables and services
+- repository freshness/hydration landed for GitHub-backed source attachments
+
+Still open or deferred:
+
+- rich delegated/subcontext work surfaces beyond side-work summaries
+- MCP and non-repository source attachment
+- Cloudflare or other additional managed providers
+- model-generated summaries and context-packing strategy over archive turns
+- higher-level `lspec-core` orchestration envelope integration
+- stricter `ExecutionResult` schema and sandbox environment hardening
 
 ---
 
@@ -811,6 +982,15 @@ Not the source of truth for:
 | A4 | Daytona can establish the provider contract first and a local provider can follow quickly for development ergonomics | Validated | This is the preferred sequence |
 | A5 | Process modules will tolerate process-specific state tables instead of seeking a dynamic generic schema layer | Validated | Matches crafted-process stance |
 
+**Post-implementation state:** A4 should be read with nuance in current-state
+work. Daytona is implemented as the managed-provider adapter, while Local
+became the trusted development path. Live/external Daytona validation should be
+maintained separately from local unit/service coverage. The runtime default is
+configurable and currently defaults to Daytona in production config with local
+placeholders for tests/dev bootstrap. The contract should remain
+provider-neutral and should continue to be reviewed against managed-provider
+semantics.
+
 ---
 
 ## Relationship to Downstream
@@ -825,6 +1005,19 @@ Not the source of truth for:
   code paths, exact DB schema details, exact UI composition details, and exact
   integration client libraries where this architecture intentionally leaves the
   seam open
+
+**Post-implementation state:** The v2 platform standup now provides a richer
+current-state baseline for downstream specs than this original architecture did:
+
+- process modules should use project-scoped artifacts plus process current refs
+- durable artifact output should append artifact versions
+- package publishing should pin explicit artifact versions through package
+  context/snapshots
+- source use should go through source attachments and source provenance
+- finalized process memory should go through archive entries, with turns/views
+  derived later
+- process-specific orchestration should avoid bypassing Fastify-owned process,
+  environment, artifact, source, review, and archive services
 
 ---
 

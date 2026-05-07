@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "command": "epic-fix",
+  "status": "completed",
+  "phase": "finalizing",
+  "startedAt": "2026-05-05T23:47:42.623Z",
+  "updatedAt": "2026-05-05T23:53:03.742Z",
+  "lastOutputAt": "2026-05-05T23:53:03.624Z",
+  "providerLiveness": "completed",
+  "provider": "codex",
+  "pid": 95938,
+  "cwd": "/Users/leemoore/code/liminal-build",
+  "timeoutMs": 3600000,
+  "configuredStartupTimeoutMs": 300000,
+  "configuredSilenceTimeoutMs": 480000,
+  "artifactPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/fix/002-fix-result.json",
+  "streamPaths": {
+    "stdoutPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/fix/streams/002-fix-result.stdout.log",
+    "stderrPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/fix/streams/002-fix-result.stderr.log"
+  },
+  "progressPaths": {
+    "statusPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/fix/progress/002-fix-result.status.json",
+    "progressPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/fix/progress/002-fix-result.progress.jsonl"
+  },
+  "lastEvent": "completed",
+  "lastEventSummary": "epic-fix completed with outcome cleaned."
+}

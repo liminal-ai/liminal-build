@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "command": "epic-review",
+  "status": "failed",
+  "phase": "finalizing",
+  "startedAt": "2026-05-05T23:30:28.490Z",
+  "updatedAt": "2026-05-05T23:46:13.595Z",
+  "lastOutputAt": "2026-05-05T23:46:13.032Z",
+  "providerLiveness": "completed",
+  "provider": "claude-code",
+  "pid": 89915,
+  "cwd": "/Users/leemoore/code/liminal-build",
+  "timeoutMs": 3600000,
+  "configuredStartupTimeoutMs": 300000,
+  "configuredSilenceTimeoutMs": 600000,
+  "artifactPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/009-epic-review.json",
+  "streamPaths": {
+    "stdoutPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/streams/009-epic-review.stdout.log",
+    "stderrPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/streams/009-epic-review.stderr.log"
+  },
+  "progressPaths": {
+    "statusPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/progress/009-epic-review.status.json",
+    "progressPath": "/Users/leemoore/code/liminal-build/docs/spec-build/v2/epics/07--archive-and-derived-views/artifacts/epic/progress/009-epic-review.progress.jsonl"
+  },
+  "lastEvent": "failed",
+  "lastEventSummary": "epic-review failed during internal reconciliation.",
+  "verifiersCompleted": 4,
+  "verifiersPlanned": 4,
+  "verifierLanes": [
+    {
+      "label": "epic-reviewer-1",
+      "provider": "codex",
+      "state": "completed",
+      "providerLiveness": "completed",
+      "lastOutputAt": "2026-05-05T23:39:46.859Z",
+      "lastEvent": "verifier-completed",
+      "lastEventSummary": "epic-reviewer-1 completed for epic review."
+    },
+    {
+      "label": "epic-reviewer-2",
+      "provider": "codex",
+      "state": "completed",
+      "providerLiveness": "completed",
+      "lastOutputAt": "2026-05-05T23:33:17.575Z",
+      "lastEvent": "verifier-completed",
+      "lastEventSummary": "epic-reviewer-2 completed for epic review."
+    },
+    {
+      "label": "epic-reviewer-3",
+      "provider": "claude-code",
+      "state": "completed",
+      "providerLiveness": "completed",
+      "lastOutputAt": "2026-05-05T23:37:08.029Z",
+      "lastEvent": "verifier-completed",
+      "lastEventSummary": "epic-reviewer-3 completed for epic review."
+    },
+    {
+      "label": "epic-reviewer-4",
+      "provider": "claude-code",
+      "state": "completed",
+      "providerLiveness": "completed",
+      "lastOutputAt": "2026-05-05T23:37:19.091Z",
+      "lastEvent": "verifier-completed",
+      "lastEventSummary": "epic-reviewer-4 completed for epic review."
+    }
+  ]
+}
